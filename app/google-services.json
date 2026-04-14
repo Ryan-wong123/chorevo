@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "664829881706",
+    "project_id": "rehab-sense",
+    "storage_bucket": "rehab-sense.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:664829881706:android:4052b179a6f815b7ba8913",
+        "android_client_info": {
+          "package_name": "com.example.chorevo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDrg2Beead4KWB5PYH8-DlTunzUW4aZ5u8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

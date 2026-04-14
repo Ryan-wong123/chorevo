@@ -1,0 +1,33 @@
+package com.example.chorevo.core
+
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+
+/** Handles shared player view. */
+@androidx.annotation.OptIn(UnstableApi::class)
+@Composable
+fun SharedPlayerView(
+    exoPlayer: ExoPlayer,
+    modifier: Modifier = Modifier
+) {
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                player = exoPlayer
+                useController = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                keepScreenOn = true
+            }
+        },
+        update = { view ->
+            view.player = exoPlayer
+        }
+    )
+}
