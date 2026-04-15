@@ -127,6 +127,25 @@ fun VideoUploadsTab(
                     style = MaterialTheme.typography.bodySmall
                 )
 
+                if (!item.isTemplateReady) {
+                    val statusText = when (item.templateGenerationStatus.lowercase(Locale.US)) {
+                        "queued" -> "Template queued for background processing"
+                        "processing" -> "Template is being generated"
+                        "failed" -> if (item.templateGenerationError.isNotBlank()) {
+                            "Template generation failed: ${item.templateGenerationError}"
+                        } else {
+                            "Template generation failed"
+                        }
+                        else -> "Template processing status: ${item.templateGenerationStatus}"
+                    }
+
+                    Text(
+                        statusText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = brandTeal
+                    )
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)

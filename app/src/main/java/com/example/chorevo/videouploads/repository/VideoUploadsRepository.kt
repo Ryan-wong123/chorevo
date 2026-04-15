@@ -2,18 +2,25 @@ package com.example.chorevo.videouploads.repository
 
 import android.content.Context
 import android.net.Uri
+import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.posedetection.PoseTemplate
-import com.example.chorevo.posedetection.VideoPoseTemplateGenerator
+import com.example.chorevo.videouploads.VideoTemplateGenerationWorker
 import com.example.chorevo.videouploads.VideoCompressor
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 import java.io.File
 import java.util.UUID
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -54,6 +61,7 @@ class VideoUploadsRepository @Inject constructor(
         generateTemplate: Boolean = true,
         fps: Int = 2,
         onProgress: ((Float) -> Unit)? = null,
+        onStageChanged: ((String) -> Unit)? = null,
         onTemplateFailure: ((Throwable) -> Unit)? = null,
         continueWithoutTemplateOnFailure: Boolean = true
     ): Result<String> {
@@ -70,29 +78,12 @@ class VideoUploadsRepository @Inject constructor(
                     IllegalStateException("Missing educatorUid")
                 )
 
-            // 1) Generate pose template from ORIGINAL video
-            val template: PoseTemplate? = if (generateTemplate) {
-                val templateRes = VideoPoseTemplateGenerator.generate(
-                    context = ctx,
-                    videoUriString = videoUri.toString(),
-                    fps = fps,
-                    onProgress = onProgress
-                )
-
-                templateRes.fold(
-                    onSuccess = { it },
-                    onFailure = { e ->
-                        onTemplateFailure?.invoke(e)
-                        if (continueWithoutTemplateOnFailure) null else throw e
-                    }
-                )
-            } else {
-                null
-            }
-
             val danceId = UUID.randomUUID().toString()
+            val storagePath = "danceVideos/$uid/$danceId.mp4"
 
-            // 2) Compress video
+            // 1) Compress video
+            onStageChanged?.invoke("Compressing video")
+            onProgress?.invoke(0.1f)
             compressedFile = VideoCompressor.compressVideo(
                 context = ctx,
                 inputUri = videoUri,
@@ -100,7 +91,7 @@ class VideoUploadsRepository @Inject constructor(
                 maxFrameRate = 24     // use 30 if needed
             )
 
-            // 3) Compare sizes
+            // 2) Compare sizes
             val originalSize = getUriSize(ctx, videoUri)
             val compressedSize = compressedFile.length()
 
@@ -119,17 +110,27 @@ class VideoUploadsRepository @Inject constructor(
 
             val uploadedSize = if (useCompressed) compressedSize else originalSize
 
-            // 4) Upload smaller file
-            val videoRef = storage.reference.child("danceVideos/$uid/$danceId.mp4")
+            // 3) Upload smaller file
+            val videoRef = storage.reference.child(storagePath)
 
             val metadata = StorageMetadata.Builder()
                 .setContentType("video/mp4")
                 .build()
 
-            videoRef.putFile(uploadUri, metadata).await()
+            onStageChanged?.invoke("Uploading video")
+            uploadFileWithProgress(
+                videoRef = videoRef,
+                uploadUri = uploadUri,
+                metadata = metadata,
+                baseProgress = 0.2f,
+                maxProgress = 0.95f,
+                onProgress = onProgress
+            )
             val videoUrl = videoRef.downloadUrl.await().toString()
 
-            // 5) Save Firestore doc
+            // 4) Save Firestore doc immediately, then build template in background.
+            onStageChanged?.invoke("Saving details")
+            onProgress?.invoke(0.98f)
             val doc = DanceLibraryModel(
                 danceId = danceId,
                 title = title.trim(),
@@ -138,8 +139,7 @@ class VideoUploadsRepository @Inject constructor(
                 educatorUid = uid,
                 educatorName = educatorName.trim(),
                 videoUrl = videoUrl,
-                enabled = true,
-                template = template
+                enabled = true
             )
 
             db.collection("danceLibrary")
@@ -159,18 +159,86 @@ class VideoUploadsRepository @Inject constructor(
                         "compressedSizeBytes" to compressedSize,
                         "uploadedSizeBytes" to uploadedSize,
                         "wasCompressed" to useCompressed,
-                        "storagePath" to "danceVideos/$uid/$danceId.mp4"
+                        "storagePath" to storagePath,
+                        "templateGenerationStatus" to if (generateTemplate) "queued" else "skipped"
                     ),
                     SetOptions.merge()
                 )
                 .await()
 
+            if (generateTemplate) {
+                onStageChanged?.invoke("Queuing background analysis")
+                enqueueTemplateGeneration(
+                    context = ctx,
+                    danceId = danceId,
+                    storagePath = storagePath,
+                    fps = fps
+                )
+            }
+
+            onProgress?.invoke(1f)
             Result.success(danceId)
 
         } catch (e: Exception) {
+            if (!continueWithoutTemplateOnFailure) {
+                onTemplateFailure?.invoke(e)
+            }
             Result.failure(e)
         } finally {
             compressedFile?.takeIf { it.exists() }?.delete()
+        }
+    }
+
+    private fun enqueueTemplateGeneration(
+        context: Context,
+        danceId: String,
+        storagePath: String,
+        fps: Int
+    ) {
+        val workRequest = OneTimeWorkRequestBuilder<VideoTemplateGenerationWorker>()
+            .setInputData(
+                Data.Builder()
+                    .putString(VideoTemplateGenerationWorker.KEY_DANCE_ID, danceId)
+                    .putString(VideoTemplateGenerationWorker.KEY_STORAGE_PATH, storagePath)
+                    .putInt(VideoTemplateGenerationWorker.KEY_FPS, fps)
+                    .build()
+            )
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+
+        WorkManager.getInstance(context).enqueue(workRequest)
+    }
+
+    private suspend fun uploadFileWithProgress(
+        videoRef: com.google.firebase.storage.StorageReference,
+        uploadUri: Uri,
+        metadata: StorageMetadata,
+        baseProgress: Float,
+        maxProgress: Float,
+        onProgress: ((Float) -> Unit)?
+    ) = suspendCancellableCoroutine<Unit> { cont ->
+        val uploadTask = videoRef.putFile(uploadUri, metadata)
+
+        uploadTask
+            .addOnProgressListener { snapshot ->
+                val total = snapshot.totalByteCount.takeIf { it > 0L } ?: return@addOnProgressListener
+                val fraction = snapshot.bytesTransferred.toFloat() / total.toFloat()
+                val scaled = baseProgress + (maxProgress - baseProgress) * fraction.coerceIn(0f, 1f)
+                onProgress?.invoke(scaled)
+            }
+            .addOnSuccessListener {
+                if (cont.isActive) cont.resume(Unit)
+            }
+            .addOnFailureListener { error ->
+                if (cont.isActive) cont.resumeWithException(error)
+            }
+
+        cont.invokeOnCancellation {
+            uploadTask.cancel()
         }
     }
 

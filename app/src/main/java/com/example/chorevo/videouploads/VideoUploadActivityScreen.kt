@@ -218,10 +218,17 @@ fun VideoUploadActivityScreen(
                             trackColor = brandTeal.copy(alpha = 0.2f)
                         )
                         Text(
-                            "${(p * 100).toInt()}% uploaded",
+                            "${(p * 100).toInt()}% complete",
                             style = MaterialTheme.typography.bodySmall,
                             color = secondaryText
                         )
+                        uiState.uploadStageLabel?.let { stage ->
+                            Text(
+                                stage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = secondaryText
+                            )
+                        }
                     }
                 }
             }

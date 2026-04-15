@@ -12,5 +12,10 @@ data class DanceLibraryModel(
     val videoUrl: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val enabled: Boolean = true,
-    val template: PoseTemplate? = null
-)
+    val template: PoseTemplate? = null,
+    val templateGenerationStatus: String = "ready",
+    val templateGenerationError: String = ""
+) {
+    val isTemplateReady: Boolean
+        get() = templateGenerationStatus.equals("ready", ignoreCase = true)
+}

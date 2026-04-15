@@ -26,7 +26,9 @@ class DanceLibraryRepository @Inject constructor(
                 .get()
                 .await()
 
-            val list = snap.documents.mapNotNull { it.toObject(DanceLibraryModel::class.java) }
+            val list = snap.documents
+                .mapNotNull { it.toObject(DanceLibraryModel::class.java) }
+                .filter { it.isTemplateReady }
             Result.success(list)
         } catch (e: Exception) {
             Result.failure(e)

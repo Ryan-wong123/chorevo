@@ -158,6 +158,7 @@ class VideoUploadsViewModelTest {
                 generateTemplate = true,
                 fps = 15,
                 onProgress = any(),
+                onStageChanged = any(),
                 onTemplateFailure = any(),
                 continueWithoutTemplateOnFailure = true
             )
@@ -186,13 +187,17 @@ class VideoUploadsViewModelTest {
                 generateTemplate = true,
                 fps = 15,
                 onProgress = any(),
+                onStageChanged = any(),
                 onTemplateFailure = any(),
                 continueWithoutTemplateOnFailure = true
             )
         }
 
         val s = vm.uiState.value
-        assertEquals("Uploaded", s.statusMessage)
+        assertEquals(
+            "Uploaded. Template generation continues in the background.",
+            s.statusMessage
+        )
         assertEquals("", s.uploadDraft.title)
         assertEquals("", s.uploadDraft.danceType)
         assertEquals("", s.uploadDraft.description)

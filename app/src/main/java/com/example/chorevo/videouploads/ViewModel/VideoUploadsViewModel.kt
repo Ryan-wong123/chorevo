@@ -264,7 +264,14 @@ class VideoUploadsViewModel @Inject constructor(
         if (!draft.canUpload) return
 
         viewModelScope.launch {
-            mutate { it.copy(saving = true, statusMessage = null, uploadProgress = null) }
+            mutate {
+                it.copy(
+                    saving = true,
+                    statusMessage = null,
+                    uploadProgress = 0f,
+                    uploadStageLabel = "Preparing upload"
+                )
+            }
 
             try {
                 val profile = authRepository.getCurrentUserProfile()
@@ -292,6 +299,9 @@ class VideoUploadsViewModel @Inject constructor(
                     onProgress = { progress ->
                         mutate { s -> s.copy(uploadProgress = progress) }
                     },
+                    onStageChanged = { stage ->
+                        mutate { s -> s.copy(uploadStageLabel = stage) }
+                    },
                     onTemplateFailure = { e ->
                          mutate { it.copy(statusMessage = "Template generation failed: ${e.message}") }
                     },
@@ -302,7 +312,7 @@ class VideoUploadsViewModel @Inject constructor(
                     onSuccess = {
                         mutate {
                             it.copy(
-                                statusMessage = "Uploaded",
+                                statusMessage = "Uploaded. Template generation continues in the background.",
                                 uploadDraft = UploadDraft(),
                                 showVideoSourceDialog = false
                             )
@@ -314,7 +324,7 @@ class VideoUploadsViewModel @Inject constructor(
                     }
                 )
             } finally {
-                mutate { it.copy(saving = false, uploadProgress = null) }
+                mutate { it.copy(saving = false, uploadProgress = null, uploadStageLabel = null) }
             }
         }
     }

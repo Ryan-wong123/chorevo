@@ -14,6 +14,7 @@ data class VideoUploadsUiState(
 
     // Upload Progress
     val uploadProgress: Float? = null,
+    val uploadStageLabel: String? = null,
 
     // Dialog state
     val previewItem: DanceLibraryModel? = null,
