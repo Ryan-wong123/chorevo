@@ -37,6 +37,74 @@ class VideoUploadsViewModel @Inject constructor(
         mutate { it.copy(statusMessage = null) }
     }
 
+    /** Initializes the upload draft with a preselected video once. */
+    fun initializeUploadDraft(initialVideoUri: Uri?) {
+        if (initialVideoUri == null) return
+        mutate { state ->
+            if (state.uploadDraft.selectedVideoUri != null) {
+                state
+            } else {
+                state.copy(
+                    uploadDraft = state.uploadDraft.copy(
+                        selectedVideoUri = initialVideoUri,
+                        selectedVideoLabel = initialVideoUri.lastPathSegment
+                    )
+                )
+            }
+        }
+    }
+
+    /** Handles upload title changes. */
+    fun uploadTitleChanged(newTitle: String) {
+        mutate { it.copy(uploadDraft = it.uploadDraft.copy(title = newTitle)) }
+    }
+
+    /** Handles upload dance type changes. */
+    fun uploadDanceTypeChanged(newDanceType: String) {
+        mutate { it.copy(uploadDraft = it.uploadDraft.copy(danceType = newDanceType)) }
+    }
+
+    /** Handles upload description changes. */
+    fun uploadDescriptionChanged(newDescription: String) {
+        mutate { it.copy(uploadDraft = it.uploadDraft.copy(description = newDescription)) }
+    }
+
+    /** Opens the upload video source chooser. */
+    fun openVideoSourceDialog() {
+        mutate { it.copy(showVideoSourceDialog = true) }
+    }
+
+    /** Closes the upload video source chooser. */
+    fun dismissVideoSourceDialog() {
+        mutate { it.copy(showVideoSourceDialog = false) }
+    }
+
+    /** Stores a picked gallery video. */
+    fun selectGalleryVideo(uri: Uri?) {
+        if (uri == null) return
+        mutate {
+            it.copy(
+                uploadDraft = it.uploadDraft.copy(
+                    selectedVideoUri = uri,
+                    selectedVideoLabel = uri.lastPathSegment ?: "Gallery video"
+                )
+            )
+        }
+    }
+
+    /** Stores a freshly recorded video. */
+    fun selectRecordedVideo(uri: Uri?) {
+        if (uri == null) return
+        mutate {
+            it.copy(
+                uploadDraft = it.uploadDraft.copy(
+                    selectedVideoUri = uri,
+                    selectedVideoLabel = "Live recording"
+                )
+            )
+        }
+    }
+
     /** Refreshes my uploads. */
     fun refreshMyUploads() {
         viewModelScope.launch {
@@ -187,16 +255,16 @@ class VideoUploadsViewModel @Inject constructor(
     /** Uploads dance. */
     fun uploadDance(
         context: Context,
-        title: String,
-        danceType: String,
-        description: String,
-        videoUri: Uri,
         generateTemplate: Boolean = true,
         fps: Int = 2,
         continueWithoutTemplateOnFailure: Boolean = true
     ) {
+        val draft = _uiState.value.uploadDraft
+        val videoUri = draft.selectedVideoUri ?: return
+        if (!draft.canUpload) return
+
         viewModelScope.launch {
-            mutate { it.copy(saving = true, statusMessage = null) }
+            mutate { it.copy(saving = true, statusMessage = null, uploadProgress = null) }
 
             try {
                 val profile = authRepository.getCurrentUserProfile()
@@ -215,9 +283,9 @@ class VideoUploadsViewModel @Inject constructor(
                     context = context,
                     educatorUid = uid,
                     educatorName = educatorName,
-                    title = title,
-                    danceType = danceType,
-                    description = description,
+                    title = draft.title,
+                    danceType = draft.danceType,
+                    description = draft.description,
                     videoUri = videoUri,
                     generateTemplate = generateTemplate,
                     fps = fps,
@@ -232,7 +300,13 @@ class VideoUploadsViewModel @Inject constructor(
 
                 res.fold(
                     onSuccess = {
-                        mutate { it.copy(statusMessage = "Uploaded") }
+                        mutate {
+                            it.copy(
+                                statusMessage = "Uploaded",
+                                uploadDraft = UploadDraft(),
+                                showVideoSourceDialog = false
+                            )
+                        }
                         refreshMyUploads()
                     },
                     onFailure = { e ->
@@ -240,7 +314,7 @@ class VideoUploadsViewModel @Inject constructor(
                     }
                 )
             } finally {
-                mutate { it.copy(saving = false) }
+                mutate { it.copy(saving = false, uploadProgress = null) }
             }
         }
     }

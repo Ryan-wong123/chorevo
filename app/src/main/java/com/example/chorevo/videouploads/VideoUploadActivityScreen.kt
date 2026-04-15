@@ -1,6 +1,7 @@
 package com.example.chorevo.videouploads
 
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -9,18 +10,52 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.PhotoLibrary
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.VideoFile
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +67,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
 
 /** Displays the video upload activity screen. */
@@ -39,21 +75,36 @@ import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
 @Composable
 fun VideoUploadActivityScreen(
     onBack: () -> Unit,
-    initialVideoUri: Uri? = null, // for instrument test
-    showPickButton: Boolean = true, // for instrument test
+    initialVideoUri: Uri? = null,
+    showPickButton: Boolean = true,
     videoUploadVm: VideoUploadsViewModel
 ) {
     val context = LocalContext.current
-    val uiState by videoUploadVm.uiState.collectAsState()
+    val uiState by videoUploadVm.uiState.collectAsStateWithLifecycle()
+    val uploadDraft = uiState.uploadDraft
 
-    var title by remember { mutableStateOf("") }
-    var danceType by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var selectedUri by remember { mutableStateOf<Uri?>(initialVideoUri) }
+    var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+
+    LaunchedEffect(initialVideoUri) {
+        videoUploadVm.initializeUploadDraft(initialVideoUri)
+    }
 
     val picker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
-    ) { uri -> selectedUri = uri }
+    ) { uri ->
+        videoUploadVm.selectGalleryVideo(uri)
+    }
+
+    val videoCaptureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CaptureVideo()
+    ) { isCaptured ->
+        if (isCaptured) {
+            videoUploadVm.selectRecordedVideo(pendingCaptureUri)
+        } else if (pendingCaptureUri != null) {
+            Toast.makeText(context, "Video recording was cancelled.", Toast.LENGTH_SHORT).show()
+        }
+        pendingCaptureUri = null
+    }
 
     val uploading = uiState.saving
     val status = uiState.statusMessage
@@ -69,18 +120,24 @@ fun VideoUploadActivityScreen(
         disabledContentColor = Color.White.copy(alpha = 0.6f)
     )
 
-    val canUpload = !uploading &&
-            selectedUri != null &&
-            title.isNotBlank() &&
-            danceType.isNotBlank() &&
-            description.isNotBlank()
+    fun startLiveRecording() {
+        val captureUri = VideoCaptureFileProvider.createVideoCaptureUri(context)
+        if (captureUri == null) {
+            Toast.makeText(
+                context,
+                "Unable to prepare a video file for recording.",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        pendingCaptureUri = captureUri
+        videoCaptureLauncher.launch(captureUri)
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Text("Upload Dance", fontWeight = FontWeight.SemiBold)
-                },
+                title = { Text("Upload Dance", fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = brandTeal,
                     titleContentColor = Color.White,
@@ -98,10 +155,9 @@ fun VideoUploadActivityScreen(
                 .padding(horizontal = 16.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-
             UploadFormField(
-                value = title,
-                onValueChange = { title = it },
+                value = uploadDraft.title,
+                onValueChange = videoUploadVm::uploadTitleChanged,
                 label = "Title",
                 placeholder = "e.g. Beginner Hip Hop Routine",
                 icon = Icons.Outlined.Title,
@@ -110,8 +166,8 @@ fun VideoUploadActivityScreen(
             )
 
             UploadFormField(
-                value = danceType,
-                onValueChange = { danceType = it },
+                value = uploadDraft.danceType,
+                onValueChange = videoUploadVm::uploadDanceTypeChanged,
                 label = "Dance Type",
                 placeholder = "e.g. Hip Hop, Salsa, Ballet",
                 icon = Icons.Outlined.MusicNote,
@@ -120,10 +176,10 @@ fun VideoUploadActivityScreen(
             )
 
             UploadFormField(
-                value = description,
-                onValueChange = { description = it },
+                value = uploadDraft.description,
+                onValueChange = videoUploadVm::uploadDescriptionChanged,
                 label = "Description",
-                placeholder = "Describe the moves, difficulty level, or style…",
+                placeholder = "Describe the moves, difficulty level, or style...",
                 icon = Icons.Outlined.Description,
                 testTag = "descriptionField",
                 brandTeal = brandTeal,
@@ -133,10 +189,11 @@ fun VideoUploadActivityScreen(
 
             if (showPickButton) {
                 VideoPicker(
-                    selectedUri = selectedUri,
+                    selectedUri = uploadDraft.selectedVideoUri,
+                    selectedVideoLabel = uploadDraft.selectedVideoLabel,
                     uploading = uploading,
                     brandTeal = brandTeal,
-                    onPick = { picker.launch("video/*") }
+                    onPick = videoUploadVm::openVideoSourceDialog
                 )
             }
 
@@ -211,15 +268,10 @@ fun VideoUploadActivityScreen(
             Spacer(Modifier.height(4.dp))
 
             Button(
-                enabled = canUpload,
+                enabled = !uploading && uploadDraft.canUpload,
                 onClick = {
-                    val uri = selectedUri ?: return@Button
                     videoUploadVm.uploadDance(
                         context = context,
-                        title = title,
-                        danceType = danceType,
-                        description = description,
-                        videoUri = uri,
                         generateTemplate = true,
                         fps = 15,
                         continueWithoutTemplateOnFailure = true
@@ -242,13 +294,28 @@ fun VideoUploadActivityScreen(
                             strokeWidth = 2.dp,
                             color = Color.White
                         )
-                        Text("Uploading…", style = MaterialTheme.typography.titleMedium)
+                        Text("Uploading...", style = MaterialTheme.typography.titleMedium)
                     }
                 } else {
                     Text("Upload Dance", style = MaterialTheme.typography.titleMedium)
                 }
             }
         }
+    }
+
+    if (uiState.showVideoSourceDialog) {
+        VideoSourceDialog(
+            brandTeal = brandTeal,
+            onDismiss = videoUploadVm::dismissVideoSourceDialog,
+            onChooseGallery = {
+                videoUploadVm.dismissVideoSourceDialog()
+                picker.launch("video/*")
+            },
+            onChooseRecording = {
+                videoUploadVm.dismissVideoSourceDialog()
+                startLiveRecording()
+            }
+        )
     }
 }
 
@@ -299,6 +366,7 @@ private fun UploadFormField(
 @Composable
 private fun VideoPicker(
     selectedUri: Uri?,
+    selectedVideoLabel: String?,
     uploading: Boolean,
     brandTeal: Color,
     onPick: () -> Unit
@@ -345,17 +413,18 @@ private fun VideoPicker(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (selectedUri != null) "Video selected" else "Pick a video",
+                    text = if (selectedUri != null) "Video selected" else "Choose a video source",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = if (selectedUri != null) brandTeal
                     else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = if (selectedUri != null)
-                        selectedUri.lastPathSegment ?: "video file"
-                    else
-                        "Tap to choose from your library",
+                    text = if (selectedUri != null) {
+                        selectedVideoLabel ?: "video file"
+                    } else {
+                        "Tap to choose from gallery or record live"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(
                         alpha = if (selectedUri != null) 0.6f else 0.45f
@@ -371,6 +440,101 @@ private fun VideoPicker(
                     contentDescription = null,
                     tint = brandTeal,
                     modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
+}
+
+/** Displays the source picker for upload videos. */
+@Composable
+private fun VideoSourceDialog(
+    brandTeal: Color,
+    onDismiss: () -> Unit,
+    onChooseGallery: () -> Unit,
+    onChooseRecording: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add your dance video") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                VideoSourceOption(
+                    icon = Icons.Outlined.PhotoLibrary,
+                    title = "Choose from gallery",
+                    description = "Pick an existing video saved on the device.",
+                    brandTeal = brandTeal,
+                    onClick = onChooseGallery
+                )
+                VideoSourceOption(
+                    icon = Icons.Outlined.CameraAlt,
+                    title = "Record live video",
+                    description = "Open the camera, record now, and upload that clip.",
+                    brandTeal = brandTeal,
+                    onClick = onChooseRecording
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
+            ) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+/** Displays a selectable upload source row. */
+@Composable
+private fun VideoSourceOption(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    brandTeal: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = brandTeal.copy(alpha = 0.08f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(brandTeal.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = brandTeal,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
                 )
             }
         }

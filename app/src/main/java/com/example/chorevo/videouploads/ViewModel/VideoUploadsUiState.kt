@@ -1,5 +1,6 @@
 package com.example.chorevo.videouploads.ViewModel
 
+import android.net.Uri
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 
 data class VideoUploadsUiState(
@@ -18,6 +19,8 @@ data class VideoUploadsUiState(
     val previewItem: DanceLibraryModel? = null,
     val editDraft: EditDraft? = null,
     val deleteItem: DanceLibraryModel? = null,
+    val uploadDraft: UploadDraft = UploadDraft(),
+    val showVideoSourceDialog: Boolean = false,
 
     // One-off message (UI can display and then clear)
     val statusMessage: String? = null
@@ -33,4 +36,18 @@ data class EditDraft(
 ) {
     val canSave: Boolean
         get() = title.isNotBlank() && danceType.isNotBlank() && description.isNotBlank()
+}
+
+data class UploadDraft(
+    val title: String = "",
+    val danceType: String = "",
+    val description: String = "",
+    val selectedVideoUri: Uri? = null,
+    val selectedVideoLabel: String? = null
+) {
+    val canUpload: Boolean
+        get() = title.isNotBlank() &&
+                danceType.isNotBlank() &&
+                description.isNotBlank() &&
+                selectedVideoUri != null
 }

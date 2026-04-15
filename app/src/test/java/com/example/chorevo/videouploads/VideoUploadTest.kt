@@ -1,5 +1,7 @@
 package com.example.chorevo.videouploads
 
+import android.content.Context
+import android.net.Uri
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
@@ -100,6 +102,102 @@ class VideoUploadsViewModelTest {
         assertTrue(s.statusMessage!!.startsWith("Failed to load uploads:"))
 
         coVerify(exactly = 1) { uploadsRepo.loadVideos("uid123") }
+    }
+
+    @Test
+    fun uploadDraft_actions_updateFormAndDialogState() = runTest {
+        val user = mockk<UserProfile> { every { uid } returns "uid123" }
+        coEvery { authRepo.getCurrentUserProfile() } returns user
+        coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(emptyList())
+
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        advanceUntilIdle()
+
+        val galleryUri = mockk<Uri> {
+            every { lastPathSegment } returns "10"
+        }
+
+        vm.uploadTitleChanged("Routine")
+        vm.uploadDanceTypeChanged("Hip Hop")
+        vm.uploadDescriptionChanged("Fast footwork")
+        vm.openVideoSourceDialog()
+        vm.selectGalleryVideo(galleryUri)
+        vm.dismissVideoSourceDialog()
+
+        val s = vm.uiState.value
+        assertEquals("Routine", s.uploadDraft.title)
+        assertEquals("Hip Hop", s.uploadDraft.danceType)
+        assertEquals("Fast footwork", s.uploadDraft.description)
+        assertEquals(galleryUri, s.uploadDraft.selectedVideoUri)
+        assertEquals("10", s.uploadDraft.selectedVideoLabel)
+        assertFalse(s.showVideoSourceDialog)
+        assertTrue(s.uploadDraft.canUpload)
+    }
+
+    @Test
+    fun uploadDance_success_usesUploadDraftAndClearsForm() = runTest {
+        val user = mockk<UserProfile> {
+            every { uid } returns "uid123"
+            every { displayName } returns "Coach A"
+            every { email } returns "coach@example.com"
+        }
+        val context = mockk<Context>(relaxed = true)
+        val recordedUri = mockk<Uri>(relaxed = true)
+
+        coEvery { authRepo.getCurrentUserProfile() } returns user
+        coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(emptyList())
+        coEvery {
+            uploadsRepo.uploadDance(
+                context = context,
+                educatorUid = "uid123",
+                educatorName = "Coach A",
+                title = "Routine",
+                danceType = "Hip Hop",
+                description = "Fast footwork",
+                videoUri = recordedUri,
+                generateTemplate = true,
+                fps = 15,
+                onProgress = any(),
+                onTemplateFailure = any(),
+                continueWithoutTemplateOnFailure = true
+            )
+        } returns Result.success("dance-id")
+
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        advanceUntilIdle()
+
+        vm.uploadTitleChanged("Routine")
+        vm.uploadDanceTypeChanged("Hip Hop")
+        vm.uploadDescriptionChanged("Fast footwork")
+        vm.selectRecordedVideo(recordedUri)
+
+        vm.uploadDance(context = context, generateTemplate = true, fps = 15)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            uploadsRepo.uploadDance(
+                context = context,
+                educatorUid = "uid123",
+                educatorName = "Coach A",
+                title = "Routine",
+                danceType = "Hip Hop",
+                description = "Fast footwork",
+                videoUri = recordedUri,
+                generateTemplate = true,
+                fps = 15,
+                onProgress = any(),
+                onTemplateFailure = any(),
+                continueWithoutTemplateOnFailure = true
+            )
+        }
+
+        val s = vm.uiState.value
+        assertEquals("Uploaded", s.statusMessage)
+        assertEquals("", s.uploadDraft.title)
+        assertEquals("", s.uploadDraft.danceType)
+        assertEquals("", s.uploadDraft.description)
+        assertNull(s.uploadDraft.selectedVideoUri)
+        assertNull(s.uploadDraft.selectedVideoLabel)
     }
 
     @Test
