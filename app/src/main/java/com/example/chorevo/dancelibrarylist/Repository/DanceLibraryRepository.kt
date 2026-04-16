@@ -3,7 +3,10 @@ package com.example.chorevo.dancelibrarylist.Repository
 import com.example.chorevo.danceactivity.DanceSessionEntity
 import com.example.chorevo.danceactivity.Repository.DanceSessionDao
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.posedetection.PoseTemplate
+import com.example.chorevo.posedetection.PoseTemplateJson
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -15,8 +18,13 @@ import javax.inject.Singleton
 @Singleton
 class DanceLibraryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
+    private val storage: FirebaseStorage,
     private val danceSessionDao: DanceSessionDao
 ) {
+
+    companion object {
+        private const val MAX_TEMPLATE_DOWNLOAD_BYTES = 20L * 1024L * 1024L
+    }
 
     /** Handles list enabled. */
     suspend fun listEnabled(): Result<List<DanceLibraryModel>> {
@@ -30,6 +38,29 @@ class DanceLibraryRepository @Inject constructor(
                 .mapNotNull { it.toObject(DanceLibraryModel::class.java) }
                 .filter { it.isTemplateReady }
             Result.success(list)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Loads the full pose template for a dance, using inline data as a legacy fallback. */
+    suspend fun loadTemplate(item: DanceLibraryModel): Result<PoseTemplate> {
+        return try {
+            item.template?.let { return Result.success(it) }
+
+            val templateStoragePath = item.templateStoragePath.trim()
+            if (templateStoragePath.isBlank()) {
+                return Result.failure(
+                    IllegalStateException("Reference template is unavailable for this dance")
+                )
+            }
+
+            val bytes = storage.reference
+                .child(templateStoragePath)
+                .getBytes(MAX_TEMPLATE_DOWNLOAD_BYTES)
+                .await()
+
+            Result.success(PoseTemplateJson.fromJson(bytes.toString(Charsets.UTF_8)))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -94,6 +125,7 @@ class DanceLibraryRepository @Inject constructor(
 
         val analysisMap = session.analysisJson.toFirestoreMapOrEmpty()
         if (analysisMap.isNotEmpty()) {
+            requireValidSessionAnalysis(analysisMap)
             payload["analysis"] = analysisMap
         }
 
@@ -113,6 +145,19 @@ class DanceLibraryRepository @Inject constructor(
             jsonObjectToMap(obj)
         } catch (_: Exception) {
             emptyMap()
+        }
+    }
+
+    /** Ensures uploaded session analytics satisfy Firestore rule requirements. */
+    private fun requireValidSessionAnalysis(analysis: Map<String, Any?>) {
+        val danceId = analysis["danceId"] as? String
+        val educatorUid = analysis["educatorUid"] as? String
+
+        require(!danceId.isNullOrBlank()) {
+            "Session analytics are missing danceId"
+        }
+        require(!educatorUid.isNullOrBlank()) {
+            "Session analytics are missing educatorUid"
         }
     }
 

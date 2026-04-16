@@ -72,9 +72,11 @@ object RepositoryModule {
     @Singleton
     fun provideDanceLibraryRepository(
         firestore: FirebaseFirestore,
+        storage: FirebaseStorage,
         danceSessionDao: DanceSessionDao
     ): DanceLibraryRepository = DanceLibraryRepository(
         firestore = firestore,
+        storage = storage,
         danceSessionDao = danceSessionDao
     )
 

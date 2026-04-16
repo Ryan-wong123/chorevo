@@ -7,7 +7,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
-import com.google.firebase.firestore.PropertyName
 import kotlin.math.max
 
 enum class RenderMode {
@@ -24,18 +23,6 @@ data class PoseDrawSpec(
     val visibilityThreshold: Float = 0.3f,
 
     val renderMode: RenderMode = RenderMode.SKELETON
-)
-
-data class PoseTemplate(
-    val fps: Int = 2,
-    val frames: List<PoseFrame> = emptyList()
-)
-
-data class PoseFrame(
-    @get:PropertyName("tms")
-    @set:PropertyName("tms")
-    var tMs: Long = 0L,
-    var landmarks: List<Float> = emptyList()
 )
 
 /** Handles pose overlay. */
