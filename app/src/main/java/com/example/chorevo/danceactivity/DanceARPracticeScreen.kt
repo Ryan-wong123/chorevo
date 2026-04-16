@@ -124,12 +124,14 @@ fun DanceARPracticeScreen(
     var latestTimelinePoints by remember { mutableStateOf<List<TimelinePoint>>(emptyList()) }
     var latestSegments by remember { mutableStateOf<List<PerformanceSegment>>(emptyList()) }
     var status by remember { mutableStateOf<String?>(if (testMode) "Test Mode" else null) }
+    var countdownSecondsRemaining by rememberSaveable(item.danceId) { mutableStateOf<Int?>(null) }
 
     val template = item.template
     val availableReferenceTracks = template?.availableTracks().orEmpty()
 
     var selectedReferenceTrackId by rememberSaveable(item.danceId) { mutableStateOf<String?>(null) }
     var isPracticeActive by rememberSaveable(item.danceId) { mutableStateOf(testMode) }
+    val isCountdownActive = countdownSecondsRemaining != null
 
     LaunchedEffect(template) {
         selectedReferenceTrackId = template?.resolveTrack(selectedReferenceTrackId)?.trackId
@@ -194,6 +196,24 @@ fun DanceARPracticeScreen(
         }
     }
 
+    LaunchedEffect(countdownSecondsRemaining) {
+        val secondsRemaining = countdownSecondsRemaining ?: return@LaunchedEffect
+        delay(1_000)
+        if (countdownSecondsRemaining != secondsRemaining) return@LaunchedEffect
+
+        if (secondsRemaining > 1) {
+            val nextSecond = secondsRemaining - 1
+            countdownSecondsRemaining = nextSecond
+            status = "Starting in $nextSecond..."
+        } else {
+            countdownSecondsRemaining = null
+            tsStart = System.currentTimeMillis()
+            practiceTimeMs = 0L
+            isPracticeActive = true
+            status = "Practice in progress"
+        }
+    }
+
     val poseHelper = remember(hasCamPermission, testMode) {
         if (hasCamPermission && !testMode) PoseLandmarkerHelper(context) else null
     }
@@ -228,10 +248,12 @@ fun DanceARPracticeScreen(
     }
 
     fun doReset(message: String = "Reset") {
+        countdownSecondsRemaining = null
         isPracticeActive = false
         tsStart = System.currentTimeMillis()
         practiceTimeMs = 0L
         learnerLandmarks = null
+        refLandmarksForCamera = null
 
         alignmentScore = if (testMode) 0.82 else 0.0
         timingConsistencyScore = if (testMode) 0.91 else 1.0
@@ -244,9 +266,9 @@ fun DanceARPracticeScreen(
         status = message
     }
 
-    fun startPractice() {
-        tsStart = System.currentTimeMillis()
-        practiceTimeMs = 0L
+    fun startPracticeCountdown() {
+        countdownSecondsRemaining = 3
+        isPracticeActive = false
         latestTimelinePoints = emptyList()
         latestSegments = emptyList()
         learnerLandmarks = null
@@ -256,8 +278,8 @@ fun DanceARPracticeScreen(
         smoothnessScore = if (testMode) 0.88 else 1.0
         avgPoseError = if (testMode) 0.1234 else 0.0
         frameCount = if (testMode) 42 else 0
-        isPracticeActive = true
-        status = "Practice in progress"
+        practiceTimeMs = 0L
+        status = "Starting in 3..."
     }
 
     LaunchedEffect(activeTemplate, practiceTimeMs, testMode, isPracticeActive) {
@@ -353,6 +375,7 @@ fun DanceARPracticeScreen(
     }
 
     fun doSubmit() {
+        countdownSecondsRemaining = null
         if (!isPracticeActive && frameCount == 0) {
             status = "Tap Start Practice before submitting a dance session."
             return
@@ -556,6 +579,41 @@ fun DanceARPracticeScreen(
                 )
             }
 
+            if (isCountdownActive) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .testTag("practiceStartCountdown"),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Get Ready",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "${countdownSecondsRemaining ?: 0}",
+                            fontSize = 52.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = brandTeal
+                        )
+                        Text(
+                            text = "Session starts in",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                        )
+                    }
+                }
+            }
+
             Card(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -637,11 +695,15 @@ fun DanceARPracticeScreen(
                         } else {
                             Button(
                                 modifier = Modifier.weight(1f),
-                                onClick = { startPractice() },
+                                onClick = { startPracticeCountdown() },
+                                enabled = !isCountdownActive,
                                 contentPadding = PaddingValues(vertical = 8.dp),
                                 colors = tealButtonColors
                             ) {
-                                Text("Start Practice", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    if (isCountdownActive) "Starting..." else "Start Practice",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
 
                             OutlinedButton(

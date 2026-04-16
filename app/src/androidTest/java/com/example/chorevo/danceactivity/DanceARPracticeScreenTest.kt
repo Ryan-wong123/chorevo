@@ -4,6 +4,8 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
@@ -118,5 +120,47 @@ class DanceARPracticeScreenTest {
 
         composeRule.onNodeWithText("Back").performClick()
         assertEquals(1, backClicks)
+    }
+
+    @Test
+    fun practiceScreen_showsThreeSecondCountdown_beforePracticeStarts() {
+        composeRule.mainClock.autoAdvance = false
+
+        composeRule.setContent {
+            DanceARPracticeScreen(
+                item = item,
+                onBack = { backClicks++ },
+                onNavigateToProfile = {},
+                vm = vm,
+                achievementVm = achievementVm,
+                uid = "uid123",
+                testMode = true
+            )
+        }
+
+        waitForTextExists("Reset")
+        composeRule.onNodeWithText("Reset").performClick()
+
+        waitForTextExists("Start Practice")
+        composeRule.onNodeWithText("Start Practice").performClick()
+
+        composeRule.onNodeWithTag("practiceStartCountdown").assertIsDisplayed()
+        composeRule.onNodeWithText("3").assertIsDisplayed()
+
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("2").assertIsDisplayed()
+
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("1").assertIsDisplayed()
+
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.waitForIdle()
+
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("practiceStartCountdown").fetchSemanticsNodes().isEmpty()
+        }
+        composeRule.onNodeWithText("Reset").assertIsDisplayed()
     }
 }
