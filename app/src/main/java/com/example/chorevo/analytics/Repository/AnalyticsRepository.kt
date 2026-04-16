@@ -425,6 +425,8 @@ class AnalyticsRepository @Inject constructor(
             educatorUid = str("educatorUid"),
             videoUrl = str("videoUrl"),
             videoPositionMs = long("videoPositionMs"),
+            referenceTrackId = str("referenceTrackId"),
+            referenceTrackLabel = str("referenceTrackLabel"),
             alignmentScore = num("alignmentScore"),
             timingConsistencyScore = num("timingConsistencyScore"),
             smoothnessScore = num("smoothnessScore"),

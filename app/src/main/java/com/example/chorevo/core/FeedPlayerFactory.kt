@@ -51,6 +51,6 @@ fun createCachedFeedExoPlayer(
                 Player.REPEAT_MODE_OFF
             }
             playWhenReady = false
-            videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
+            videoScalingMode = C.VIDEO_SCALING_MODE_SCALE_TO_FIT
         }
 }

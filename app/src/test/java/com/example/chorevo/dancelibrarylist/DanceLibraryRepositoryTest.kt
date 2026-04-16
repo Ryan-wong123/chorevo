@@ -4,6 +4,9 @@ import com.example.chorevo.core.Database.AppDb
 import com.example.chorevo.danceactivity.DanceSessionEntity
 import com.example.chorevo.danceactivity.Repository.DanceSessionDao
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
+import com.example.chorevo.posedetection.PoseFrame
+import com.example.chorevo.posedetection.PoseTemplate
+import com.example.chorevo.posedetection.PoseTemplateJson
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
@@ -11,6 +14,8 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageReference
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -29,6 +34,7 @@ import org.junit.Test
 class DanceLibraryRepositoryTest {
 
     private lateinit var firestore: FirebaseFirestore
+    private lateinit var storage: FirebaseStorage
     private lateinit var appDb: AppDb
     private lateinit var dao: DanceSessionDao
     private lateinit var repo: DanceLibraryRepository
@@ -36,6 +42,7 @@ class DanceLibraryRepositoryTest {
     @Before
     fun setUp() {
         firestore = mockk()
+        storage = mockk()
         appDb = mockk()
         dao = mockk(relaxed = true)
 
@@ -43,6 +50,7 @@ class DanceLibraryRepositoryTest {
 
         repo = DanceLibraryRepository(
             firestore = firestore,
+            storage = storage,
             danceSessionDao = dao
         )
     }
@@ -115,6 +123,32 @@ class DanceLibraryRepositoryTest {
         } catch (e: IllegalStateException) {
             assertTrue(e.message!!.contains("uid is null/blank"))
         }
+    }
+
+    @Test
+    fun loadTemplate_downloadsTemplateFromStorage() = runTest {
+        val rootRef = mockk<StorageReference>()
+        val templateRef = mockk<StorageReference>()
+        val template = PoseTemplate(
+            fps = 2,
+            frames = listOf(PoseFrame(tMs = 0L, landmarks = listOf(0.1f, 0.2f, 0.3f, 0.9f)))
+        )
+        val jsonBytes = PoseTemplateJson.toJson(template).toByteArray(Charsets.UTF_8)
+
+        every { storage.reference } returns rootRef
+        every { rootRef.child("danceTemplates/d1.json") } returns templateRef
+        every { templateRef.getBytes(any()) } returns Tasks.forResult(jsonBytes)
+
+        val res = repo.loadTemplate(
+            DanceLibraryModel(
+                danceId = "d1",
+                templateStoragePath = "danceTemplates/d1.json"
+            )
+        )
+
+        assertTrue(res.isSuccess)
+        assertEquals(template.fps, res.getOrThrow().fps)
+        assertEquals(template.frames, res.getOrThrow().frames)
     }
 
     @Test
