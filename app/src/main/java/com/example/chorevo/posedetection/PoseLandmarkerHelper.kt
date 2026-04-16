@@ -12,7 +12,8 @@ import com.google.mediapipe.framework.image.BitmapImageBuilder
 class PoseLandmarkerHelper(
     context: Context,
     modelAssetPath: String = "pose_landmarker_lite.task",
-    private val runningMode: RunningMode = RunningMode.IMAGE
+    private val runningMode: RunningMode = RunningMode.IMAGE,
+    maxPoses: Int = 1
 ) {
     private val landmarker: PoseLandmarker
 
@@ -24,6 +25,7 @@ class PoseLandmarkerHelper(
         val options = PoseLandmarker.PoseLandmarkerOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(runningMode)
+            .setNumPoses(maxPoses.coerceAtLeast(1))
             .build()
 
         landmarker = PoseLandmarker.createFromOptions(context, options)

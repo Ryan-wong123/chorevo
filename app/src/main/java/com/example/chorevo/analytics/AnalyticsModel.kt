@@ -20,6 +20,8 @@ data class AnalysisData(
     val educatorUid: String?,
     val videoUrl: String?,
     val videoPositionMs: Long?,
+    val referenceTrackId: String? = null,
+    val referenceTrackLabel: String? = null,
     val alignmentScore: Double?,
     val timingConsistencyScore: Double?,
     val smoothnessScore: Double?,
@@ -73,9 +75,11 @@ data class SessionAnalysisPayload(
     val smoothnessScore: Double,
     val avgPoseError: Double,
     val frames: Int,
-    val educatorUid: String?,
+    val educatorUid: String,
     val videoUrl: String,
     val videoPositionMs: Long,
+    val referenceTrackId: String? = null,
+    val referenceTrackLabel: String? = null,
     val timelinePoints: List<TimelinePoint> = emptyList(),
     val performanceSegments: List<PerformanceSegment> = emptyList()
 ) {
@@ -92,6 +96,8 @@ data class SessionAnalysisPayload(
         obj.put("educatorUid", educatorUid)
         obj.put("videoUrl", videoUrl)
         obj.put("videoPositionMs", videoPositionMs)
+        obj.put("referenceTrackId", referenceTrackId)
+        obj.put("referenceTrackLabel", referenceTrackLabel)
 
         val tArr = JSONArray()
         for (p in timelinePoints) {

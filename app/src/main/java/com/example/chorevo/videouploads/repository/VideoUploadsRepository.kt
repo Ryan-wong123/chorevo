@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.posedetection.PoseTemplateStorage
 import com.example.chorevo.videouploads.VideoTemplateGenerationWorker
 import com.example.chorevo.videouploads.VideoCompressor
 import com.google.firebase.firestore.FirebaseFirestore
@@ -308,7 +309,9 @@ class VideoUploadsRepository @Inject constructor(
                 .await()
 
             val videoRef = storage.reference.child("danceVideos/$uid/$danceId.mp4")
+            val templateRef = storage.reference.child(PoseTemplateStorage.jsonPath(danceId))
             runCatching { videoRef.delete().await() }
+            runCatching { templateRef.delete().await() }
 
             Result.success(Unit)
         } catch (e: Exception) {
