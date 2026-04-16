@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -30,6 +31,10 @@ class VideoUploadsRepository @Inject constructor(
     private val db: FirebaseFirestore,
     private val storage: FirebaseStorage
 ) {
+
+    companion object {
+        private const val TEMPLATE_GENERATION_QUEUE = "template_generation_queue"
+    }
 
     // ============================================================
     // Helpers
@@ -211,7 +216,11 @@ class VideoUploadsRepository @Inject constructor(
             )
             .build()
 
-        WorkManager.getInstance(context).enqueue(workRequest)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            TEMPLATE_GENERATION_QUEUE,
+            ExistingWorkPolicy.APPEND_OR_REPLACE,
+            workRequest
+        )
     }
 
     private suspend fun uploadFileWithProgress(

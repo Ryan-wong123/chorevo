@@ -3,10 +3,12 @@ package com.example.chorevo.danceactivity
 import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.media.MediaMetadataRetriever
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +45,7 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -51,6 +54,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -74,6 +79,7 @@ import com.example.chorevo.posedetection.ImageProxyUtils
 import com.example.chorevo.posedetection.PoseDrawSpec
 import com.example.chorevo.posedetection.PoseLandmarkerHelper
 import com.example.chorevo.posedetection.PoseOverlay
+import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseSimilarityEvaluator
 import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.posedetection.RenderMode
@@ -81,6 +87,8 @@ import com.example.chorevo.posedetection.averageVisibility
 import com.example.chorevo.posedetection.poseBounds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -533,7 +541,9 @@ fun DanceARPracticeScreen(
                         .align(Alignment.CenterStart)
                         .padding(start = 12.dp, top = 12.dp, bottom = 12.dp)
                         .width(112.dp),
+                    videoUrl = item.videoUrl,
                     tracks = availableReferenceTracks,
+                    selectionPreview = template?.selectionPreview,
                     selectedTrackId = selectedReferenceTrack?.trackId,
                     brandTeal = brandTeal,
                     onTrackSelected = { trackId ->
@@ -654,11 +664,21 @@ fun DanceARPracticeScreen(
 @Composable
 private fun ReferenceDancerSelectorCard(
     modifier: Modifier = Modifier,
+    videoUrl: String,
     tracks: List<PoseTrack>,
+    selectionPreview: PoseSelectionPreview?,
     selectedTrackId: String?,
     brandTeal: Color,
     onTrackSelected: (String) -> Unit
 ) {
+    val thumbnails by produceState<Map<String, Bitmap>>(
+        initialValue = emptyMap(),
+        videoUrl,
+        selectionPreview
+    ) {
+        value = loadReferenceTrackThumbnails(videoUrl, selectionPreview)
+    }
+
     Card(
         modifier = modifier.testTag("dancerSelectorCard"),
         shape = RoundedCornerShape(20.dp),
@@ -678,6 +698,7 @@ private fun ReferenceDancerSelectorCard(
 
             tracks.forEach { track ->
                 val isSelected = track.trackId == selectedTrackId
+                val thumbnail = thumbnails[track.trackId]
                 if (isSelected) {
                     Button(
                         onClick = { onTrackSelected(track.trackId) },
@@ -691,11 +712,20 @@ private fun ReferenceDancerSelectorCard(
                             contentColor = Color.White
                         )
                     ) {
-                        Text(
-                            text = track.label,
-                            style = MaterialTheme.typography.labelLarge,
-                            textAlign = TextAlign.Center
-                        )
+                        if (thumbnail != null) {
+                            Image(
+                                bitmap = thumbnail.asImageBitmap(),
+                                contentDescription = track.label,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text(
+                                text = track.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 } else {
                     OutlinedButton(
@@ -709,16 +739,66 @@ private fun ReferenceDancerSelectorCard(
                             contentColor = MaterialTheme.colorScheme.onSurface
                         )
                     ) {
-                        Text(
-                            text = track.label,
-                            style = MaterialTheme.typography.labelLarge,
-                            textAlign = TextAlign.Center
-                        )
+                        if (thumbnail != null) {
+                            Image(
+                                bitmap = thumbnail.asImageBitmap(),
+                                contentDescription = track.label,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text(
+                                text = track.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+private suspend fun loadReferenceTrackThumbnails(
+    videoUrl: String,
+    selectionPreview: PoseSelectionPreview?
+): Map<String, Bitmap> = withContext(Dispatchers.IO) {
+    if (videoUrl.isBlank() || selectionPreview == null || selectionPreview.candidates.isEmpty()) {
+        return@withContext emptyMap()
+    }
+
+    val retriever = MediaMetadataRetriever()
+    return@withContext try {
+        retriever.setDataSource(videoUrl, emptyMap())
+        val frame = retriever.getFrameAtTime(
+            selectionPreview.timeMs * 1000L,
+            MediaMetadataRetriever.OPTION_CLOSEST
+        ) ?: return@withContext emptyMap()
+
+        selectionPreview.candidates.associate { candidate ->
+            candidate.trackId to cropReferenceThumbnail(frame, candidate.bounds)
+        }
+    } catch (_: Exception) {
+        emptyMap()
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private fun cropReferenceThumbnail(
+    source: Bitmap,
+    bounds: com.example.chorevo.posedetection.PoseBounds
+): Bitmap {
+    val left = (bounds.left * source.width).toInt().coerceIn(0, source.width - 1)
+    val top = (bounds.top * source.height).toInt().coerceIn(0, source.height - 1)
+    val right = (bounds.right * source.width).toInt().coerceIn(left + 1, source.width)
+    val bottom = (bounds.bottom * source.height).toInt().coerceIn(top + 1, source.height)
+
+    val cropped = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+    val targetWidth = 160
+    val targetHeight = 220
+    return Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
 }
 
 @Composable

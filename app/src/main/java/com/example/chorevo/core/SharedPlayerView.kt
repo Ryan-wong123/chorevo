@@ -21,7 +21,7 @@ fun SharedPlayerView(
             PlayerView(ctx).apply {
                 player = exoPlayer
                 useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                 keepScreenOn = true
             }
