@@ -2,6 +2,7 @@ package com.example.chorevo.posedetection
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MultiPersonPoseTrackerTest {
@@ -48,6 +49,82 @@ class MultiPersonPoseTrackerTest {
         assertEquals(2, preview?.candidates?.size)
         assertEquals(1080, preview?.frameWidth)
         assertEquals(1920, preview?.frameHeight)
+    }
+
+    @Test
+    fun buildTemplate_filtersDuplicatePreviewCandidateForSameDancer() {
+        val tracker = MultiPersonPoseTracker(
+            fps = 15,
+            minTrackFrames = 1
+        )
+
+        tracker.addFrame(
+            tMs = 0L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(
+                samplePose(left = 0.10f, top = 0.18f, right = 0.28f, bottom = 0.64f),
+                samplePose(left = 0.60f, top = 0.18f, right = 0.80f, bottom = 0.66f),
+                samplePose(left = 0.61f, top = 0.19f, right = 0.79f, bottom = 0.65f)
+            )
+        )
+
+        tracker.addFrame(
+            tMs = 67L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(
+                samplePose(left = 0.12f, top = 0.20f, right = 0.30f, bottom = 0.66f),
+                samplePose(left = 0.58f, top = 0.19f, right = 0.78f, bottom = 0.68f),
+                samplePose(left = 0.59f, top = 0.20f, right = 0.77f, bottom = 0.67f)
+            )
+        )
+
+        val template = tracker.buildTemplate()
+
+        assertNotNull(template)
+        template!!
+
+        assertEquals(2, template.tracks.size)
+        assertEquals(2, template.selectionPreview?.candidates?.size)
+    }
+
+    @Test
+    fun buildTemplate_dropsTinyFalsePositiveTrackFromSelector() {
+        val tracker = MultiPersonPoseTracker(
+            fps = 15,
+            minTrackFrames = 1
+        )
+
+        tracker.addFrame(
+            tMs = 0L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(
+                samplePose(left = 0.10f, top = 0.18f, right = 0.28f, bottom = 0.64f),
+                samplePose(left = 0.60f, top = 0.18f, right = 0.80f, bottom = 0.66f),
+                samplePose(left = 0.88f, top = 0.08f, right = 0.91f, bottom = 0.16f)
+            )
+        )
+
+        tracker.addFrame(
+            tMs = 67L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(
+                samplePose(left = 0.11f, top = 0.19f, right = 0.29f, bottom = 0.65f),
+                samplePose(left = 0.59f, top = 0.19f, right = 0.79f, bottom = 0.67f)
+            )
+        )
+
+        val template = tracker.buildTemplate()
+
+        assertNotNull(template)
+        template!!
+
+        assertEquals(2, template.tracks.size)
+        assertEquals(2, template.selectionPreview?.candidates?.size)
+        assertTrue(template.tracks.all { it.frames.isNotEmpty() })
     }
 
     @Test
