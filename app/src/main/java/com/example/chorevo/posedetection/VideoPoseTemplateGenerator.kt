@@ -11,6 +11,7 @@ import kotlin.math.min
 
 
 object VideoPoseTemplateGenerator {
+    private const val MAX_TRACKED_DANCERS = 6
 
     /** Handles generate. */
     suspend fun generate(
@@ -26,7 +27,11 @@ object VideoPoseTemplateGenerator {
             //  use VIDEO mode helper for video template generation
             val helper = PoseLandmarkerHelper(
                 context = context,
-                runningMode = RunningMode.VIDEO
+                runningMode = RunningMode.VIDEO,
+                maxPoses = MAX_TRACKED_DANCERS,
+                minPoseDetectionConfidence = 0.35f,
+                minPosePresenceConfidence = 0.35f,
+                minTrackingConfidence = 0.35f
             )
 
             try {
@@ -41,7 +46,7 @@ object VideoPoseTemplateGenerator {
                 val safeFps = max(1, fps)
                 val stepMs = 1000L / safeFps
 
-                val frames = ArrayList<PoseFrame>()
+                val tracker = MultiPersonPoseTracker(fps = safeFps)
 
                 var tMs = 0L
                 var idx = 0
@@ -57,25 +62,26 @@ object VideoPoseTemplateGenerator {
                     if (bmp != null) {
                         // VIDEO running mode requires timestamped detect
                         val res = helper.detectForVideo(bmp, tMs)
-                        val pose = res.landmarks().firstOrNull()
-
-                        if (!pose.isNullOrEmpty()) {
-                            val flat = ArrayList<Float>(pose.size * 4)
-                            for (lm in pose) {
-                                flat.add(lm.x())
-                                flat.add(lm.y())
-                                flat.add(lm.z())
-                                val vis = lm.visibility().orElse(1.0f)
-                                flat.add(vis)
+                        val detections = res.landmarks()
+                            .mapNotNull { pose ->
+                                if (pose.isEmpty()) return@mapNotNull null
+                                val flat = ArrayList<Float>(pose.size * 4)
+                                for (lm in pose) {
+                                    flat.add(lm.x())
+                                    flat.add(lm.y())
+                                    flat.add(lm.z())
+                                    val vis = lm.visibility().orElse(1.0f)
+                                    flat.add(vis)
+                                }
+                                flat
                             }
 
-                            frames.add(
-                                PoseFrame(
-                                    tMs = tMs,
-                                    landmarks = flat
-                                )
-                            )
-                        }
+                        tracker.addFrame(
+                            tMs = tMs,
+                            width = bmp.width,
+                            height = bmp.height,
+                            detections = detections
+                        )
                     }
 
                     idx++
@@ -84,12 +90,12 @@ object VideoPoseTemplateGenerator {
                     tMs += stepMs
                 }
 
-                Result.success(
-                    PoseTemplate(
-                        fps = safeFps,
-                        frames = frames
+                val template = tracker.buildTemplate()
+                    ?: return@withContext Result.failure(
+                        IllegalStateException("No dancers were detected in the uploaded video")
                     )
-                )
+
+                Result.success(template)
             } catch (e: Exception) {
                 Result.failure(e)
             } finally {

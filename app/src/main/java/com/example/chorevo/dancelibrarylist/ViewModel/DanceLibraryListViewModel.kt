@@ -7,6 +7,7 @@ import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.posedetection.PoseTemplate
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +33,8 @@ class DanceLibraryListViewModel @Inject constructor(
     private val streakRepository: FirebaseStreakRepository,
     private val leaderboardRepository: LeaderboardRepository
 ) : ViewModel() {
+    private val templateCache = linkedMapOf<String, PoseTemplate>()
+
 
     private val _uiState = MutableStateFlow(DanceLibraryUiState(isLoading = true, message = "Loading dances…"))
     val uiState: StateFlow<DanceLibraryUiState> = _uiState.asStateFlow()
@@ -115,6 +118,20 @@ class DanceLibraryListViewModel @Inject constructor(
         _uploadState.update { it.copy(message = null) }
     }
 
+    /** Resolves the reference template before opening practice mode. */
+    suspend fun preparePracticeItem(item: DanceLibraryModel): Result<DanceLibraryModel> {
+        item.template?.let { template ->
+            templateCache[item.danceId] = template
+            return Result.success(item)
+        }
 
+        templateCache[item.danceId]?.let { cached ->
+            return Result.success(item.copy(template = cached))
+        }
 
+        return repo.loadTemplate(item).mapCatching { template ->
+            templateCache[item.danceId] = template
+            item.copy(template = template)
+        }
+    }
 }

@@ -12,7 +12,11 @@ import com.google.mediapipe.framework.image.BitmapImageBuilder
 class PoseLandmarkerHelper(
     context: Context,
     modelAssetPath: String = "pose_landmarker_lite.task",
-    private val runningMode: RunningMode = RunningMode.IMAGE
+    private val runningMode: RunningMode = RunningMode.IMAGE,
+    maxPoses: Int = 1,
+    minPoseDetectionConfidence: Float = 0.5f,
+    minPosePresenceConfidence: Float = 0.5f,
+    minTrackingConfidence: Float = 0.5f
 ) {
     private val landmarker: PoseLandmarker
 
@@ -24,6 +28,10 @@ class PoseLandmarkerHelper(
         val options = PoseLandmarker.PoseLandmarkerOptions.builder()
             .setBaseOptions(baseOptions)
             .setRunningMode(runningMode)
+            .setNumPoses(maxPoses.coerceAtLeast(1))
+            .setMinPoseDetectionConfidence(minPoseDetectionConfidence)
+            .setMinPosePresenceConfidence(minPosePresenceConfidence)
+            .setMinTrackingConfidence(minTrackingConfidence)
             .build()
 
         landmarker = PoseLandmarker.createFromOptions(context, options)

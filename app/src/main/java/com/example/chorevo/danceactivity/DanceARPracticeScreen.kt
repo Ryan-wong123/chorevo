@@ -3,47 +3,94 @@ package com.example.chorevo.danceactivity
 import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.media.MediaMetadataRetriever
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.core.Ids
+import com.example.chorevo.analytics.PerformanceSegment
+import com.example.chorevo.analytics.SegmentLabel
+import com.example.chorevo.analytics.SessionAnalysisPayload
+import com.example.chorevo.analytics.TimelinePoint
+import com.example.chorevo.core.CameraBinder
 import com.example.chorevo.core.CameraPreview
+import com.example.chorevo.core.Ids
+import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
+import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.posedetection.ImageProxyUtils
 import com.example.chorevo.posedetection.PoseDrawSpec
 import com.example.chorevo.posedetection.PoseLandmarkerHelper
 import com.example.chorevo.posedetection.PoseOverlay
+import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseSimilarityEvaluator
+import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.posedetection.RenderMode
+import com.example.chorevo.posedetection.averageVisibility
+import com.example.chorevo.posedetection.poseBounds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
-
-import com.example.chorevo.analytics.TimelinePoint
-import com.example.chorevo.analytics.PerformanceSegment
-import com.example.chorevo.analytics.SegmentLabel
-import com.example.chorevo.analytics.SessionAnalysisPayload
-import com.example.chorevo.core.CameraBinder
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
-import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-
-import androidx.compose.foundation.background
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.sp
-import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
+import kotlin.math.max
 
 /** Displays the dance ar practice screen. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +103,7 @@ fun DanceARPracticeScreen(
     achievementVm: AchievementViewModel,
     uid: String,
     testMode: Boolean = false
-){
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
@@ -64,8 +111,47 @@ fun DanceARPracticeScreen(
 
     var tsStart by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var practiceTimeMs by remember { mutableLongStateOf(0L) }
-
     var hasCamPermission by remember { mutableStateOf(testMode) }
+    var learnerLandmarks by remember { mutableStateOf<List<Float>?>(null) }
+    var refLandmarksForCamera by remember { mutableStateOf<List<Float>?>(null) }
+
+    var alignmentScore by remember { mutableDoubleStateOf(if (testMode) 0.82 else 0.0) }
+    var timingConsistencyScore by remember { mutableDoubleStateOf(if (testMode) 0.91 else 1.0) }
+    var smoothnessScore by remember { mutableDoubleStateOf(if (testMode) 0.88 else 1.0) }
+    var avgPoseError by remember { mutableDoubleStateOf(if (testMode) 0.1234 else 0.0) }
+    var frameCount by remember { mutableIntStateOf(if (testMode) 42 else 0) }
+
+    var latestTimelinePoints by remember { mutableStateOf<List<TimelinePoint>>(emptyList()) }
+    var latestSegments by remember { mutableStateOf<List<PerformanceSegment>>(emptyList()) }
+    var status by remember { mutableStateOf<String?>(if (testMode) "Test Mode" else null) }
+
+    val template = item.template
+    val availableReferenceTracks = template?.availableTracks().orEmpty()
+
+    var selectedReferenceTrackId by rememberSaveable(item.danceId) { mutableStateOf<String?>(null) }
+    var isPracticeActive by rememberSaveable(item.danceId) { mutableStateOf(testMode) }
+
+    LaunchedEffect(template) {
+        selectedReferenceTrackId = template?.resolveTrack(selectedReferenceTrackId)?.trackId
+            ?: template?.resolveTrack(null)?.trackId
+    }
+
+    val selectedReferenceTrack = remember(template, selectedReferenceTrackId) {
+        template?.resolveTrack(selectedReferenceTrackId)
+    }
+
+    val activeTemplate = remember(template, selectedReferenceTrack) {
+        val frames = selectedReferenceTrack?.frames ?: template?.frames.orEmpty()
+        if (template == null || frames.isEmpty()) {
+            null
+        } else {
+            template.copy(
+                frames = frames,
+                tracks = selectedReferenceTrack?.let(::listOf).orEmpty(),
+                defaultTrackId = selectedReferenceTrack?.trackId ?: template.defaultTrackId
+            )
+        }
+    }
 
     val camPermissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -74,21 +160,14 @@ fun DanceARPracticeScreen(
 
     val uploadState by vm.uploadState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-
-    //Achievement View Model
     val achievementState by achievementVm.uiState.collectAsStateWithLifecycle()
 
-    //Snackbar handlign for achievement errors
     LaunchedEffect(achievementState.errorMessage) {
         val msg = achievementState.errorMessage ?: return@LaunchedEffect
         snackbarHostState.showSnackbar(msg)
         achievementVm.clearError()
     }
 
-
-    // Only show snackbar for genuine errors — NOT for success messages.
-    // Navigation is owned exclusively by the achievement dialog's onDismiss,
-    // so we must NOT call onBack() from any LaunchedEffect here.
     LaunchedEffect(uploadState.message) {
         val msg = uploadState.message ?: return@LaunchedEffect
         if (msg != "Submitted practice result") {
@@ -103,8 +182,13 @@ fun DanceARPracticeScreen(
         }
     }
 
-    LaunchedEffect(tsStart) {
-        while (true) {
+    LaunchedEffect(tsStart, isPracticeActive) {
+        if (!isPracticeActive) {
+            practiceTimeMs = 0L
+            return@LaunchedEffect
+        }
+
+        while (isPracticeActive) {
             practiceTimeMs = System.currentTimeMillis() - tsStart
             delay(33)
         }
@@ -119,39 +203,19 @@ fun DanceARPracticeScreen(
     }
 
     DisposableEffect(Unit) {
-        onDispose {
-            CameraBinder.unbind()
-        }
+        onDispose { CameraBinder.unbind() }
     }
 
-    var learnerLandmarks by remember { mutableStateOf<List<Float>?>(null) }
-
-    val template = item.template
-
-    val similarityEval = remember(template, testMode) {
+    val similarityEval = remember(activeTemplate, testMode) {
         if (testMode) {
             null
         } else {
-            template?.frames?.takeIf { it.isNotEmpty() }?.let {
-                PoseSimilarityEvaluator(template = template, mirrorReferenceX = true)
+            activeTemplate?.frames?.takeIf { it.isNotEmpty() }?.let {
+                PoseSimilarityEvaluator(template = activeTemplate, mirrorReferenceX = true)
             }
         }
     }
 
-    var refLandmarksForCamera by remember { mutableStateOf<List<Float>?>(null) }
-
-    var alignmentScore by remember { mutableDoubleStateOf(if (testMode) 0.82 else 0.0) }
-    var timingConsistencyScore by remember { mutableDoubleStateOf(if (testMode) 0.91 else 1.0) }
-    var smoothnessScore by remember { mutableDoubleStateOf(if (testMode) 0.88 else 1.0) }
-    var avgPoseError by remember { mutableDoubleStateOf(if (testMode) 0.1234 else 0.0) }
-    var frameCount by remember { mutableIntStateOf(if (testMode) 42 else 0) }
-
-    var latestTimelinePoints by remember { mutableStateOf<List<TimelinePoint>>(emptyList()) }
-    var latestSegments by remember { mutableStateOf<List<PerformanceSegment>>(emptyList()) }
-
-    var status by remember { mutableStateOf<String?>(if (testMode) "Test Mode" else null) }
-
-    /** Handles mirror x. */
     fun mirrorX(flat: List<Float>): List<Float> {
         if (flat.isEmpty()) return flat
         val out = flat.toMutableList()
@@ -163,13 +227,46 @@ fun DanceARPracticeScreen(
         return out
     }
 
-    LaunchedEffect(template, practiceTimeMs, testMode) {
-        if (testMode) {
+    fun doReset(message: String = "Reset") {
+        isPracticeActive = false
+        tsStart = System.currentTimeMillis()
+        practiceTimeMs = 0L
+        learnerLandmarks = null
+
+        alignmentScore = if (testMode) 0.82 else 0.0
+        timingConsistencyScore = if (testMode) 0.91 else 1.0
+        smoothnessScore = if (testMode) 0.88 else 1.0
+        avgPoseError = if (testMode) 0.1234 else 0.0
+        frameCount = if (testMode) 42 else 0
+        latestTimelinePoints = emptyList()
+        latestSegments = emptyList()
+
+        status = message
+    }
+
+    fun startPractice() {
+        tsStart = System.currentTimeMillis()
+        practiceTimeMs = 0L
+        latestTimelinePoints = emptyList()
+        latestSegments = emptyList()
+        learnerLandmarks = null
+        refLandmarksForCamera = null
+        alignmentScore = if (testMode) 0.82 else 0.0
+        timingConsistencyScore = if (testMode) 0.91 else 1.0
+        smoothnessScore = if (testMode) 0.88 else 1.0
+        avgPoseError = if (testMode) 0.1234 else 0.0
+        frameCount = if (testMode) 42 else 0
+        isPracticeActive = true
+        status = "Practice in progress"
+    }
+
+    LaunchedEffect(activeTemplate, practiceTimeMs, testMode, isPracticeActive) {
+        if (testMode || !isPracticeActive) {
             refLandmarksForCamera = null
             return@LaunchedEffect
         }
 
-        val frames = template?.frames ?: run {
+        val frames = activeTemplate?.frames ?: run {
             refLandmarksForCamera = null
             return@LaunchedEffect
         }
@@ -180,17 +277,14 @@ fun DanceARPracticeScreen(
         }
 
         val ref = frames.minByOrNull { abs(it.tMs - practiceTimeMs) }?.landmarks
-        refLandmarksForCamera = ref?.let { mirrorX(it) }
+        refLandmarksForCamera = ref?.let(::mirrorX)
     }
+
+    val currentPracticeTimeMs by rememberUpdatedState(practiceTimeMs)
 
     val analyzer = remember(similarityEval, poseHelper, hasCamPermission, testMode) {
         ImageAnalysis.Analyzer { imageProxy ->
-            if (testMode) {
-                imageProxy.close()
-                return@Analyzer
-            }
-
-            if (!hasCamPermission) {
+            if (testMode || !hasCamPermission) {
                 imageProxy.close()
                 return@Analyzer
             }
@@ -204,9 +298,8 @@ fun DanceARPracticeScreen(
             try {
                 val bmp = imageProxy.toBitmapFrontCamera()
                 val res = helper.detect(bmp)
-                val pose = res.landmarks().firstOrNull()
-
-                if (!pose.isNullOrEmpty()) {
+                val detections = res.landmarks().mapNotNull { pose ->
+                    if (pose.isEmpty()) return@mapNotNull null
                     val flat = ArrayList<Float>(pose.size * 4)
                     for (lm in pose) {
                         flat.add(lm.x())
@@ -214,15 +307,32 @@ fun DanceARPracticeScreen(
                         flat.add(lm.z())
                         flat.add(lm.visibility().orElse(1.0f))
                     }
+                    flat
+                }
+
+                val primaryPose = detections.maxByOrNull { detection ->
+                    val prominence = detection.poseBounds()?.area ?: 0f
+                    prominence * max(detection.averageVisibility(), 0.1f)
+                }
+
+                if (!primaryPose.isNullOrEmpty()) {
+                    if (!isPracticeActive) {
+                        uiScope.launch {
+                            learnerLandmarks = primaryPose
+                        }
+                        return@Analyzer
+                    }
 
                     val ev = similarityEval
                     val snap = if (ev != null) {
-                        ev.onFrame(flat, practiceTimeMs)
+                        ev.onFrame(primaryPose, currentPracticeTimeMs)
                         ev.snapshot(includeSeries = false)
-                    } else null
+                    } else {
+                        null
+                    }
 
                     uiScope.launch {
-                        learnerLandmarks = flat
+                        learnerLandmarks = primaryPose
 
                         if (snap != null) {
                             alignmentScore = snap.alignmentScore
@@ -242,51 +352,30 @@ fun DanceARPracticeScreen(
         }
     }
 
-    /** Performs reset. */
-    fun doReset() {
-        tsStart = System.currentTimeMillis()
-        practiceTimeMs = 0L
-
-        alignmentScore = if (testMode) 0.82 else 0.0
-        timingConsistencyScore = if (testMode) 0.91 else 1.0
-        smoothnessScore = if (testMode) 0.88 else 1.0
-        avgPoseError = if (testMode) 0.1234 else 0.0
-        frameCount = if (testMode) 42 else 0
-        latestTimelinePoints = emptyList()
-        latestSegments = emptyList()
-
-        status = "Reset"
-    }
-
-    /** Performs submit. */
     fun doSubmit() {
+        if (!isPracticeActive && frameCount == 0) {
+            status = "Tap Start Practice before submitting a dance session."
+            return
+        }
+
+        val educatorUid = item.educatorUid?.trim().takeUnless { it.isNullOrBlank() }
+        if (educatorUid == null) {
+            status = "This dance is missing educator ownership data, so analytics cannot be submitted."
+            return
+        }
+
         val tsEnd = System.currentTimeMillis()
         val durationMs = tsEnd - tsStart
         val ev = similarityEval
 
-        if (ev != null) {
-            val full = ev.snapshot(includeSeries = true)
-            latestTimelinePoints = full.timelinePoints
-            latestSegments = full.performanceSegments
-        }
+        isPracticeActive = false
 
-        val payloadTimeline = latestTimelinePoints.map {
-            TimelinePoint(
-                tMs = it.tMs,
-                score = it.score,
-                err = it.err
-            )
-        }
+        val snapshot = ev?.snapshot(includeSeries = true)
+        val payloadTimeline = snapshot?.timelinePoints ?: latestTimelinePoints
+        val payloadSegments = snapshot?.performanceSegments ?: latestSegments
 
-        val payloadSegments = latestSegments.map {
-            PerformanceSegment(
-                startMs = it.startMs,
-                endMs = it.endMs,
-                label = SegmentLabel.valueOf(it.label.name),
-                avgScore = it.avgScore,
-                avgErr = it.avgErr
-            )
-        }
+        latestTimelinePoints = payloadTimeline
+        latestSegments = payloadSegments
 
         val analysisPayload = SessionAnalysisPayload(
             danceId = item.danceId,
@@ -295,9 +384,11 @@ fun DanceARPracticeScreen(
             smoothnessScore = smoothnessScore,
             avgPoseError = avgPoseError,
             frames = frameCount,
-            educatorUid = item.educatorUid,
+            educatorUid = educatorUid,
             videoUrl = item.videoUrl,
             videoPositionMs = practiceTimeMs,
+            referenceTrackId = selectedReferenceTrack?.trackId,
+            referenceTrackLabel = selectedReferenceTrack?.label,
             timelinePoints = payloadTimeline,
             performanceSegments = payloadSegments
         )
@@ -317,7 +408,7 @@ fun DanceARPracticeScreen(
             analysisJson = analysisPayload.toJson()
         )
 
-        status = "Submitting practice result…"
+        status = "Submitting practice result..."
 
         scope.launch {
             try {
@@ -353,7 +444,6 @@ fun DanceARPracticeScreen(
         contentColor = brandTeal
     )
 
-    // ── Achievement Dialog ────────────────────────────────────────────────────
     if (achievementState.showAchievementDialog) {
         AchievementSummaryDialog(
             sessionPoints = achievementState.sessionPoints,
@@ -445,6 +535,27 @@ fun DanceARPracticeScreen(
                 )
             }
 
+            if (availableReferenceTracks.size > 1) {
+                ReferenceDancerSelectorCard(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 12.dp, top = 12.dp, bottom = 12.dp)
+                        .width(112.dp),
+                    videoUrl = item.videoUrl,
+                    tracks = availableReferenceTracks,
+                    selectionPreview = template?.selectionPreview,
+                    selectedTrackId = selectedReferenceTrack?.trackId,
+                    brandTeal = brandTeal,
+                    onTrackSelected = { trackId ->
+                        if (trackId == selectedReferenceTrack?.trackId) return@ReferenceDancerSelectorCard
+                        val selectedTrack = availableReferenceTracks.firstOrNull { it.trackId == trackId }
+                            ?: return@ReferenceDancerSelectorCard
+                        selectedReferenceTrackId = selectedTrack.trackId
+                        doReset(message = "Using ${selectedTrack.label}. Tap Start Practice when ready.")
+                    }
+                )
+            }
+
             Card(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -465,16 +576,30 @@ fun DanceARPracticeScreen(
                         fontWeight = FontWeight.SemiBold
                     )
 
+                    selectedReferenceTrack?.takeIf { availableReferenceTracks.size > 1 }?.let { track ->
+                        Text(
+                            text = "Reference: ${track.label}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = brandTeal
+                        )
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Align ${(alignmentScore * 100).toInt()}",
-                            style = MaterialTheme.typography.bodySmall)
-                        Text("Timing ${(timingConsistencyScore * 100).toInt()}",
-                            style = MaterialTheme.typography.bodySmall)
-                        Text("Smooth ${(smoothnessScore * 100).toInt()}",
-                            style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            "Align ${(alignmentScore * 100).toInt()}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "Timing ${(timingConsistencyScore * 100).toInt()}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Text(
+                            "Smooth ${(smoothnessScore * 100).toInt()}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
                     }
 
                     Text(
@@ -491,22 +616,43 @@ fun DanceARPracticeScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        OutlinedButton(
-                            modifier = Modifier.weight(1f),
-                            onClick = { doReset() },
-                            contentPadding = PaddingValues(vertical = 8.dp),
-                            colors = tealOutlinedButtonColors
-                        ) {
-                            Text("Reset", style = MaterialTheme.typography.bodyMedium)
-                        }
+                        if (isPracticeActive) {
+                            OutlinedButton(
+                                modifier = Modifier.weight(1f),
+                                onClick = { doReset(message = "Practice reset. Tap Start Practice when ready.") },
+                                contentPadding = PaddingValues(vertical = 8.dp),
+                                colors = tealOutlinedButtonColors
+                            ) {
+                                Text("Reset", style = MaterialTheme.typography.bodyMedium)
+                            }
 
-                        Button(
-                            modifier = Modifier.weight(1f),
-                            onClick = { doSubmit() },
-                            contentPadding = PaddingValues(vertical = 8.dp),
-                            colors = tealButtonColors
-                        ) {
-                            Text("Submit", style = MaterialTheme.typography.bodyMedium)
+                            Button(
+                                modifier = Modifier.weight(1f),
+                                onClick = { doSubmit() },
+                                contentPadding = PaddingValues(vertical = 8.dp),
+                                colors = tealButtonColors
+                            ) {
+                                Text("Submit", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        } else {
+                            Button(
+                                modifier = Modifier.weight(1f),
+                                onClick = { startPractice() },
+                                contentPadding = PaddingValues(vertical = 8.dp),
+                                colors = tealButtonColors
+                            ) {
+                                Text("Start Practice", style = MaterialTheme.typography.bodyMedium)
+                            }
+
+                            OutlinedButton(
+                                modifier = Modifier.weight(1f),
+                                onClick = { doSubmit() },
+                                enabled = frameCount > 0,
+                                contentPadding = PaddingValues(vertical = 8.dp),
+                                colors = tealOutlinedButtonColors
+                            ) {
+                                Text("Submit", style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
                 }
@@ -515,7 +661,146 @@ fun DanceARPracticeScreen(
     }
 }
 
-// ── Achievement Summary Dialog ────────────────────────────────────────────────
+@Composable
+private fun ReferenceDancerSelectorCard(
+    modifier: Modifier = Modifier,
+    videoUrl: String,
+    tracks: List<PoseTrack>,
+    selectionPreview: PoseSelectionPreview?,
+    selectedTrackId: String?,
+    brandTeal: Color,
+    onTrackSelected: (String) -> Unit
+) {
+    val thumbnails by produceState<Map<String, Bitmap>>(
+        initialValue = emptyMap(),
+        videoUrl,
+        selectionPreview
+    ) {
+        value = loadReferenceTrackThumbnails(videoUrl, selectionPreview)
+    }
+
+    Card(
+        modifier = modifier.testTag("dancerSelectorCard"),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Reference",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            tracks.forEach { track ->
+                val isSelected = track.trackId == selectedTrackId
+                val thumbnail = thumbnails[track.trackId]
+                if (isSelected) {
+                    Button(
+                        onClick = { onTrackSelected(track.trackId) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dancerChip_${track.trackId}"),
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = brandTeal,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        if (thumbnail != null) {
+                            Image(
+                                bitmap = thumbnail.asImageBitmap(),
+                                contentDescription = track.label,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text(
+                                text = track.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { onTrackSelected(track.trackId) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dancerChip_${track.trackId}"),
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(vertical = 10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    ) {
+                        if (thumbnail != null) {
+                            Image(
+                                bitmap = thumbnail.asImageBitmap(),
+                                contentDescription = track.label,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentScale = ContentScale.Crop
+                            )
+                        } else {
+                            Text(
+                                text = track.label,
+                                style = MaterialTheme.typography.labelLarge,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private suspend fun loadReferenceTrackThumbnails(
+    videoUrl: String,
+    selectionPreview: PoseSelectionPreview?
+): Map<String, Bitmap> = withContext(Dispatchers.IO) {
+    if (videoUrl.isBlank() || selectionPreview == null || selectionPreview.candidates.isEmpty()) {
+        return@withContext emptyMap()
+    }
+
+    val retriever = MediaMetadataRetriever()
+    return@withContext try {
+        retriever.setDataSource(videoUrl, emptyMap())
+        val frame = retriever.getFrameAtTime(
+            selectionPreview.timeMs * 1000L,
+            MediaMetadataRetriever.OPTION_CLOSEST
+        ) ?: return@withContext emptyMap()
+
+        selectionPreview.candidates.associate { candidate ->
+            candidate.trackId to cropReferenceThumbnail(frame, candidate.bounds)
+        }
+    } catch (_: Exception) {
+        emptyMap()
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private fun cropReferenceThumbnail(
+    source: Bitmap,
+    bounds: com.example.chorevo.posedetection.PoseBounds
+): Bitmap {
+    val left = (bounds.left * source.width).toInt().coerceIn(0, source.width - 1)
+    val top = (bounds.top * source.height).toInt().coerceIn(0, source.height - 1)
+    val right = (bounds.right * source.width).toInt().coerceIn(left + 1, source.width)
+    val bottom = (bounds.bottom * source.height).toInt().coerceIn(top + 1, source.height)
+
+    val cropped = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+    val targetWidth = 160
+    val targetHeight = 220
+    return Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
+}
+
 @Composable
 private fun AchievementSummaryDialog(
     sessionPoints: Int,
@@ -532,7 +817,9 @@ private fun AchievementSummaryDialog(
         val range = nextLevel.pointsRequired - currentLevel.pointsRequired
         val soFar = totalPoints - currentLevel.pointsRequired
         (soFar.toFloat() / range.toFloat()).coerceIn(0f, 1f)
-    } else 1f
+    } else {
+        1f
+    }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -547,12 +834,10 @@ private fun AchievementSummaryDialog(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Header
                 if (leveledUp) {
-                    Text("🎉 Level Up!", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text("Level Up!", fontSize = 22.sp, fontWeight = FontWeight.Bold)
                     Text(
-                        "${previousLevel.emoji} ${previousLevel.title}  →  " +
-                                "${currentLevel.emoji} ${currentLevel.title}",
+                        "${previousLevel.emoji} ${previousLevel.title} -> ${currentLevel.emoji} ${currentLevel.title}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = brandTeal,
                         fontWeight = FontWeight.SemiBold
@@ -567,7 +852,6 @@ private fun AchievementSummaryDialog(
 
                 HorizontalDivider()
 
-                // Points earned this session
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         "+$sessionPoints pts",
@@ -588,7 +872,6 @@ private fun AchievementSummaryDialog(
                     )
                 }
 
-                // Progress bar to next level
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -626,11 +909,10 @@ private fun AchievementSummaryDialog(
                     }
                 }
 
-                // New badges
                 if (newBadges.isNotEmpty()) {
                     HorizontalDivider()
                     Text(
-                        "🏅 New Badges Unlocked!",
+                        "New Badges Unlocked!",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -665,7 +947,6 @@ private fun AchievementSummaryDialog(
                     }
                 }
 
-                // Dismiss
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth(),
