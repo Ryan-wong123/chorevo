@@ -94,7 +94,7 @@ class MultiPersonPoseTracker(
 ) {
     companion object {
         private const val MIN_AVERAGE_VISIBILITY = 0.35f
-        private const val MIN_AVERAGE_AREA = 0.015f
+        private const val MIN_AVERAGE_AREA = 0.006f
         private const val MIN_TRACK_COVERAGE = 0.35f
         private const val DUPLICATE_OVERLAP_IOU = 0.65f
         private const val DUPLICATE_PREVIEW_IOU = 0.60f
@@ -135,6 +135,9 @@ class MultiPersonPoseTracker(
                 .mapNotNull { track ->
                     val lastBounds = track.lastBounds ?: return@mapNotNull null
                     if (track.missedSteps > maxMissedSteps) return@mapNotNull null
+                    if (!isPlausibleTrackMatch(lastBounds, sample.bounds, track.missedSteps)) {
+                        return@mapNotNull null
+                    }
                     val cost = trackMatchCost(lastBounds, sample.bounds, track.missedSteps)
                     if (cost > 0.55f) return@mapNotNull null
                     track to cost
@@ -172,17 +175,7 @@ class MultiPersonPoseTracker(
         if (labeledTracks.isEmpty()) return null
 
         val preview = buildSelectionPreview(labeledTracks)
-        val previewTrackIds = preview?.candidates
-            ?.map { it.trackId }
-            ?.toSet()
-            .orEmpty()
-        val tracks = if (previewTrackIds.size >= 2) {
-            labeledTracks.filter { it.trackId in previewTrackIds }
-        } else {
-            labeledTracks
-        }
-
-        if (tracks.isEmpty()) return null
+        val tracks = labeledTracks
 
         val defaultTrack = tracks.first()
         return PoseTemplate(
@@ -190,15 +183,7 @@ class MultiPersonPoseTracker(
             frames = defaultTrack.frames,
             tracks = tracks,
             defaultTrackId = defaultTrack.trackId,
-            selectionPreview = preview?.let { selectedPreview ->
-                if (previewTrackIds.size >= 2) {
-                    selectedPreview.copy(
-                        candidates = selectedPreview.candidates.filter { it.trackId in previewTrackIds }
-                    )
-                } else {
-                    selectedPreview
-                }
-            }
+            selectionPreview = preview
         )
     }
 
@@ -340,6 +325,24 @@ class MultiPersonPoseTracker(
     }
 
     private fun frameStepMs(): Long = (1000L / max(1, fps)).coerceAtLeast(1L)
+
+    private fun isPlausibleTrackMatch(
+        previous: PoseBounds,
+        current: PoseBounds,
+        missedSteps: Int
+    ): Boolean {
+        val centerDistance = poseCenterDistance(previous, current)
+        val iou = previous.iou(current)
+        val minArea = minOf(previous.area, current.area).coerceAtLeast(1e-4f)
+        val maxArea = maxOf(previous.area, current.area)
+        val areaRatio = maxArea / minArea
+
+        if (iou < 0.05f && centerDistance > 0.12f) return false
+        if (areaRatio > 2.8f && centerDistance > 0.06f) return false
+        if (missedSteps == 0 && areaRatio > 2.2f && centerDistance > 0.03f) return false
+
+        return true
+    }
 
     private fun trackMatchCost(previous: PoseBounds, current: PoseBounds, missedSteps: Int): Float {
         val centerDistance = poseCenterDistance(previous, current)

@@ -14,7 +14,7 @@ import java.util.concurrent.Executors
 class Chorevo : Application(), Configuration.Provider {
 
     private val workManagerExecutor: ExecutorService by lazy {
-        Executors.newFixedThreadPool(2)
+        Executors.newSingleThreadExecutor()
     }
 
     override val workManagerConfiguration: Configuration

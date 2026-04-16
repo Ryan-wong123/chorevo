@@ -128,6 +128,60 @@ class MultiPersonPoseTrackerTest {
     }
 
     @Test
+    fun buildTemplate_keepsTracksThatAreNotInSharedPreviewFrame() {
+        val tracker = MultiPersonPoseTracker(
+            fps = 15,
+            minTrackFrames = 1
+        )
+
+        tracker.addFrame(
+            tMs = 0L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(
+                samplePose(left = 0.10f, top = 0.18f, right = 0.28f, bottom = 0.64f),
+                samplePose(left = 0.60f, top = 0.18f, right = 0.80f, bottom = 0.66f)
+            )
+        )
+
+        tracker.addFrame(
+            tMs = 67L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(
+                samplePose(left = 0.11f, top = 0.19f, right = 0.29f, bottom = 0.65f),
+                samplePose(left = 0.61f, top = 0.19f, right = 0.79f, bottom = 0.67f)
+            )
+        )
+
+        tracker.addFrame(
+            tMs = 134L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(
+                samplePose(left = 0.46f, top = 0.30f, right = 0.56f, bottom = 0.52f)
+            )
+        )
+
+        tracker.addFrame(
+            tMs = 201L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(
+                samplePose(left = 0.47f, top = 0.31f, right = 0.57f, bottom = 0.53f)
+            )
+        )
+
+        val template = tracker.buildTemplate()
+
+        assertNotNull(template)
+        template!!
+
+        assertEquals(3, template.tracks.size)
+        assertEquals(2, template.selectionPreview?.candidates?.size)
+    }
+
+    @Test
     fun availableTracks_createsLegacyTrackForSinglePoseTemplates() {
         val template = PoseTemplate(
             fps = 2,

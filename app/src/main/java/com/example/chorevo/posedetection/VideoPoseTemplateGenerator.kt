@@ -28,7 +28,10 @@ object VideoPoseTemplateGenerator {
             val helper = PoseLandmarkerHelper(
                 context = context,
                 runningMode = RunningMode.VIDEO,
-                maxPoses = MAX_TRACKED_DANCERS
+                maxPoses = MAX_TRACKED_DANCERS,
+                minPoseDetectionConfidence = 0.35f,
+                minPosePresenceConfidence = 0.35f,
+                minTrackingConfidence = 0.35f
             )
 
             try {

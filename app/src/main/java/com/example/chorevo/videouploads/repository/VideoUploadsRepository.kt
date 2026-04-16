@@ -4,7 +4,6 @@ import android.content.Context
 import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -31,10 +30,6 @@ class VideoUploadsRepository @Inject constructor(
     private val db: FirebaseFirestore,
     private val storage: FirebaseStorage
 ) {
-
-    companion object {
-        private const val TEMPLATE_GENERATION_QUEUE = "template_generation_queue"
-    }
 
     // ============================================================
     // Helpers
@@ -93,7 +88,7 @@ class VideoUploadsRepository @Inject constructor(
             compressedFile = VideoCompressor.compressVideo(
                 context = ctx,
                 inputUri = videoUri,
-                outputHeight = 480,   // use 720 if 480 is too blurry
+                outputHeight = 720,
                 maxFrameRate = 24     // use 30 if needed
             )
 
@@ -216,11 +211,7 @@ class VideoUploadsRepository @Inject constructor(
             )
             .build()
 
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            TEMPLATE_GENERATION_QUEUE,
-            ExistingWorkPolicy.APPEND_OR_REPLACE,
-            workRequest
-        )
+        WorkManager.getInstance(context).enqueue(workRequest)
     }
 
     private suspend fun uploadFileWithProgress(
