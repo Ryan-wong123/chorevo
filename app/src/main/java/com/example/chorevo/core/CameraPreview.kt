@@ -32,7 +32,7 @@ fun CameraPreview(
         factory = { previewView }
     )
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(analyzer, context, lifecycleOwner, previewView) {
         CameraBinder.bind(
             context = context,
             lifecycleOwner = lifecycleOwner,

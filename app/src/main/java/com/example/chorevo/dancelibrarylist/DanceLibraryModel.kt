@@ -13,6 +13,7 @@ data class DanceLibraryModel(
     val createdAt: Long = System.currentTimeMillis(),
     val enabled: Boolean = true,
     val template: PoseTemplate? = null,
+    val templateStoragePath: String = "",
     val templateGenerationStatus: String = "ready",
     val templateGenerationError: String = ""
 ) {

@@ -23,6 +23,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.createCachedFeedExoPlayer
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import kotlinx.coroutines.launch
 
 /** Handles dance library list view. */
 @OptIn(ExperimentalFoundationApi::class)
@@ -36,9 +37,11 @@ fun DanceLibraryListView(
     val context = LocalContext.current
     val state by vm.uiState.collectAsStateWithLifecycle()
     val upload by vm.uploadState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
 
     val items = state.items
     val status = state.message
+    var openingDanceId by remember { mutableStateOf<String?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -145,19 +148,44 @@ fun DanceLibraryListView(
                 isActive = pagerState.currentPage == page,
                 exoPlayer = mainPlayer,
                 onStartPractice = {
-                    onPickDance(items[page])
+                    val selectedItem = items[page]
+                    if (openingDanceId != null) return@TikTokVideoPage
+
+                    openingDanceId = selectedItem.danceId
+                    scope.launch {
+                        vm.preparePracticeItem(selectedItem).fold(
+                            onSuccess = { prepared ->
+                                onPickDance(prepared)
+                            },
+                            onFailure = { error ->
+                                snackbarHostState.showSnackbar(
+                                    error.message ?: "Unable to load the dance reference template"
+                                )
+                            }
+                        )
+                        openingDanceId = null
+                    }
                 }
             )
         }
 
-        if (upload.isWorking) {
+        if (upload.isWorking || openingDanceId != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.35f)),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator()
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator()
+                    Text(
+                        text = if (openingDanceId != null) "Loading reference template..." else "Submitting result...",
+                        color = Color.White
+                    )
+                }
             }
         }
     }

@@ -4,10 +4,14 @@ import android.content.Context
 import android.net.Uri
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.example.chorevo.posedetection.PoseTemplateJson
+import com.example.chorevo.posedetection.PoseTemplateStorage
 import com.example.chorevo.posedetection.VideoPoseTemplateGenerator
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.StorageMetadata
 import kotlinx.coroutines.tasks.await
 import java.io.File
 
@@ -63,11 +67,27 @@ class VideoTemplateGenerationWorker(
 
             templateResult.fold(
                 onSuccess = { template ->
+                    val templateStoragePath = PoseTemplateStorage.jsonPath(danceId)
+                    val templateJsonBytes = PoseTemplateJson
+                        .toJson(template)
+                        .toByteArray(Charsets.UTF_8)
+
+                    storage.reference
+                        .child(templateStoragePath)
+                        .putBytes(
+                            templateJsonBytes,
+                            StorageMetadata.Builder()
+                                .setContentType("application/json")
+                                .build()
+                        )
+                        .await()
+
                     firestore.collection("danceLibrary")
                         .document(danceId)
                         .set(
                             mapOf(
-                                "template" to template,
+                                "template" to FieldValue.delete(),
+                                "templateStoragePath" to templateStoragePath,
                                 "templateGenerationStatus" to "ready",
                                 "templateGenerationError" to ""
                             ),
