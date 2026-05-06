@@ -125,7 +125,7 @@ fun List<Float>.averageVisibility(): Float {
 }
 
 /** Builds a normalized pose bounds box using visible landmarks only. */
-fun List<Float>.poseBounds(visibilityThreshold: Float = 0.3f, padding: Float = 0.05f): PoseBounds? {
+fun List<Float>.poseBounds(visibilityThreshold: Float = 0.15f, padding: Float = 0.08f): PoseBounds? {
     if (size < 4) return null
 
     var minX = Float.POSITIVE_INFINITY

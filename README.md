@@ -175,7 +175,9 @@ The main source package is `app/src/main/java/com/example/chorevo/`.
 - `.github/workflows/android.yml`
   - CI workflow for tests and build assembly
 - `app/src/main/assets/pose_landmarker_lite.task`
-  - MediaPipe model used by pose detection
+  - MediaPipe model used by real-time pose detection
+- `app/src/main/assets/pose_landmarker_full.task`
+  - Optional higher-accuracy MediaPipe model for uploaded video template generation. If this file is present, high-recall upload analysis uses it automatically; otherwise the app safely falls back to `pose_landmarker_lite.task`.
 - `app/google-services.json`
   - Firebase configuration required at runtime
 
@@ -613,6 +615,18 @@ Deploy Storage rules with:
 ```bash
 firebase deploy --only storage --project YOUR_FIREBASE_PROJECT_ID
 ```
+
+## Pose Landmark Models
+
+Real-time AR practice uses `pose_landmarker_lite.task` to keep camera inference fast.
+
+Uploaded dance video analysis uses a high-recall pipeline. For best multi-dancer detection, add the stronger MediaPipe model file here:
+
+```text
+app/src/main/assets/pose_landmarker_full.task
+```
+
+When `pose_landmarker_full.task` exists, uploaded-video template generation uses it automatically. If it is missing, the app still works and falls back to `pose_landmarker_lite.task`, but crowded or low-light group videos may detect fewer dancers.
 
 ## Permissions Used
 
