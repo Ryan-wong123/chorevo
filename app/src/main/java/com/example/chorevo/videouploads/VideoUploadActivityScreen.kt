@@ -508,6 +508,12 @@ private fun DancerReviewPanel(
     ) {
         value = loadUploadTrackThumbnails(context, videoUri, selectionPreview)
     }
+    val previewableTracks = remember(tracks, thumbnails) {
+        tracks.filter { track -> thumbnails.containsKey(track.trackId) }
+    }
+    val previewableSelectedTrackIds = selectedTrackIds.intersect(
+        previewableTracks.map { it.trackId }.toSet()
+    )
 
     Card(
         shape = RoundedCornerShape(16.dp),
@@ -535,8 +541,8 @@ private fun DancerReviewPanel(
                     )
                     Text(
                         text = when {
-                            confirmed -> "${selectedTrackIds.size} dancer option(s) confirmed"
-                            tracks.isNotEmpty() -> "${tracks.size} detected. Select every real dancer before upload."
+                            confirmed -> "${previewableSelectedTrackIds.size} dancer option(s) confirmed"
+                            tracks.isNotEmpty() -> "${previewableTracks.size} previewable dancer(s). Select every real dancer before upload."
                             else -> "Analyze the video before upload."
                         },
                         style = MaterialTheme.typography.bodySmall,
@@ -578,9 +584,15 @@ private fun DancerReviewPanel(
                 ) {
                     Text("Analyze Dancers")
                 }
+            } else if (previewableTracks.isEmpty()) {
+                Text(
+                    text = "No previewable dancer tracks were found. Redo analysis or choose another video.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    tracks.forEach { track ->
+                    previewableTracks.forEach { track ->
                         DancerTrackRow(
                             track = track,
                             thumbnail = thumbnails[track.trackId],
@@ -601,12 +613,12 @@ private fun DancerReviewPanel(
                         enabled = false,
                         onClick = {},
                         label = {
-                            Text(if (confirmed) "Confirmed" else "${selectedTrackIds.size} selected")
+                            Text(if (confirmed) "Confirmed" else "${previewableSelectedTrackIds.size} selected")
                         }
                     )
                     Button(
                         onClick = onConfirm,
-                        enabled = selectedTrackIds.isNotEmpty() && !confirmed,
+                        enabled = previewableSelectedTrackIds.isNotEmpty() && !confirmed,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
