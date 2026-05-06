@@ -90,12 +90,12 @@ private data class TrackBuilder(
 class MultiPersonPoseTracker(
     private val fps: Int,
     private val minTrackFrames: Int = 3,
-    private val maxMissedSteps: Int = 3
+    private val maxMissedSteps: Int = 3,
+    private val minAverageVisibility: Float = 0.35f,
+    private val minAverageArea: Float = 0.006f,
+    private val minTrackCoverage: Float = 0.35f
 ) {
     companion object {
-        private const val MIN_AVERAGE_VISIBILITY = 0.35f
-        private const val MIN_AVERAGE_AREA = 0.006f
-        private const val MIN_TRACK_COVERAGE = 0.35f
         private const val DUPLICATE_OVERLAP_IOU = 0.65f
         private const val DUPLICATE_PREVIEW_IOU = 0.60f
         private const val DUPLICATE_CENTER_DISTANCE = 0.10f
@@ -231,13 +231,13 @@ class MultiPersonPoseTracker(
 
     private fun isStableTrack(track: TrackBuilder): Boolean {
         if (track.frames.size < minTrackFrames) return false
-        if (track.averageVisibility < MIN_AVERAGE_VISIBILITY) return false
-        if (track.averageArea < MIN_AVERAGE_AREA) return false
+        if (track.averageVisibility < minAverageVisibility) return false
+        if (track.averageArea < minAverageArea) return false
 
         val frameStepMs = frameStepMs()
         val expectedFrames = max(1, (((track.lastTimeMs - track.firstTimeMs) / frameStepMs) + 1).toInt())
         val coverage = track.frames.size.toFloat() / expectedFrames.toFloat()
-        return coverage >= MIN_TRACK_COVERAGE
+        return coverage >= minTrackCoverage
     }
 
     private fun mergeDuplicateTracks(tracks: List<TrackBuilder>): List<TrackBuilder> {

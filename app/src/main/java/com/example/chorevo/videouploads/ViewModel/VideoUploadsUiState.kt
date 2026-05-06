@@ -2,6 +2,7 @@ package com.example.chorevo.videouploads.ViewModel
 
 import android.net.Uri
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.posedetection.PoseTemplate
 
 data class VideoUploadsUiState(
     // Data
@@ -21,6 +22,7 @@ data class VideoUploadsUiState(
     val editDraft: EditDraft? = null,
     val deleteItem: DanceLibraryModel? = null,
     val uploadDraft: UploadDraft = UploadDraft(),
+    val dancerReview: DancerReviewUiState = DancerReviewUiState(),
     val showVideoSourceDialog: Boolean = false,
 
     // One-off message (UI can display and then clear)
@@ -37,6 +39,24 @@ data class EditDraft(
 ) {
     val canSave: Boolean
         get() = title.isNotBlank() && danceType.isNotBlank() && description.isNotBlank()
+}
+
+data class DancerReviewUiState(
+    val isAnalyzing: Boolean = false,
+    val progress: Float? = null,
+    val template: PoseTemplate? = null,
+    val selectedTrackIds: Set<String> = emptySet(),
+    val confirmed: Boolean = false,
+    val errorMessage: String? = null
+) {
+    val detectedCount: Int
+        get() = template?.availableTracks()?.size ?: 0
+
+    val selectedCount: Int
+        get() = selectedTrackIds.size
+
+    val canConfirm: Boolean
+        get() = template != null && selectedTrackIds.isNotEmpty()
 }
 
 data class UploadDraft(

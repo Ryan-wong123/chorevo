@@ -89,7 +89,8 @@ class VideoTemplateGenerationWorker(
                                 "template" to FieldValue.delete(),
                                 "templateStoragePath" to templateStoragePath,
                                 "templateGenerationStatus" to "ready",
-                                "templateGenerationError" to ""
+                                "templateGenerationError" to "",
+                                "dancerCount" to template.availableTracks().size
                             ),
                             SetOptions.merge()
                         )

@@ -11,7 +11,12 @@ import kotlin.math.min
 
 
 object VideoPoseTemplateGenerator {
-    private const val MAX_TRACKED_DANCERS = 6
+    private const val MAX_TRACKED_DANCERS = 8
+
+    enum class GenerationProfile {
+        STANDARD,
+        HIGH_RECALL
+    }
 
     /** Handles generate. */
     suspend fun generate(
@@ -19,19 +24,21 @@ object VideoPoseTemplateGenerator {
         videoUriString: String,
         fps: Int = 2,
         maxDurationMs: Long = 120_000L, // safety cap: 2 minutes
+        profile: GenerationProfile = GenerationProfile.STANDARD,
         onProgress: ((Float) -> Unit)? = null
     ): Result<PoseTemplate> {
         return withContext(Dispatchers.Default) {
             val retriever = MediaMetadataRetriever()
+            val highRecall = profile == GenerationProfile.HIGH_RECALL
 
             //  use VIDEO mode helper for video template generation
             val helper = PoseLandmarkerHelper(
                 context = context,
                 runningMode = RunningMode.VIDEO,
                 maxPoses = MAX_TRACKED_DANCERS,
-                minPoseDetectionConfidence = 0.35f,
-                minPosePresenceConfidence = 0.35f,
-                minTrackingConfidence = 0.35f
+                minPoseDetectionConfidence = if (highRecall) 0.25f else 0.35f,
+                minPosePresenceConfidence = if (highRecall) 0.25f else 0.35f,
+                minTrackingConfidence = if (highRecall) 0.25f else 0.35f
             )
 
             try {
@@ -46,7 +53,18 @@ object VideoPoseTemplateGenerator {
                 val safeFps = max(1, fps)
                 val stepMs = 1000L / safeFps
 
-                val tracker = MultiPersonPoseTracker(fps = safeFps)
+                val tracker = if (highRecall) {
+                    MultiPersonPoseTracker(
+                        fps = safeFps,
+                        minTrackFrames = 2,
+                        maxMissedSteps = 8,
+                        minAverageVisibility = 0.20f,
+                        minAverageArea = 0.003f,
+                        minTrackCoverage = 0.15f
+                    )
+                } else {
+                    MultiPersonPoseTracker(fps = safeFps)
+                }
 
                 var tMs = 0L
                 var idx = 0

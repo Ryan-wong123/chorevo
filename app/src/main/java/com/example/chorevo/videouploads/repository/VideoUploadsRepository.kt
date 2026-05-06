@@ -8,6 +8,8 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.posedetection.PoseTemplate
+import com.example.chorevo.posedetection.PoseTemplateJson
 import com.example.chorevo.posedetection.PoseTemplateStorage
 import com.example.chorevo.videouploads.VideoTemplateGenerationWorker
 import com.example.chorevo.videouploads.VideoCompressor
@@ -60,6 +62,7 @@ class VideoUploadsRepository @Inject constructor(
         description: String,
         videoUri: Uri,
         generateTemplate: Boolean = true,
+        confirmedTemplate: PoseTemplate? = null,
         fps: Int = 2,
         onProgress: ((Float) -> Unit)? = null,
         onStageChanged: ((String) -> Unit)? = null,
@@ -161,13 +164,48 @@ class VideoUploadsRepository @Inject constructor(
                         "uploadedSizeBytes" to uploadedSize,
                         "wasCompressed" to useCompressed,
                         "storagePath" to storagePath,
-                        "templateGenerationStatus" to if (generateTemplate) "queued" else "skipped"
+                        "templateGenerationStatus" to when {
+                            confirmedTemplate != null -> "saving"
+                            generateTemplate -> "queued"
+                            else -> "skipped"
+                        },
+                        "templateReviewStatus" to if (confirmedTemplate != null) "confirmed" else ""
                     ),
                     SetOptions.merge()
                 )
                 .await()
 
-            if (generateTemplate) {
+            if (confirmedTemplate != null) {
+                onStageChanged?.invoke("Saving confirmed dancer template")
+                val templateStoragePath = PoseTemplateStorage.jsonPath(danceId)
+                val templateJsonBytes = PoseTemplateJson
+                    .toJson(confirmedTemplate)
+                    .toByteArray(Charsets.UTF_8)
+
+                storage.reference
+                    .child(templateStoragePath)
+                    .putBytes(
+                        templateJsonBytes,
+                        StorageMetadata.Builder()
+                            .setContentType("application/json")
+                            .build()
+                    )
+                    .await()
+
+                db.collection("danceLibrary")
+                    .document(danceId)
+                    .set(
+                        mapOf(
+                            "templateStoragePath" to templateStoragePath,
+                            "templateGenerationStatus" to "ready",
+                            "templateGenerationError" to "",
+                            "templateReviewStatus" to "confirmed",
+                            "dancerCount" to confirmedTemplate.availableTracks().size
+                        ),
+                        SetOptions.merge()
+                    )
+                    .await()
+            } else if (generateTemplate) {
                 onStageChanged?.invoke("Queuing background analysis")
                 enqueueTemplateGeneration(
                     context = ctx,
