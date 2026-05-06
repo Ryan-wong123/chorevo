@@ -142,11 +142,15 @@ class VideoUploadsViewModel @Inject constructor(
             result.fold(
                 onSuccess = { template ->
                     val tracks = template.availableTracks()
+                    val previewableTrackIds = template.previewableTrackIds()
                     mutate {
                         it.copy(
                             dancerReview = DancerReviewUiState(
                                 template = template,
-                                selectedTrackIds = tracks.map { track -> track.trackId }.toSet()
+                                selectedTrackIds = tracks
+                                    .map { track -> track.trackId }
+                                    .filter { trackId -> trackId in previewableTrackIds }
+                                    .toSet()
                             )
                         )
                     }
@@ -182,7 +186,22 @@ class VideoUploadsViewModel @Inject constructor(
         mutate { state ->
             val review = state.dancerReview
             if (!review.canConfirm) return@mutate state
-            state.copy(dancerReview = review.copy(confirmed = true, errorMessage = null))
+            val previewableTrackIds = review.template?.previewableTrackIds().orEmpty()
+            val selectedTrackIds = review.selectedTrackIds.intersect(previewableTrackIds)
+            if (selectedTrackIds.isEmpty()) {
+                return@mutate state.copy(
+                    dancerReview = review.copy(
+                        errorMessage = "No previewable dancer tracks are selected."
+                    )
+                )
+            }
+            state.copy(
+                dancerReview = review.copy(
+                    selectedTrackIds = selectedTrackIds,
+                    confirmed = true,
+                    errorMessage = null
+                )
+            )
         }
     }
 
@@ -434,8 +453,10 @@ class VideoUploadsViewModel @Inject constructor(
 }
 
 private fun PoseTemplate.confirmedTemplate(selectedTrackIds: Set<String>): PoseTemplate {
+    val previewableTrackIds = previewableTrackIds()
+    val allowedTrackIds = selectedTrackIds.intersect(previewableTrackIds)
     val selectedTracks = availableTracks()
-        .filter { it.trackId in selectedTrackIds }
+        .filter { it.trackId in allowedTrackIds }
         .mapIndexed { index, track -> track.copy(label = "Dancer ${index + 1}") }
 
     val defaultTrack = selectedTracks.firstOrNull()
@@ -450,4 +471,12 @@ private fun PoseTemplate.confirmedTemplate(selectedTrackIds: Set<String>): PoseT
         defaultTrackId = defaultTrack?.trackId,
         selectionPreview = filteredPreview
     )
+}
+
+private fun PoseTemplate.previewableTrackIds(): Set<String> {
+    return selectionPreview
+        ?.candidates
+        .orEmpty()
+        .map { it.trackId }
+        .toSet()
 }
