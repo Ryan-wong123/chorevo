@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "664829881706",
-    "project_id": "rehab-sense",
-    "storage_bucket": "rehab-sense.firebasestorage.app"
+    "project_number": "432503115723",
+    "project_id": "chorevo-dea05",
+    "storage_bucket": "chorevo-dea05.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:664829881706:android:4052b179a6f815b7ba8913",
+        "mobilesdk_app_id": "1:432503115723:android:cacf97bb602c251e65b04e",
         "android_client_info": {
           "package_name": "com.example.chorevo"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDrg2Beead4KWB5PYH8-DlTunzUW4aZ5u8"
+          "current_key": "AIzaSyDD7qMDtrKO1z_vMHcYrToD0NdU9vlOibc"
         }
       ],
       "services": {
