@@ -84,11 +84,11 @@ object VideoPoseTemplateGenerator {
                 val tracker = if (highRecall) {
                     MultiPersonPoseTracker(
                         fps = safeFps,
-                        minTrackFrames = 2,
-                        maxMissedSteps = 12,
-                        minAverageVisibility = 0.15f,
-                        minAverageArea = 0.0015f,
-                        minTrackCoverage = 0.08f
+                        minTrackFrames = 3,
+                        maxMissedSteps = safeFps * 3,
+                        minAverageVisibility = 0.18f,
+                        minAverageArea = 0.002f,
+                        minTrackCoverage = 0.12f
                     )
                 } else {
                     MultiPersonPoseTracker(
@@ -251,8 +251,8 @@ object VideoPoseTemplateGenerator {
             val candidateBounds = candidate.poseBounds() ?: continue
             val overlapsExisting = kept.any { existing ->
                 val existingBounds = existing.poseBounds() ?: return@any false
-                existingBounds.iou(candidateBounds) >= 0.58f &&
-                    poseCenterDistance(existingBounds, candidateBounds) <= 0.12f
+                existingBounds.iou(candidateBounds) > 0.45f ||
+                    poseCenterDistance(existingBounds, candidateBounds) < 0.08f
             }
 
             if (!overlapsExisting) {

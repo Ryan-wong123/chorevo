@@ -218,11 +218,11 @@ class MultiPersonPoseTrackerTest {
     fun buildTemplate_highRecallSettingsKeepBriefWeakDancerTrack() {
         val tracker = MultiPersonPoseTracker(
             fps = 8,
-            minTrackFrames = 2,
-            maxMissedSteps = 12,
-            minAverageVisibility = 0.15f,
-            minAverageArea = 0.0015f,
-            minTrackCoverage = 0.08f
+            minTrackFrames = 3,
+            maxMissedSteps = 24,
+            minAverageVisibility = 0.18f,
+            minAverageArea = 0.002f,
+            minTrackCoverage = 0.12f
         )
 
         tracker.addFrame(
@@ -238,6 +238,64 @@ class MultiPersonPoseTrackerTest {
             width = 1080,
             height = 1920,
             detections = listOf(samplePose(left = 0.09f, top = 0.25f, right = 0.19f, bottom = 0.51f, visibility = 0.20f))
+        )
+        tracker.addFrame(
+            tMs = 500L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(samplePose(left = 0.10f, top = 0.25f, right = 0.20f, bottom = 0.51f, visibility = 0.20f))
+        )
+
+        val template = tracker.buildTemplate()
+
+        assertNotNull(template)
+        assertEquals(1, template?.tracks?.size)
+    }
+
+    @Test
+    fun buildTemplate_mergesFragmentedTracksAfterTemporaryLoss() {
+        val tracker = MultiPersonPoseTracker(
+            fps = 8,
+            minTrackFrames = 2,
+            maxMissedSteps = 24,
+            minAverageVisibility = 0.18f,
+            minAverageArea = 0.002f,
+            minTrackCoverage = 0.08f
+        )
+
+        tracker.addFrame(
+            tMs = 0L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(samplePose(left = 0.30f, top = 0.20f, right = 0.46f, bottom = 0.68f, visibility = 0.50f))
+        )
+        tracker.addFrame(
+            tMs = 125L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(samplePose(left = 0.32f, top = 0.22f, right = 0.48f, bottom = 0.70f, visibility = 0.50f))
+        )
+
+        repeat(4) { idx ->
+            tracker.addFrame(
+                tMs = 250L + (idx * 125L),
+                width = 1080,
+                height = 1920,
+                detections = emptyList()
+            )
+        }
+
+        tracker.addFrame(
+            tMs = 750L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(samplePose(left = 0.40f, top = 0.23f, right = 0.56f, bottom = 0.71f, visibility = 0.50f))
+        )
+        tracker.addFrame(
+            tMs = 875L,
+            width = 1080,
+            height = 1920,
+            detections = listOf(samplePose(left = 0.42f, top = 0.24f, right = 0.58f, bottom = 0.72f, visibility = 0.50f))
         )
 
         val template = tracker.buildTemplate()

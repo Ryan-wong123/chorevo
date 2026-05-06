@@ -130,20 +130,8 @@ class MultiPersonPoseTracker(
         val assignedTrackIds = mutableSetOf<String>()
 
         for (sample in samples) {
-            val bestTrack = trackBuilders
-                .filter { it.trackId !in assignedTrackIds }
-                .mapNotNull { track ->
-                    val lastBounds = track.lastBounds ?: return@mapNotNull null
-                    if (track.missedSteps > maxMissedSteps) return@mapNotNull null
-                    if (!isPlausibleTrackMatch(lastBounds, sample.bounds, track.missedSteps)) {
-                        return@mapNotNull null
-                    }
-                    val cost = trackMatchCost(lastBounds, sample.bounds, track.missedSteps)
-                    if (cost > 0.55f) return@mapNotNull null
-                    track to cost
-                }
-                .minByOrNull { it.second }
-                ?.first
+            val bestTrack = findBestActiveTrack(sample, assignedTrackIds)
+                ?: findBestRecentlyLostTrack(sample, assignedTrackIds)
 
             val target = bestTrack ?: TrackBuilder(ordinal = nextTrackOrdinal++).also {
                 trackBuilders += it
@@ -162,8 +150,10 @@ class MultiPersonPoseTracker(
 
     fun buildTemplate(): PoseTemplate? {
         val mergedTrackBuilders = mergeDuplicateTracks(
-            trackBuilders.filter(::isStableTrack)
-        )
+            mergeFragmentedTracks(
+                mergeDuplicateTracks(trackBuilders)
+            )
+        ).filter(::isStableTrack)
 
         val labeledTracks = mergedTrackBuilders
             .sortedWith(
@@ -259,6 +249,21 @@ class MultiPersonPoseTracker(
         return merged
     }
 
+    private fun mergeFragmentedTracks(tracks: List<TrackBuilder>): List<TrackBuilder> {
+        val merged = mutableListOf<TrackBuilder>()
+
+        for (track in tracks.sortedBy { it.firstTimeMs }) {
+            val existing = merged.firstOrNull { shouldMergeFragments(it, track) }
+            if (existing != null) {
+                existing.mergeFrom(track)
+            } else {
+                merged += track
+            }
+        }
+
+        return merged
+    }
+
     private fun shouldMergeTracks(primary: TrackBuilder, candidate: TrackBuilder): Boolean {
         val sharedTimes = primary.boundsByTime.keys.intersect(candidate.boundsByTime.keys)
         if (sharedTimes.isNotEmpty()) {
@@ -293,6 +298,34 @@ class MultiPersonPoseTracker(
             abs(primary.averageArea - candidate.averageArea) <= 0.12f
     }
 
+    private fun shouldMergeFragments(primary: TrackBuilder, candidate: TrackBuilder): Boolean {
+        if (primary.trackId == candidate.trackId) return false
+
+        val overlapStart = maxOf(primary.firstTimeMs, candidate.firstTimeMs)
+        val overlapEnd = minOf(primary.lastTimeMs, candidate.lastTimeMs)
+        val overlapMs = (overlapEnd - overlapStart).coerceAtLeast(0L)
+        val shorterDurationMs = minOf(
+            (primary.lastTimeMs - primary.firstTimeMs).coerceAtLeast(frameStepMs()),
+            (candidate.lastTimeMs - candidate.firstTimeMs).coerceAtLeast(frameStepMs())
+        )
+        val overlapRatio = overlapMs.toFloat() / shorterDurationMs.toFloat()
+        if (overlapRatio > 0.20f) return false
+
+        val gapMs = when {
+            primary.lastTimeMs <= candidate.firstTimeMs -> candidate.firstTimeMs - primary.lastTimeMs
+            candidate.lastTimeMs <= primary.firstTimeMs -> primary.firstTimeMs - candidate.lastTimeMs
+            else -> 0L
+        }
+        if (gapMs > frameStepMs() * maxMissedSteps) return false
+
+        val primaryTransitionBounds = primary.boundsNearestTo(candidate.firstTimeMs) ?: return false
+        val candidateTransitionBounds = candidate.boundsNearestTo(primary.lastTimeMs) ?: return false
+        val centerDistance = poseCenterDistance(primaryTransitionBounds, candidateTransitionBounds)
+        val sizeRatio = poseSizeRatio(primaryTransitionBounds, candidateTransitionBounds)
+
+        return centerDistance < 0.18f && sizeRatio in 0.5f..2.0f
+    }
+
     private fun distinctPreviewCandidates(
         candidates: List<PoseSelectionCandidate>
     ): List<PoseSelectionCandidate> {
@@ -324,6 +357,17 @@ class MultiPersonPoseTracker(
         ).toFloat()
     }
 
+    private fun poseSizeRatio(first: PoseBounds, second: PoseBounds): Float {
+        val minArea = minOf(first.area, second.area).coerceAtLeast(1e-4f)
+        val maxArea = maxOf(first.area, second.area)
+        return maxArea / minArea
+    }
+
+    private fun TrackBuilder.boundsNearestTo(tMs: Long): PoseBounds? {
+        return boundsByTime.minByOrNull { abs(it.key - tMs) }?.value
+            ?: representativeBounds
+    }
+
     private fun frameStepMs(): Long = (1000L / max(1, fps)).coerceAtLeast(1L)
 
     private fun isPlausibleTrackMatch(
@@ -349,5 +393,65 @@ class MultiPersonPoseTracker(
         val iouPenalty = 1f - previous.iou(current)
         val areaPenalty = abs(previous.area - current.area)
         return centerDistance + (iouPenalty * 0.2f) + (areaPenalty * 0.35f) + (missedSteps * 0.08f)
+    }
+
+    private fun findBestActiveTrack(
+        sample: PoseSample,
+        assignedTrackIds: Set<String>
+    ): TrackBuilder? {
+        return trackBuilders
+            .filter { it.trackId !in assignedTrackIds && it.missedSteps == 0 }
+            .mapNotNull { track ->
+                val lastBounds = track.lastBounds ?: return@mapNotNull null
+                if (!isPlausibleTrackMatch(lastBounds, sample.bounds, track.missedSteps)) {
+                    return@mapNotNull null
+                }
+                val cost = trackMatchCost(lastBounds, sample.bounds, track.missedSteps)
+                if (cost > 0.55f) return@mapNotNull null
+                track to cost
+            }
+            .minByOrNull { it.second }
+            ?.first
+    }
+
+    private fun findBestRecentlyLostTrack(
+        sample: PoseSample,
+        assignedTrackIds: Set<String>
+    ): TrackBuilder? {
+        return trackBuilders
+            .filter { track ->
+                track.trackId !in assignedTrackIds &&
+                    track.missedSteps in 1..maxMissedSteps
+            }
+            .mapNotNull { track ->
+                val lastBounds = track.lastBounds ?: return@mapNotNull null
+                if (!isPlausibleRecentlyLostTrackMatch(lastBounds, sample.bounds)) {
+                    return@mapNotNull null
+                }
+                val cost = recentlyLostTrackMatchCost(lastBounds, sample.bounds, track.missedSteps)
+                if (cost > 0.75f) return@mapNotNull null
+                track to cost
+            }
+            .minByOrNull { it.second }
+            ?.first
+    }
+
+    private fun isPlausibleRecentlyLostTrackMatch(
+        previous: PoseBounds,
+        current: PoseBounds
+    ): Boolean {
+        return poseCenterDistance(previous, current) < 0.20f &&
+            poseSizeRatio(previous, current) in 0.45f..2.2f
+    }
+
+    private fun recentlyLostTrackMatchCost(
+        previous: PoseBounds,
+        current: PoseBounds,
+        missedSteps: Int
+    ): Float {
+        val centerDistance = poseCenterDistance(previous, current)
+        val iouPenalty = 1f - previous.iou(current)
+        val areaPenalty = abs(previous.area - current.area)
+        return centerDistance + (iouPenalty * 0.1f) + (areaPenalty * 0.35f) + (missedSteps * 0.01f)
     }
 }
