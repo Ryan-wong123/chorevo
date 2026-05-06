@@ -14,6 +14,8 @@ import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.posedetection.PoseFrame
+import com.example.chorevo.posedetection.PoseTemplate
 import io.mockk.coEvery
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
@@ -109,6 +111,10 @@ class DanceARPracticeScreenTest {
 
         waitForTextExists("Live Analytics")
         composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
+        composeRule.onNodeWithTag("mirrorOrientationGuide").assertIsDisplayed()
+        composeRule.onNodeWithText("Left").assertIsDisplayed()
+        composeRule.onNodeWithText("Mirror View").assertIsDisplayed()
+        composeRule.onNodeWithText("Right").assertIsDisplayed()
 
         waitForTextExists("Reset")
         waitForTextExists("Submit")
@@ -162,5 +168,41 @@ class DanceARPracticeScreenTest {
             composeRule.onAllNodesWithTag("practiceStartCountdown").fetchSemanticsNodes().isEmpty()
         }
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceScreen_withTemplate_showsStepByStepModeControls() {
+        val frames = List(12) { index ->
+            PoseFrame(
+                tMs = index * 1000L,
+                landmarks = List(33 * 4) { 0.5f }
+            )
+        }
+
+        val itemWithTemplate = item.copy(
+            template = PoseTemplate(
+                fps = 2,
+                frames = frames
+            )
+        )
+
+        composeRule.setContent {
+            DanceARPracticeScreen(
+                item = itemWithTemplate,
+                onBack = { backClicks++ },
+                onNavigateToProfile = {},
+                vm = vm,
+                achievementVm = achievementVm,
+                uid = "uid123",
+                testMode = true
+            )
+        }
+
+        composeRule.onNodeWithTag("stepPracticeCard").assertIsDisplayed()
+        composeRule.onNodeWithText("Full Routine").assertIsDisplayed()
+        composeRule.onNodeWithText("Step-by-Step").assertIsDisplayed()
+        composeRule.onNodeWithText("Step-by-Step").performClick()
+        composeRule.onNodeWithText("Step 1 of 2").assertIsDisplayed()
+        composeRule.onNodeWithText("Next").assertIsDisplayed()
     }
 }
