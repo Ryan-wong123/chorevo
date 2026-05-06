@@ -66,7 +66,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.chorevo.analytics.PerformanceSegment
-import com.example.chorevo.analytics.SegmentLabel
 import com.example.chorevo.analytics.SessionAnalysisPayload
 import com.example.chorevo.analytics.TimelinePoint
 import com.example.chorevo.core.CameraBinder
@@ -77,10 +76,12 @@ import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.posedetection.ImageProxyUtils
 import com.example.chorevo.posedetection.PoseDrawSpec
+import com.example.chorevo.posedetection.PoseFrame
 import com.example.chorevo.posedetection.PoseLandmarkerHelper
 import com.example.chorevo.posedetection.PoseOverlay
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseSimilarityEvaluator
+import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.posedetection.RenderMode
 import com.example.chorevo.posedetection.averageVisibility
@@ -91,6 +92,24 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
+
+private enum class PracticeMode {
+    FULL_ROUTINE,
+    STEP_BY_STEP
+}
+
+private data class PracticeStepSegment(
+    val index: Int,
+    val total: Int,
+    val startMs: Long,
+    val endMs: Long
+) {
+    val durationMs: Long
+        get() = (endMs - startMs).coerceAtLeast(1L)
+
+    val title: String
+        get() = "Step ${index + 1} of $total"
+}
 
 /** Displays the dance ar practice screen. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -131,6 +150,8 @@ fun DanceARPracticeScreen(
 
     var selectedReferenceTrackId by rememberSaveable(item.danceId) { mutableStateOf<String?>(null) }
     var isPracticeActive by rememberSaveable(item.danceId) { mutableStateOf(testMode) }
+    var practiceMode by rememberSaveable(item.danceId) { mutableStateOf(PracticeMode.FULL_ROUTINE) }
+    var currentStepIndex by rememberSaveable(item.danceId) { mutableIntStateOf(0) }
     val isCountdownActive = countdownSecondsRemaining != null
 
     LaunchedEffect(template) {
@@ -142,7 +163,7 @@ fun DanceARPracticeScreen(
         template?.resolveTrack(selectedReferenceTrackId)
     }
 
-    val activeTemplate = remember(template, selectedReferenceTrack) {
+    val selectedTrackTemplate = remember(template, selectedReferenceTrack) {
         val frames = selectedReferenceTrack?.frames ?: template?.frames.orEmpty()
         if (template == null || frames.isEmpty()) {
             null
@@ -152,6 +173,35 @@ fun DanceARPracticeScreen(
                 tracks = selectedReferenceTrack?.let(::listOf).orEmpty(),
                 defaultTrackId = selectedReferenceTrack?.trackId ?: template.defaultTrackId
             )
+        }
+    }
+
+    val practiceSegments = remember(selectedTrackTemplate) {
+        derivePracticeStepSegments(selectedTrackTemplate)
+    }
+
+    LaunchedEffect(practiceSegments.size) {
+        if (practiceSegments.size <= 1) {
+            practiceMode = PracticeMode.FULL_ROUTINE
+            currentStepIndex = 0
+        } else {
+            currentStepIndex = currentStepIndex.coerceIn(0, practiceSegments.lastIndex)
+        }
+    }
+
+    val currentPracticeSegment = remember(practiceSegments, currentStepIndex, practiceMode) {
+        if (practiceMode == PracticeMode.STEP_BY_STEP) {
+            practiceSegments.getOrNull(currentStepIndex)
+        } else {
+            null
+        }
+    }
+
+    val activeTemplate = remember(selectedTrackTemplate, currentPracticeSegment, practiceMode) {
+        if (practiceMode == PracticeMode.STEP_BY_STEP && currentPracticeSegment != null) {
+            sliceTemplateForStep(selectedTrackTemplate, currentPracticeSegment) ?: selectedTrackTemplate
+        } else {
+            selectedTrackTemplate
         }
     }
 
@@ -210,7 +260,11 @@ fun DanceARPracticeScreen(
             tsStart = System.currentTimeMillis()
             practiceTimeMs = 0L
             isPracticeActive = true
-            status = "Practice in progress"
+            status = if (practiceMode == PracticeMode.STEP_BY_STEP && currentPracticeSegment != null) {
+                "${currentPracticeSegment.title} in progress"
+            } else {
+                "Practice in progress"
+            }
         }
     }
 
@@ -279,7 +333,33 @@ fun DanceARPracticeScreen(
         avgPoseError = if (testMode) 0.1234 else 0.0
         frameCount = if (testMode) 42 else 0
         practiceTimeMs = 0L
-        status = "Starting in 3..."
+        status = if (practiceMode == PracticeMode.STEP_BY_STEP && currentPracticeSegment != null) {
+            "Starting ${currentPracticeSegment.title.lowercase()} in 3..."
+        } else {
+            "Starting in 3..."
+        }
+    }
+
+    fun completeCurrentStep() {
+        countdownSecondsRemaining = null
+        isPracticeActive = false
+
+        similarityEval?.snapshot(includeSeries = true)?.let { snap ->
+            alignmentScore = snap.alignmentScore
+            timingConsistencyScore = snap.timingConsistencyScore
+            smoothnessScore = snap.smoothnessScore
+            avgPoseError = snap.avgPoseError
+            frameCount = snap.frameCount
+            latestTimelinePoints = snap.timelinePoints
+            latestSegments = snap.performanceSegments
+        }
+
+        status = when {
+            practiceMode != PracticeMode.STEP_BY_STEP || currentPracticeSegment == null -> "Practice paused."
+            currentStepIndex < practiceSegments.lastIndex ->
+                "${currentPracticeSegment.title} complete. Tap Next Step to continue."
+            else -> "${currentPracticeSegment.title} complete. Repeat it or switch to Full Routine to submit a session."
+        }
     }
 
     LaunchedEffect(activeTemplate, practiceTimeMs, testMode, isPracticeActive) {
@@ -300,6 +380,15 @@ fun DanceARPracticeScreen(
 
         val ref = frames.minByOrNull { abs(it.tMs - practiceTimeMs) }?.landmarks
         refLandmarksForCamera = ref?.let(::mirrorX)
+    }
+
+    LaunchedEffect(practiceMode, currentPracticeSegment, practiceTimeMs, isPracticeActive, testMode) {
+        if (testMode || !isPracticeActive || practiceMode != PracticeMode.STEP_BY_STEP) return@LaunchedEffect
+
+        val segment = currentPracticeSegment ?: return@LaunchedEffect
+        if (practiceTimeMs >= segment.durationMs) {
+            completeCurrentStep()
+        }
     }
 
     val currentPracticeTimeMs by rememberUpdatedState(practiceTimeMs)
@@ -376,6 +465,10 @@ fun DanceARPracticeScreen(
 
     fun doSubmit() {
         countdownSecondsRemaining = null
+        if (practiceMode == PracticeMode.STEP_BY_STEP) {
+            status = "Step-by-step mode is for rehearsal only. Switch to Full Routine to submit a session."
+            return
+        }
         if (!isPracticeActive && frameCount == 0) {
             status = "Tap Start Practice before submitting a dance session."
             return
@@ -579,6 +672,45 @@ fun DanceARPracticeScreen(
                 )
             }
 
+            MirrorOrientationGuide(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                brandTeal = brandTeal
+            )
+
+            if (practiceSegments.size > 1) {
+                StepPracticeCard(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 76.dp, start = 16.dp, end = 16.dp),
+                    brandTeal = brandTeal,
+                    practiceMode = practiceMode,
+                    currentSegment = currentPracticeSegment,
+                    canGoPrevious = currentStepIndex > 0,
+                    canGoNext = currentStepIndex < practiceSegments.lastIndex,
+                    onSelectFullRoutine = {
+                        practiceMode = PracticeMode.FULL_ROUTINE
+                        doReset(message = "Full routine ready. Tap Start Practice when ready.")
+                    },
+                    onSelectStepByStep = {
+                        practiceMode = PracticeMode.STEP_BY_STEP
+                        currentStepIndex = currentStepIndex.coerceIn(0, practiceSegments.lastIndex)
+                        doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
+                    },
+                    onPreviousStep = {
+                        if (currentStepIndex == 0) return@StepPracticeCard
+                        currentStepIndex -= 1
+                        doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
+                    },
+                    onNextStep = {
+                        if (currentStepIndex >= practiceSegments.lastIndex) return@StepPracticeCard
+                        currentStepIndex += 1
+                        doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
+                    }
+                )
+            }
+
             if (isCountdownActive) {
                 Card(
                     modifier = Modifier
@@ -629,7 +761,7 @@ fun DanceARPracticeScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
-                        "Live Analytics",
+                        if (practiceMode == PracticeMode.STEP_BY_STEP) "Step Analytics" else "Live Analytics",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -637,6 +769,14 @@ fun DanceARPracticeScreen(
                     selectedReferenceTrack?.takeIf { availableReferenceTracks.size > 1 }?.let { track ->
                         Text(
                             text = "Reference: ${track.label}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = brandTeal
+                        )
+                    }
+
+                    currentPracticeSegment?.let { segment ->
+                        Text(
+                            text = "${segment.title} • ${formatPracticeTime(segment.startMs)} to ${formatPracticeTime(segment.endMs)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = brandTeal
                         )
@@ -686,11 +826,20 @@ fun DanceARPracticeScreen(
 
                             Button(
                                 modifier = Modifier.weight(1f),
-                                onClick = { doSubmit() },
+                                onClick = {
+                                    if (practiceMode == PracticeMode.STEP_BY_STEP) {
+                                        completeCurrentStep()
+                                    } else {
+                                        doSubmit()
+                                    }
+                                },
                                 contentPadding = PaddingValues(vertical = 8.dp),
                                 colors = tealButtonColors
                             ) {
-                                Text("Submit", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    if (practiceMode == PracticeMode.STEP_BY_STEP) "Finish Step" else "Submit",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
                         } else {
                             Button(
@@ -708,12 +857,36 @@ fun DanceARPracticeScreen(
 
                             OutlinedButton(
                                 modifier = Modifier.weight(1f),
-                                onClick = { doSubmit() },
-                                enabled = frameCount > 0,
+                                onClick = {
+                                    if (practiceMode == PracticeMode.STEP_BY_STEP) {
+                                        if (currentStepIndex < practiceSegments.lastIndex) {
+                                            currentStepIndex += 1
+                                            doReset(
+                                                message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready."
+                                            )
+                                        } else {
+                                            doReset(message = "Final step ready. Tap Start Practice to repeat it.")
+                                        }
+                                    } else {
+                                        doSubmit()
+                                    }
+                                },
+                                enabled = if (practiceMode == PracticeMode.STEP_BY_STEP) {
+                                    practiceSegments.isNotEmpty()
+                                } else {
+                                    frameCount > 0
+                                },
                                 contentPadding = PaddingValues(vertical = 8.dp),
                                 colors = tealOutlinedButtonColors
                             ) {
-                                Text("Submit", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    when {
+                                        practiceMode != PracticeMode.STEP_BY_STEP -> "Submit"
+                                        currentStepIndex < practiceSegments.lastIndex -> "Next Step"
+                                        else -> "Restart Step"
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
                         }
                     }
@@ -721,6 +894,202 @@ fun DanceARPracticeScreen(
             }
         }
     }
+}
+
+@Composable
+private fun StepPracticeCard(
+    modifier: Modifier = Modifier,
+    brandTeal: Color,
+    practiceMode: PracticeMode,
+    currentSegment: PracticeStepSegment?,
+    canGoPrevious: Boolean,
+    canGoNext: Boolean,
+    onSelectFullRoutine: () -> Unit,
+    onSelectStepByStep: () -> Unit,
+    onPreviousStep: () -> Unit,
+    onNextStep: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth(0.92f)
+            .testTag("stepPracticeCard"),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Practice Mode",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onSelectFullRoutine,
+                    enabled = practiceMode != PracticeMode.FULL_ROUTINE,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = brandTeal)
+                ) {
+                    Text("Full Routine")
+                }
+
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = onSelectStepByStep,
+                    enabled = practiceMode != PracticeMode.STEP_BY_STEP,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = brandTeal,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Step-by-Step")
+                }
+            }
+
+            currentSegment?.let { segment ->
+                Text(
+                    text = "${segment.title} • ${formatPracticeTime(segment.startMs)} to ${formatPracticeTime(segment.endMs)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = onPreviousStep,
+                        enabled = canGoPrevious,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = brandTeal)
+                    ) {
+                        Text("Previous")
+                    }
+
+                    OutlinedButton(
+                        modifier = Modifier.weight(1f),
+                        onClick = onNextStep,
+                        enabled = canGoNext,
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = brandTeal)
+                    ) {
+                        Text("Next")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MirrorOrientationGuide(
+    modifier: Modifier = Modifier,
+    brandTeal: Color
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth(0.9f)
+            .testTag("mirrorOrientationGuide"),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "Left",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = brandTeal
+            )
+            Text(
+                text = "Mirror View",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+            )
+            Text(
+                text = "Right",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = brandTeal
+            )
+        }
+    }
+}
+
+private fun derivePracticeStepSegments(template: PoseTemplate?): List<PracticeStepSegment> {
+    val source = template ?: return emptyList()
+    val frames = source.frames.sortedBy { it.tMs }
+    if (frames.size < 2) return emptyList()
+
+    val framesPerStep = (source.fps.coerceAtLeast(1) * 4).coerceAtLeast(4)
+    val minLastStepFrames = (source.fps.coerceAtLeast(1) * 2).coerceAtLeast(2)
+    val chunks = frames.chunked(framesPerStep).toMutableList()
+
+    if (chunks.size > 1 && chunks.last().size < minLastStepFrames) {
+        val trailingChunk = chunks.removeAt(chunks.lastIndex)
+        chunks[chunks.lastIndex] = chunks.last() + trailingChunk
+    }
+
+    val total = chunks.size
+    return chunks.mapIndexed { index, chunk ->
+        val startMs = chunk.first().tMs
+        val rawEndMs = chunk.last().tMs
+        val endMs = if (rawEndMs > startMs) rawEndMs else startMs + 1L
+        PracticeStepSegment(
+            index = index,
+            total = total,
+            startMs = startMs,
+            endMs = endMs
+        )
+    }
+}
+
+private fun sliceTemplateForStep(
+    template: PoseTemplate?,
+    segment: PracticeStepSegment
+): PoseTemplate? {
+    val source = template ?: return null
+    val normalizedStart = segment.startMs
+
+    fun rebaseFrames(frames: List<PoseFrame>): List<PoseFrame> {
+        return frames
+            .filter { it.tMs in segment.startMs..segment.endMs }
+            .map { it.copy(tMs = (it.tMs - normalizedStart).coerceAtLeast(0L)) }
+    }
+
+    val segmentFrames = rebaseFrames(source.frames)
+    if (segmentFrames.isEmpty()) return null
+
+    val segmentTracks = source.tracks.mapNotNull { track ->
+        val rebased = rebaseFrames(track.frames)
+        if (rebased.isEmpty()) null else track.copy(frames = rebased)
+    }
+
+    return source.copy(
+        frames = segmentFrames,
+        tracks = segmentTracks
+    )
+}
+
+private fun formatPracticeTime(timeMs: Long): String {
+    val totalSeconds = (timeMs / 1000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "$minutes:${seconds.toString().padStart(2, '0')}"
 }
 
 @Composable
