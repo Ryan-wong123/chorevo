@@ -8,6 +8,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +39,7 @@ fun DanceLibraryListView(
     val state by vm.uiState.collectAsStateWithLifecycle()
     val upload by vm.uploadState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    var isMirrored by rememberSaveable { mutableStateOf(false) }
 
     val items = state.items
     val status = state.message
@@ -147,6 +149,8 @@ fun DanceLibraryListView(
                 item = items[page],
                 isActive = pagerState.currentPage == page,
                 exoPlayer = mainPlayer,
+                isMirrored = isMirrored,
+                onToggleMirror = { isMirrored = !isMirrored },
                 onStartPractice = {
                     val selectedItem = items[page]
                     if (openingDanceId != null) return@TikTokVideoPage
@@ -197,6 +201,8 @@ private fun TikTokVideoPage(
     item: DanceLibraryModel,
     isActive: Boolean,
     exoPlayer: ExoPlayer,
+    isMirrored: Boolean,
+    onToggleMirror: () -> Unit,
     onStartPractice: () -> Unit
 ) {
     val cardColor = MaterialTheme.colorScheme.surface
@@ -209,6 +215,7 @@ private fun TikTokVideoPage(
         if (isActive) {
             SharedPlayerView(
                 exoPlayer = exoPlayer,
+                isMirrored = isMirrored,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -265,22 +272,44 @@ private fun TikTokVideoPage(
 
                     Spacer(Modifier.height(16.dp))
 
-                    Button(
-                        onClick = onStartPractice,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(54.dp)
-                            .testTag("practiceButton"),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF00B8C8),
-                            contentColor = Color.White
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = "Practice",
-                            style = MaterialTheme.typography.titleMedium
-                        )
+                        Button(
+                            onClick = onStartPractice,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(54.dp)
+                                .testTag("practiceButton"),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF00B8C8),
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Text(
+                                text = "Practice",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onToggleMirror,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(54.dp)
+                                .testTag("mirrorPlaybackButton"),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color(0xFF00B8C8)
+                            )
+                        ) {
+                            Text(
+                                text = if (isMirrored) "Mirror On" else "Mirror Off",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                        }
                     }
                 }
             }

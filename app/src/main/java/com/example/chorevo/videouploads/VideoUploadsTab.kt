@@ -30,6 +30,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,6 +47,8 @@ import java.util.Locale
 
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
@@ -338,6 +341,8 @@ private fun FullScreenVideoPreview(
     videoUrl: String,
     onClose: () -> Unit
 ) {
+    var isMirrored by rememberSaveable(videoUrl) { mutableStateOf(false) }
+
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(
@@ -353,6 +358,7 @@ private fun FullScreenVideoPreview(
             VideoPreviewPlayer(
                 videoUrl = videoUrl,
                 isActive = true,
+                isMirrored = isMirrored,
                 modifier = Modifier.fillMaxSize()
             )
 
@@ -364,12 +370,20 @@ private fun FullScreenVideoPreview(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(title, color = Color.White)
-                IconButton(onClick = onClose) {
-                    Icon(
-                        Icons.Filled.Close,
-                        contentDescription = "Close",
-                        tint = Color.White
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { isMirrored = !isMirrored }) {
+                        Text(
+                            text = if (isMirrored) "Mirror On" else "Mirror Off",
+                            color = Color.White
+                        )
+                    }
+                    IconButton(onClick = onClose) {
+                        Icon(
+                            Icons.Filled.Close,
+                            contentDescription = "Close",
+                            tint = Color.White
+                        )
+                    }
                 }
             }
         }
@@ -381,6 +395,7 @@ private fun FullScreenVideoPreview(
 private fun VideoPreviewPlayer(
     videoUrl: String,
     isActive: Boolean,
+    isMirrored: Boolean,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -407,6 +422,7 @@ private fun VideoPreviewPlayer(
 
     SharedPlayerView(
         exoPlayer = exoPlayer,
+        isMirrored = isMirrored,
         modifier = modifier
     )
 }
