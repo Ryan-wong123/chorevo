@@ -1,8 +1,10 @@
 package com.example.chorevo.posedetection
 
 import android.content.Context
+import android.util.Log
 
 object PersonDetectorFactory {
+    private const val TAG = "PersonDetectorFactory"
     const val WARNING_PERSON_DETECTOR_UNAVAILABLE = "personDetectorUnavailable"
 
     fun create(
@@ -20,17 +22,16 @@ object PersonDetectorFactory {
 
         return try {
             val detector = detectorProvider?.invoke()
-            if (detector == null) {
-                unavailable("Person detector runtime is not configured")
-            } else {
-                PersonDetectorInitialization(detector = detector)
-            }
-        } catch (_: Exception) {
+                ?: TfliteYoloPersonDetector(context = context, config = config)
+            PersonDetectorInitialization(detector = detector)
+        } catch (exception: Exception) {
+            safeLogWarning("Person detector initialization failed; using MediaPipe-only fallback.", exception)
             unavailable("Person detector could not be initialized")
         }
     }
 
     private fun unavailable(message: String): PersonDetectorInitialization {
+        safeLogWarning("$message; using MediaPipe-only fallback.")
         return PersonDetectorInitialization(
             detector = NoOpPersonDetector(),
             warning = PoseAnalysisWarning(
@@ -45,6 +46,16 @@ object PersonDetectorFactory {
             context.assets.open(assetPath).use { true }
         } catch (_: Exception) {
             false
+        }
+    }
+
+    private fun safeLogWarning(message: String, throwable: Throwable? = null) {
+        runCatching {
+            if (throwable == null) {
+                Log.w(TAG, message)
+            } else {
+                Log.w(TAG, message, throwable)
+            }
         }
     }
 }

@@ -98,16 +98,29 @@ data class DancerDetection(
 data class PersonDetectorConfig(
     val enabled: Boolean = false,
     val modelAssetPath: String = DEFAULT_MODEL_ASSET,
-    val minConfidence: Float = DEFAULT_MIN_CONFIDENCE
+    val minConfidence: Float = DEFAULT_MIN_CONFIDENCE,
+    val iouThreshold: Float = DEFAULT_IOU_THRESHOLD,
+    val inputSize: Int = DEFAULT_INPUT_SIZE,
+    val personClassId: Int = DetectionBox.PERSON_CLASS_ID,
+    val outputFormat: YoloOutputFormat = YoloOutputFormat.AUTO,
+    val outputIncludesObjectness: Boolean = false
 ) {
     companion object {
         const val DEFAULT_MODEL_ASSET = "person_detector_yolo.tflite"
         const val DEFAULT_MIN_CONFIDENCE = 0.25f
+        const val DEFAULT_IOU_THRESHOLD = 0.45f
+        const val DEFAULT_INPUT_SIZE = 640
 
         fun disabled(): PersonDetectorConfig {
             return PersonDetectorConfig(enabled = false)
         }
     }
+}
+
+enum class YoloOutputFormat {
+    AUTO,
+    BOXES_FIRST,
+    ATTRIBUTES_FIRST
 }
 
 data class PersonDetectorInitialization(

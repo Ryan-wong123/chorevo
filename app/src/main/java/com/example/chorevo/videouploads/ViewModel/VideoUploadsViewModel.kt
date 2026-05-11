@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
+import com.example.chorevo.posedetection.PersonDetectorConfig
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.VideoPoseTemplateGenerator
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
@@ -130,6 +131,7 @@ class VideoUploadsViewModel @Inject constructor(
                 videoUriString = videoUri.toString(),
                 fps = fps,
                 profile = VideoPoseTemplateGenerator.GenerationProfile.HIGH_RECALL,
+                personDetectorConfig = PersonDetectorConfig(enabled = true),
                 onProgress = { progress ->
                     mutate { state ->
                         state.copy(
