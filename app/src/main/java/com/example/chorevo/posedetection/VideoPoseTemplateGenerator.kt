@@ -110,6 +110,12 @@ object VideoPoseTemplateGenerator {
                     fps = safeFps,
                     config = trackingConfig
                 )
+                val dancerTracker = ByteTrackDancerTracker(
+                    config = DancerTrackerConfig(
+                        maxMissedFrames = trackingConfig.maxMissedSteps,
+                        maxTracks = MAX_TRACKED_DANCERS
+                    )
+                )
 
                 var tMs = 0L
                 var idx = 0
@@ -142,9 +148,12 @@ object VideoPoseTemplateGenerator {
                             )
                             emptyList()
                         }
-                        if (personDetections.isNotEmpty()) {
-                            // Future detector/tracker phases will route these boxes into crop pose estimation.
-                        }
+                        // Phase 5 verifies detector-to-tracker plumbing only; crop pose estimation remains Phase 6.
+                        dancerTracker.update(
+                            frameIndex = idx,
+                            timestampMs = tMs,
+                            detections = personDetections
+                        )
 
                         // VIDEO running mode requires timestamped detect
                         val fullFrameDetections = helper.detectForVideo(processedBmp, tMs)

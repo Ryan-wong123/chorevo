@@ -10,7 +10,7 @@ interface DancerTracker {
     fun update(
         frameIndex: Int,
         timestampMs: Long,
-        detections: List<DancerDetection>
+        detections: List<DetectionBox>
     ): List<TrackedDancerBox>
 
     fun tracks(): List<DancerTrack>
