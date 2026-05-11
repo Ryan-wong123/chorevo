@@ -38,12 +38,19 @@ object VideoPoseTemplateGenerator {
         fps: Int = 5,
         maxDurationMs: Long = 120_000L, // safety cap: 2 minutes
         profile: GenerationProfile = GenerationProfile.STANDARD,
+        framePreprocessorConfig: FramePreprocessorConfig = FramePreprocessorConfig(),
         onProgress: ((Float) -> Unit)? = null
     ): Result<PoseTemplate> {
         return withContext(Dispatchers.Default) {
             val retriever = MediaMetadataRetriever()
             val highRecall = profile == GenerationProfile.HIGH_RECALL
             val modelAssetPath = preferredModelAsset(context = context, highRecall = highRecall)
+            val framePreprocessor = if (highRecall && framePreprocessorConfig.enabled) {
+                ConservativeFramePreprocessor(framePreprocessorConfig)
+            } else {
+                NoOpFramePreprocessor
+            }
+            val analysisWarnings = linkedMapOf<String, PoseAnalysisWarning>()
 
             //  use VIDEO mode helper for video template generation
             val helper = PoseLandmarkerHelper(
@@ -103,7 +110,11 @@ object VideoPoseTemplateGenerator {
                     )
 
                     if (bmp != null) {
-                        val processedBmp = if (highRecall) brightenBitmap(bmp, 1.25f) else bmp
+                        val processedFrame = framePreprocessor.process(bmp, tMs)
+                        val processedBmp = processedFrame.bitmap
+                        processedFrame.warnings.forEach { warning ->
+                            analysisWarnings.putIfAbsent(warning.code, warning)
+                        }
 
                         // VIDEO running mode requires timestamped detect
                         val fullFrameDetections = helper.detectForVideo(processedBmp, tMs)
@@ -122,7 +133,7 @@ object VideoPoseTemplateGenerator {
                             detections = detections
                         )
 
-                        if (processedBmp !== bmp) {
+                        if (processedFrame.ownsBitmap) {
                             processedBmp.recycle()
                         }
                     }
@@ -138,7 +149,7 @@ object VideoPoseTemplateGenerator {
                         IllegalStateException("No dancers were detected in the uploaded video")
                     )
 
-                Result.success(template)
+                Result.success(template.withAdditionalWarnings(analysisWarnings.values))
             } catch (e: Exception) {
                 Result.failure(e)
             } finally {
@@ -236,30 +247,17 @@ object VideoPoseTemplateGenerator {
         return remapped
     }
 
-    private fun brightenBitmap(src: Bitmap, factor: Float = 1.25f): Bitmap {
-        val bmp = src.copy(Bitmap.Config.ARGB_8888, true)
-        val width = bmp.width
-        val height = bmp.height
-        val pixels = IntArray(width * height)
-
-        bmp.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        for (i in pixels.indices) {
-            val color = pixels[i]
-
-            val a = color ushr 24
-            var r = color shr 16 and 0xff
-            var g = color shr 8 and 0xff
-            var b = color and 0xff
-
-            r = (r * factor).toInt().coerceIn(0, 255)
-            g = (g * factor).toInt().coerceIn(0, 255)
-            b = (b * factor).toInt().coerceIn(0, 255)
-
-            pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
+    private fun PoseTemplate.withAdditionalWarnings(
+        additionalWarnings: Collection<PoseAnalysisWarning>
+    ): PoseTemplate {
+        if (additionalWarnings.isEmpty()) return this
+        val warningsByCode = linkedMapOf<String, PoseAnalysisWarning>()
+        qualityWarnings.forEach { warning ->
+            warningsByCode.putIfAbsent(warning.code, warning)
         }
-
-        bmp.setPixels(pixels, 0, width, 0, 0, width, height)
-        return bmp
+        additionalWarnings.forEach { warning ->
+            warningsByCode.putIfAbsent(warning.code, warning)
+        }
+        return copy(qualityWarnings = warningsByCode.values.toList())
     }
 }
