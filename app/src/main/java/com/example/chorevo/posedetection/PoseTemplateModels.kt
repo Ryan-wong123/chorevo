@@ -9,7 +9,8 @@ data class PoseTemplate(
     val frames: List<PoseFrame> = emptyList(),
     val tracks: List<PoseTrack> = emptyList(),
     val defaultTrackId: String? = null,
-    val selectionPreview: PoseSelectionPreview? = null
+    val selectionPreview: PoseSelectionPreview? = null,
+    val qualityWarnings: List<PoseAnalysisWarning> = emptyList()
 ) {
     /** Returns all usable tracks, including a synthetic legacy track for old templates. */
     fun availableTracks(): List<PoseTrack> {
