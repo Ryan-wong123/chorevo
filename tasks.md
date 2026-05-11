@@ -30,12 +30,12 @@ Legend:
 
 ## Phase 2: Low-Light Preprocessing
 
-- [ ] Add `FramePreprocessor` interface in `posedetection`.
-- [ ] Implement conservative brightness/contrast/gamma preprocessing for high-recall upload analysis.
-- [ ] Keep preprocessing optional and configurable.
-- [ ] Apply preprocessing before person detection and crop pose estimation.
-- [ ] Add tests for preprocessing config behavior where possible.
-- [ ] Add user-facing or creator-facing warnings when low-light quality may reduce accuracy.
+- [x] Add `FramePreprocessor` interface in `posedetection`.
+- [x] Implement conservative brightness/contrast/gamma preprocessing for high-recall upload analysis.
+- [x] Keep preprocessing optional and configurable.
+- [x] Apply preprocessing before person detection and crop pose estimation.
+- [x] Add tests for preprocessing config behavior where possible.
+- [x] Add user-facing or creator-facing warnings when low-light quality may reduce accuracy.
 
 ## Phase 3: Person Detection Interface
 

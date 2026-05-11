@@ -61,6 +61,25 @@ data class FramePreprocessorResult(
     val warnings: List<PoseAnalysisWarning> = emptyList()
 )
 
+data class FramePreprocessorConfig(
+    val enabled: Boolean = true,
+    val brightness: Float = DEFAULT_BRIGHTNESS,
+    val contrast: Float = DEFAULT_CONTRAST,
+    val gamma: Float = DEFAULT_GAMMA,
+    val lowLightWarningThreshold: Float = DEFAULT_LOW_LIGHT_WARNING_THRESHOLD
+) {
+    companion object {
+        const val DEFAULT_BRIGHTNESS = 8f
+        const val DEFAULT_CONTRAST = 1.08f
+        const val DEFAULT_GAMMA = 1.10f
+        const val DEFAULT_LOW_LIGHT_WARNING_THRESHOLD = 45f
+
+        fun disabled(): FramePreprocessorConfig {
+            return FramePreprocessorConfig(enabled = false)
+        }
+    }
+}
+
 data class PoseTrackingConfig(
     val minTrackFrames: Int,
     val maxMissedSteps: Int,

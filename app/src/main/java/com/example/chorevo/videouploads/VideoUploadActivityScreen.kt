@@ -76,6 +76,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.chorevo.posedetection.PoseAnalysisWarning
 import com.example.chorevo.posedetection.PoseBounds
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTrack
@@ -220,6 +221,7 @@ fun VideoUploadActivityScreen(
                     isAnalyzing = uiState.dancerReview.isAnalyzing,
                     progress = uiState.dancerReview.progress,
                     errorMessage = uiState.dancerReview.errorMessage,
+                    warnings = uiState.dancerReview.template?.qualityWarnings.orEmpty(),
                     brandTeal = brandTeal,
                     onAnalyze = { videoUploadVm.analyzeDancers(context = context, fps = 8) },
                     onToggleTrack = videoUploadVm::toggleDetectedDancer,
@@ -494,6 +496,7 @@ private fun DancerReviewPanel(
     isAnalyzing: Boolean,
     progress: Float?,
     errorMessage: String?,
+    warnings: List<PoseAnalysisWarning>,
     brandTeal: Color,
     onAnalyze: () -> Unit,
     onToggleTrack: (String) -> Unit,
@@ -636,6 +639,14 @@ private fun DancerReviewPanel(
                     text = message,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            warnings.forEach { warning ->
+                Text(
+                    text = warning.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
                 )
             }
         }
