@@ -95,6 +95,18 @@ class MultiPersonPoseTracker(
     private val minAverageArea: Float = 0.006f,
     private val minTrackCoverage: Float = 0.35f
 ) {
+    constructor(
+        fps: Int,
+        config: PoseTrackingConfig
+    ) : this(
+        fps = fps,
+        minTrackFrames = config.minTrackFrames,
+        maxMissedSteps = config.maxMissedSteps,
+        minAverageVisibility = config.minAverageVisibility,
+        minAverageArea = config.minAverageArea,
+        minTrackCoverage = config.minTrackCoverage
+    )
+
     companion object {
         private const val DUPLICATE_OVERLAP_IOU = 0.65f
         private const val DUPLICATE_PREVIEW_IOU = 0.60f
@@ -173,8 +185,29 @@ class MultiPersonPoseTracker(
             frames = defaultTrack.frames,
             tracks = tracks,
             defaultTrackId = defaultTrack.trackId,
-            selectionPreview = preview
+            selectionPreview = preview,
+            qualityWarnings = buildQualityWarnings(mergedTrackBuilders)
         )
+    }
+
+    private fun buildQualityWarnings(tracks: List<TrackBuilder>): List<PoseAnalysisWarning> {
+        val warnings = mutableListOf<PoseAnalysisWarning>()
+
+        if (tracks.any { it.averageVisibility < 0.25f }) {
+            warnings += PoseAnalysisWarning(
+                code = "lowConfidenceTracks",
+                message = "One or more dancer tracks have low landmark confidence."
+            )
+        }
+
+        if (tracks.any { trackCoverage(it) < 0.20f }) {
+            warnings += PoseAnalysisWarning(
+                code = "manyMissingFrames",
+                message = "One or more dancer tracks are missing from many sampled frames."
+            )
+        }
+
+        return warnings
     }
 
     private fun buildSelectionPreview(tracks: List<PoseTrack>): PoseSelectionPreview? {
@@ -224,10 +257,13 @@ class MultiPersonPoseTracker(
         if (track.averageVisibility < minAverageVisibility) return false
         if (track.averageArea < minAverageArea) return false
 
+        return trackCoverage(track) >= minTrackCoverage
+    }
+
+    private fun trackCoverage(track: TrackBuilder): Float {
         val frameStepMs = frameStepMs()
         val expectedFrames = max(1, (((track.lastTimeMs - track.firstTimeMs) / frameStepMs) + 1).toInt())
-        val coverage = track.frames.size.toFloat() / expectedFrames.toFloat()
-        return coverage >= minTrackCoverage
+        return track.frames.size.toFloat() / expectedFrames.toFloat()
     }
 
     private fun mergeDuplicateTracks(tracks: List<TrackBuilder>): List<TrackBuilder> {

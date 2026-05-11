@@ -34,6 +34,12 @@ class PoseTemplateJsonTest {
                         bounds = PoseBounds(left = 0.1f, top = 0.2f, right = 0.7f, bottom = 0.9f)
                     )
                 )
+            ),
+            qualityWarnings = listOf(
+                PoseAnalysisWarning(
+                    code = "manyMissingFrames",
+                    message = "Some frames were missing."
+                )
             )
         )
 
@@ -45,5 +51,6 @@ class PoseTemplateJsonTest {
         assertEquals(template.defaultTrackId, restored.defaultTrackId)
         assertNotNull(restored.selectionPreview)
         assertEquals(template.selectionPreview, restored.selectionPreview)
+        assertEquals(template.qualityWarnings, restored.qualityWarnings)
     }
 }

@@ -221,7 +221,7 @@ fun VideoUploadActivityScreen(
                     progress = uiState.dancerReview.progress,
                     errorMessage = uiState.dancerReview.errorMessage,
                     brandTeal = brandTeal,
-                    onAnalyze = { videoUploadVm.analyzeDancers(context = context, fps = 10) },
+                    onAnalyze = { videoUploadVm.analyzeDancers(context = context, fps = 8) },
                     onToggleTrack = videoUploadVm::toggleDetectedDancer,
                     onConfirm = videoUploadVm::confirmDancerReview,
                     onReset = videoUploadVm::clearDancerReview

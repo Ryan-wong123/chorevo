@@ -111,7 +111,7 @@ class VideoUploadsViewModel @Inject constructor(
     }
 
     /** Runs high-recall pose analysis so the uploader can confirm dancer tracks before upload. */
-    fun analyzeDancers(context: Context, fps: Int = 10) {
+    fun analyzeDancers(context: Context, fps: Int = 8) {
         val videoUri = _uiState.value.uploadDraft.selectedVideoUri ?: return
 
         viewModelScope.launch {

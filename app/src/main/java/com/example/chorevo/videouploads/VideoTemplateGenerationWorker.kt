@@ -29,7 +29,7 @@ class VideoTemplateGenerationWorker(
     override suspend fun doWork(): Result {
         val danceId = inputData.getString(KEY_DANCE_ID) ?: return Result.failure()
         val storagePath = inputData.getString(KEY_STORAGE_PATH) ?: return Result.failure()
-        val fps = inputData.getInt(KEY_FPS, 15).coerceAtLeast(1)
+        val fps = inputData.getInt(KEY_FPS, 5).coerceAtLeast(1)
 
         val firestore = FirebaseFirestore.getInstance()
         val storage = FirebaseStorage.getInstance()

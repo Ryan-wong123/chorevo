@@ -81,25 +81,15 @@ object VideoPoseTemplateGenerator {
                 val safeFps = if (highRecall) max(8, fps) else max(5, fps)
                 val stepMs = 1000L / safeFps
 
-                val tracker = if (highRecall) {
-                    MultiPersonPoseTracker(
-                        fps = safeFps,
-                        minTrackFrames = 3,
-                        maxMissedSteps = safeFps * 3,
-                        minAverageVisibility = 0.18f,
-                        minAverageArea = 0.002f,
-                        minTrackCoverage = 0.12f
-                    )
+                val trackingConfig = if (highRecall) {
+                    PoseTrackingConfig.highRecall(safeFps)
                 } else {
-                    MultiPersonPoseTracker(
-                        fps = safeFps,
-                        minTrackFrames = 3,
-                        maxMissedSteps = 5,
-                        minAverageVisibility = 0.30f,
-                        minAverageArea = 0.004f,
-                        minTrackCoverage = 0.25f
-                    )
+                    PoseTrackingConfig.standard()
                 }
+                val tracker = MultiPersonPoseTracker(
+                    fps = safeFps,
+                    config = trackingConfig
+                )
 
                 var tMs = 0L
                 var idx = 0
@@ -121,7 +111,9 @@ object VideoPoseTemplateGenerator {
                         val cropDetections = cropHelper
                             ?.detectCropPasses(processedBmp)
                             .orEmpty()
-                        val detections = mergeDuplicateDetections(fullFrameDetections + cropDetections)
+                        val detections = PoseDetectionMerger.mergeDuplicateLandmarkDetections(
+                            fullFrameDetections + cropDetections
+                        )
 
                         tracker.addFrame(
                             tMs = tMs,
@@ -242,36 +234,6 @@ object VideoPoseTemplateGenerator {
         }
 
         return remapped
-    }
-
-    private fun mergeDuplicateDetections(detections: List<List<Float>>): List<List<Float>> {
-        val kept = mutableListOf<List<Float>>()
-
-        for (candidate in detections.sortedByDescending(::detectionPriority)) {
-            val candidateBounds = candidate.poseBounds() ?: continue
-            val overlapsExisting = kept.any { existing ->
-                val existingBounds = existing.poseBounds() ?: return@any false
-                existingBounds.iou(candidateBounds) > 0.45f ||
-                    poseCenterDistance(existingBounds, candidateBounds) < 0.08f
-            }
-
-            if (!overlapsExisting) {
-                kept += candidate
-            }
-        }
-
-        return kept
-    }
-
-    private fun detectionPriority(landmarks: List<Float>): Float {
-        val bounds = landmarks.poseBounds() ?: return 0f
-        return bounds.area * max(landmarks.averageVisibility(), 0.1f)
-    }
-
-    private fun poseCenterDistance(first: PoseBounds, second: PoseBounds): Float {
-        val dx = first.centerX - second.centerX
-        val dy = first.centerY - second.centerY
-        return kotlin.math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
     }
 
     private fun brightenBitmap(src: Bitmap, factor: Float = 1.25f): Bitmap {
