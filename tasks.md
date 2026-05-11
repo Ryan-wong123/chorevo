@@ -49,15 +49,15 @@ Legend:
 
 ## Phase 4: YOLO Person Detection
 
-- [ ] Choose exactly one first implementation target: TensorFlow Lite, ONNX Runtime Mobile, or NCNN.
-- [ ] Add the required Gradle dependency only after confirming compatibility with the current Android SDK/min SDK.
-- [ ] Add model asset loading from `app/src/main/assets`.
-- [ ] Implement YOLO input preprocessing: resize, normalize, and tensor conversion.
-- [ ] Implement YOLO output parsing for person class boxes.
-- [ ] Implement confidence filtering.
-- [ ] Implement non-maximum suppression / IoU duplicate removal.
-- [ ] Add detector unit tests for output parsing using fake model outputs.
-- [ ] Add safe logging without exposing private media URLs or file paths.
+- [x] Choose exactly one first implementation target: TensorFlow Lite, ONNX Runtime Mobile, or NCNN.
+- [x] Add the required Gradle dependency only after confirming compatibility with the current Android SDK/min SDK.
+- [x] Add model asset loading from `app/src/main/assets`.
+- [x] Implement YOLO input preprocessing: resize, normalize, and tensor conversion.
+- [x] Implement YOLO output parsing for person class boxes.
+- [x] Implement confidence filtering.
+- [x] Implement non-maximum suppression / IoU duplicate removal.
+- [x] Add detector unit tests for output parsing using fake model outputs.
+- [x] Add safe logging without exposing private media URLs or file paths.
 
 ## Phase 5: Dancer Tracking
 
