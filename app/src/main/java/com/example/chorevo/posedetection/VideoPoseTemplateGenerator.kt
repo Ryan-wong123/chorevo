@@ -39,6 +39,7 @@ object VideoPoseTemplateGenerator {
         maxDurationMs: Long = 120_000L, // safety cap: 2 minutes
         profile: GenerationProfile = GenerationProfile.STANDARD,
         framePreprocessorConfig: FramePreprocessorConfig = FramePreprocessorConfig(),
+        personDetectorConfig: PersonDetectorConfig = PersonDetectorConfig.disabled(),
         onProgress: ((Float) -> Unit)? = null
     ): Result<PoseTemplate> {
         return withContext(Dispatchers.Default) {
@@ -51,6 +52,18 @@ object VideoPoseTemplateGenerator {
                 NoOpFramePreprocessor
             }
             val analysisWarnings = linkedMapOf<String, PoseAnalysisWarning>()
+            val personDetectorInitialization = if (highRecall) {
+                PersonDetectorFactory.create(
+                    context = context,
+                    config = personDetectorConfig
+                )
+            } else {
+                PersonDetectorInitialization(detector = NoOpPersonDetector())
+            }
+            personDetectorInitialization.warning?.let { warning ->
+                analysisWarnings.putIfAbsent(warning.code, warning)
+            }
+            val personDetector = personDetectorInitialization.detector
 
             //  use VIDEO mode helper for video template generation
             val helper = PoseLandmarkerHelper(
@@ -115,6 +128,23 @@ object VideoPoseTemplateGenerator {
                         processedFrame.warnings.forEach { warning ->
                             analysisWarnings.putIfAbsent(warning.code, warning)
                         }
+                        val personDetections = runCatching {
+                            PoseDetectionMerger.mergeDuplicateDetections(
+                                personDetector.detect(processedBmp, tMs)
+                            )
+                        }.getOrElse {
+                            analysisWarnings.putIfAbsent(
+                                PersonDetectorFactory.WARNING_PERSON_DETECTOR_UNAVAILABLE,
+                                PoseAnalysisWarning(
+                                    code = PersonDetectorFactory.WARNING_PERSON_DETECTOR_UNAVAILABLE,
+                                    message = "Person detector failed during upload analysis"
+                                )
+                            )
+                            emptyList()
+                        }
+                        if (personDetections.isNotEmpty()) {
+                            // Future detector/tracker phases will route these boxes into crop pose estimation.
+                        }
 
                         // VIDEO running mode requires timestamped detect
                         val fullFrameDetections = helper.detectForVideo(processedBmp, tMs)
@@ -163,6 +193,10 @@ object VideoPoseTemplateGenerator {
                 }
                 try {
                     cropHelper?.close()
+                } catch (_: Exception) {
+                }
+                try {
+                    personDetector.close()
                 } catch (_: Exception) {
                 }
             }

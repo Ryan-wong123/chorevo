@@ -26,10 +26,10 @@ object PoseDetectionMerger {
         return kept
     }
 
-    fun mergeDuplicateDetections(detections: List<DancerDetection>): List<DancerDetection> {
-        val kept = mutableListOf<DancerDetection>()
+    fun mergeDuplicateDetections(detections: List<DetectionBox>): List<DetectionBox> {
+        val kept = mutableListOf<DetectionBox>()
 
-        for (candidate in detections.sortedByDescending { it.bounds.area * max(it.confidence, 0.1f) }) {
+        for (candidate in detections.sortedByDescending { it.area * max(it.confidence, 0.1f) }) {
             val overlapsExisting = kept.any { existing ->
                 existing.bounds.iou(candidate.bounds) > DUPLICATE_IOU_THRESHOLD ||
                     centerDistance(existing.bounds, candidate.bounds) < DUPLICATE_CENTER_DISTANCE

@@ -39,12 +39,13 @@ Legend:
 
 ## Phase 3: Person Detection Interface
 
-- [ ] Add `DetectionBox` model with normalized coordinates, confidence, label, class ID, and source.
-- [ ] Add `PersonDetector : AutoCloseable` interface.
-- [ ] Add a `NoOpPersonDetector` or fallback implementation for tests and missing-model cases.
-- [ ] Add model asset availability checks before initializing the real detector.
-- [ ] Fail gracefully and fall back to MediaPipe-only high-recall logic if detector initialization fails.
-- [ ] Keep detector runtime dependency isolated from live practice code.
+- [x] Add `DetectionBox` model with normalized coordinates, confidence, label, class ID, and source.
+- [x] Add `PersonDetector : AutoCloseable` interface.
+- [x] Add a `NoOpPersonDetector` or fallback implementation for tests and missing-model cases.
+- [x] Add model asset availability checks before initializing the real detector.
+- [x] Fail gracefully and fall back to MediaPipe-only high-recall logic if detector initialization fails.
+- [x] Keep detector runtime dependency isolated from live practice code.
+- [x] Add focused JVM unit tests for config/model availability/fallback behavior where possible.
 
 ## Phase 4: YOLO Person Detection
 

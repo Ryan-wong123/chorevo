@@ -6,21 +6,114 @@ enum class DetectionSource {
     MediaPipeFullFrame,
     MediaPipeCrop,
     Yolo,
+    NoOp,
     Unknown
+}
+
+data class DetectionBox(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+    val confidence: Float,
+    val label: String = PERSON_LABEL,
+    val classId: Int = PERSON_CLASS_ID,
+    val source: DetectionSource = DetectionSource.Unknown
+) {
+    val width: Float
+        get() = (right - left).coerceAtLeast(0f)
+
+    val height: Float
+        get() = (bottom - top).coerceAtLeast(0f)
+
+    val area: Float
+        get() = width * height
+
+    val bounds: PoseBounds
+        get() = PoseBounds(left = left, top = top, right = right, bottom = bottom)
+
+    fun toDancerDetection(): DancerDetection {
+        return DancerDetection(
+            bounds = bounds,
+            confidence = confidence,
+            classId = classId,
+            label = label,
+            source = source
+        )
+    }
+
+    companion object {
+        const val PERSON_CLASS_ID = 0
+        const val PERSON_LABEL = "person"
+
+        fun normalized(
+            left: Float,
+            top: Float,
+            right: Float,
+            bottom: Float,
+            confidence: Float,
+            label: String = PERSON_LABEL,
+            classId: Int = PERSON_CLASS_ID,
+            source: DetectionSource = DetectionSource.Unknown
+        ): DetectionBox {
+            val clampedLeft = left.coerceIn(0f, 1f)
+            val clampedTop = top.coerceIn(0f, 1f)
+            val clampedRight = right.coerceIn(0f, 1f)
+            val clampedBottom = bottom.coerceIn(0f, 1f)
+            return DetectionBox(
+                left = minOf(clampedLeft, clampedRight),
+                top = minOf(clampedTop, clampedBottom),
+                right = maxOf(clampedLeft, clampedRight),
+                bottom = maxOf(clampedTop, clampedBottom),
+                confidence = confidence.coerceIn(0f, 1f),
+                label = label,
+                classId = classId,
+                source = source
+            )
+        }
+    }
 }
 
 data class DancerDetection(
     val bounds: PoseBounds,
     val confidence: Float,
-    val classId: Int = PERSON_CLASS_ID,
-    val label: String = PERSON_LABEL,
+    val classId: Int = DetectionBox.PERSON_CLASS_ID,
+    val label: String = DetectionBox.PERSON_LABEL,
     val source: DetectionSource = DetectionSource.Unknown
 ) {
-    companion object {
-        const val PERSON_CLASS_ID = 0
-        const val PERSON_LABEL = "person"
+    fun toDetectionBox(): DetectionBox {
+        return DetectionBox.normalized(
+            left = bounds.left,
+            top = bounds.top,
+            right = bounds.right,
+            bottom = bounds.bottom,
+            confidence = confidence,
+            label = label,
+            classId = classId,
+            source = source
+        )
     }
 }
+
+data class PersonDetectorConfig(
+    val enabled: Boolean = false,
+    val modelAssetPath: String = DEFAULT_MODEL_ASSET,
+    val minConfidence: Float = DEFAULT_MIN_CONFIDENCE
+) {
+    companion object {
+        const val DEFAULT_MODEL_ASSET = "person_detector_yolo.tflite"
+        const val DEFAULT_MIN_CONFIDENCE = 0.25f
+
+        fun disabled(): PersonDetectorConfig {
+            return PersonDetectorConfig(enabled = false)
+        }
+    }
+}
+
+data class PersonDetectorInitialization(
+    val detector: PersonDetector,
+    val warning: PoseAnalysisWarning? = null
+)
 
 enum class TrackState {
     Visible,

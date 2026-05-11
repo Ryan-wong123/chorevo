@@ -3,7 +3,7 @@ package com.example.chorevo.posedetection
 import android.graphics.Bitmap
 
 interface PersonDetector : AutoCloseable {
-    suspend fun detect(frame: Bitmap, timestampMs: Long): List<DancerDetection>
+    suspend fun detect(frame: Bitmap, timestampMs: Long): List<DetectionBox>
 }
 
 interface DancerTracker {
@@ -34,8 +34,7 @@ interface PoseTemplateRepository {
 }
 
 class NoOpPersonDetector : PersonDetector {
-    override suspend fun detect(frame: Bitmap, timestampMs: Long): List<DancerDetection> {
-        // TODO: Replace with YOLO-backed person detection in the detector phase.
+    override suspend fun detect(frame: Bitmap, timestampMs: Long): List<DetectionBox> {
         return emptyList()
     }
 

@@ -40,7 +40,7 @@ class PoseDetectionMergerTest {
     fun mergeDuplicateDetections_returnsEmptyForNoOpDetectorFallbackData() {
         val merged = PoseDetectionMerger.mergeDuplicateDetections(emptyList())
 
-        assertEquals(emptyList<DancerDetection>(), merged)
+        assertEquals(emptyList<DetectionBox>(), merged)
     }
 
     private fun samplePose(
