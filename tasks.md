@@ -61,14 +61,14 @@ Legend:
 
 ## Phase 5: Dancer Tracking
 
-- [ ] Add `TrackedDancerBox` model with track ID, frame index, timestamp, bbox, state, and confidence.
-- [ ] Add `TrackState` enum: `Visible`, `TemporarilyLost`, `Recovered`, `Ended`.
-- [ ] Add `DancerTracker` interface.
-- [ ] Implement ByteTrack-style tracking or an adapter around an existing tracker implementation.
-- [ ] Match active tracks first, then recent lost tracks, before creating new IDs.
-- [ ] Keep lost tracks alive for short occlusions.
-- [ ] Add tests for ID stability when detections disappear and reappear.
-- [ ] Add tests for duplicate prevention when one dancer is detected by overlapping boxes.
+- [x] Add `TrackedDancerBox` model with track ID, frame index, timestamp, bbox, state, and confidence.
+- [x] Add `TrackState` enum: `Visible`, `TemporarilyLost`, `Recovered`, `Ended`.
+- [x] Add `DancerTracker` interface.
+- [x] Implement ByteTrack-style tracking or an adapter around an existing tracker implementation.
+- [x] Match active tracks first, then recent lost tracks, before creating new IDs.
+- [x] Keep lost tracks alive for short occlusions.
+- [x] Add tests for ID stability when detections disappear and reappear.
+- [x] Add tests for duplicate prevention when one dancer is detected by overlapping boxes.
 
 ## Phase 6: Per-Dancer Crop MediaPipe Estimation
 

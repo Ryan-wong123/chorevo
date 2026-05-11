@@ -139,10 +139,29 @@ data class TrackedDancerBox(
     val trackId: String,
     val frameIndex: Int,
     val timestampMs: Long,
-    val bounds: PoseBounds,
+    val box: DetectionBox,
     val state: TrackState,
     val confidence: Float
-)
+) {
+    val bounds: PoseBounds
+        get() = box.bounds
+}
+
+data class DancerTrackerConfig(
+    val iouMatchThreshold: Float = DEFAULT_IOU_MATCH_THRESHOLD,
+    val lowConfidenceThreshold: Float = DEFAULT_LOW_CONFIDENCE_THRESHOLD,
+    val highConfidenceThreshold: Float = DEFAULT_HIGH_CONFIDENCE_THRESHOLD,
+    val maxMissedFrames: Int = DEFAULT_MAX_MISSED_FRAMES,
+    val maxTracks: Int = DEFAULT_MAX_TRACKS
+) {
+    companion object {
+        const val DEFAULT_IOU_MATCH_THRESHOLD = 0.30f
+        const val DEFAULT_LOW_CONFIDENCE_THRESHOLD = 0.10f
+        const val DEFAULT_HIGH_CONFIDENCE_THRESHOLD = 0.50f
+        const val DEFAULT_MAX_MISSED_FRAMES = 24
+        const val DEFAULT_MAX_TRACKS = 8
+    }
+}
 
 data class DancerTrack(
     val trackId: String,
