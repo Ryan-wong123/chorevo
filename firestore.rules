@@ -1,0 +1,109 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function hasValidAnalysis(data) {
+      return data.analysis is map
+        && data.analysis.danceId is string
+        && data.analysis.educatorUid is string;
+    }
+
+    function linkedDanceExists(data) {
+      return hasValidAnalysis(data)
+        && exists(/databases/$(database)/documents/danceLibrary/$(data.analysis.danceId));
+    }
+
+    function linkedDanceOwner(data) {
+      return get(/databases/$(database)/documents/danceLibrary/$(data.analysis.danceId)).data.educatorUid;
+    }
+
+    function validSessionWrite(data) {
+      return linkedDanceExists(data)
+        && linkedDanceOwner(data) == data.analysis.educatorUid;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || (signedIn() && request.auth.uid != uid);
+      allow create, update: if isOwner(uid);
+      allow delete: if false;
+
+      match /points/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /achievements/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /streak/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /streaks/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /friends/{friendUid} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /danceLearningSessions/{sessionId} {
+        allow read: if isOwner(uid) || (
+          signedIn()
+          && resource.data.analysis is map
+          && resource.data.analysis.educatorUid is string
+          && resource.data.analysis.educatorUid == request.auth.uid
+        );
+
+        allow create: if isOwner(uid)
+          && validSessionWrite(request.resource.data);
+
+        allow update: if isOwner(uid)
+          && validSessionWrite(request.resource.data)
+          && resource.data.analysis is map
+          && request.resource.data.analysis is map
+          && request.resource.data.analysis.danceId == resource.data.analysis.danceId
+          && request.resource.data.analysis.educatorUid == resource.data.analysis.educatorUid;
+
+        allow delete: if false;
+      }
+    }
+
+    match /{path=**}/danceLearningSessions/{sessionId} {
+      allow read: if signedIn()
+        && resource.data.analysis is map
+        && resource.data.analysis.educatorUid is string
+        && resource.data.analysis.educatorUid == request.auth.uid;
+    }
+
+    match /danceLibrary/{danceId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.educatorUid == request.auth.uid
+        && request.resource.data.danceId == danceId;
+
+      allow update: if signedIn()
+        && resource.data.educatorUid == request.auth.uid
+        && request.resource.data.educatorUid == resource.data.educatorUid
+        && request.resource.data.danceId == resource.data.danceId;
+
+      allow delete: if signedIn()
+        && resource.data.educatorUid == request.auth.uid;
+    }
+
+    match /leaderboardStats/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+  }
+}

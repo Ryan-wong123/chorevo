@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
+import com.example.chorevo.posedetection.PersonDetectorConfig
+import com.example.chorevo.posedetection.PoseTemplate
+import com.example.chorevo.posedetection.VideoPoseTemplateGenerator
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,7 +51,8 @@ class VideoUploadsViewModel @Inject constructor(
                     uploadDraft = state.uploadDraft.copy(
                         selectedVideoUri = initialVideoUri,
                         selectedVideoLabel = initialVideoUri.lastPathSegment
-                    )
+                    ),
+                    dancerReview = DancerReviewUiState()
                 )
             }
         }
@@ -87,7 +91,8 @@ class VideoUploadsViewModel @Inject constructor(
                 uploadDraft = it.uploadDraft.copy(
                     selectedVideoUri = uri,
                     selectedVideoLabel = uri.lastPathSegment ?: "Gallery video"
-                )
+                ),
+                dancerReview = DancerReviewUiState()
             )
         }
     }
@@ -100,9 +105,143 @@ class VideoUploadsViewModel @Inject constructor(
                 uploadDraft = it.uploadDraft.copy(
                     selectedVideoUri = uri,
                     selectedVideoLabel = "Live recording"
+                ),
+                dancerReview = DancerReviewUiState()
+            )
+        }
+    }
+
+    /** Runs high-recall pose analysis so the uploader can confirm dancer tracks before upload. */
+    fun analyzeDancers(context: Context, fps: Int = 8) {
+        val videoUri = _uiState.value.uploadDraft.selectedVideoUri ?: return
+
+        viewModelScope.launch {
+            mutate {
+                it.copy(
+                    dancerReview = DancerReviewUiState(
+                        isAnalyzing = true,
+                        progress = 0f
+                    ),
+                    statusMessage = null
+                )
+            }
+
+            val result = VideoPoseTemplateGenerator.generate(
+                context = context,
+                videoUriString = videoUri.toString(),
+                fps = fps,
+                profile = VideoPoseTemplateGenerator.GenerationProfile.HIGH_RECALL,
+                personDetectorConfig = PersonDetectorConfig(enabled = true),
+                onProgress = { progress ->
+                    mutate { state ->
+                        state.copy(
+                            dancerReview = state.dancerReview.copy(progress = progress)
+                        )
+                    }
+                }
+            )
+
+            result.fold(
+                onSuccess = { template ->
+                    val tracks = template.availableTracks()
+                    val selectableTrackIds = template.selectableTrackIds()
+                    val selectedTrackIds = tracks
+                        .map { track -> track.trackId }
+                        .filter { trackId -> trackId in selectableTrackIds }
+                        .toSet()
+                    val defaultTrackId = template.resolveUploadDefaultTrackId(selectedTrackIds)
+                    mutate {
+                        it.copy(
+                            dancerReview = DancerReviewUiState(
+                                template = template,
+                                detectedDancerCount = tracks.size,
+                                selectedTrackIds = selectedTrackIds,
+                                defaultTrackId = defaultTrackId
+                            )
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    mutate {
+                        it.copy(
+                            dancerReview = DancerReviewUiState(
+                                errorMessage = error.message ?: "Unable to detect dancers in this video"
+                            )
+                        )
+                    }
+                }
+            )
+        }
+    }
+
+    /** Includes or excludes one detected dancer from the confirmed upload template. */
+    fun toggleDetectedDancer(trackId: String) {
+        mutate { state ->
+            val review = state.dancerReview
+            if (review.template == null || review.confirmed) return@mutate state
+            val selected = review.selectedTrackIds.toMutableSet()
+            if (!selected.add(trackId)) {
+                selected.remove(trackId)
+            }
+            val nextDefaultTrackId = review.defaultTrackId
+                ?.takeIf { it in selected }
+                ?: review.template.resolveUploadDefaultTrackId(selected)
+            state.copy(
+                dancerReview = review.copy(
+                    selectedTrackIds = selected,
+                    defaultTrackId = nextDefaultTrackId,
+                    errorMessage = null
                 )
             )
         }
+    }
+
+    /** Marks the selected detected dancer as the default reference track for learners. */
+    fun selectDefaultDancerTrack(trackId: String) {
+        mutate { state ->
+            val review = state.dancerReview
+            if (review.template == null || review.confirmed || trackId !in review.selectedTrackIds) {
+                return@mutate state
+            }
+            state.copy(dancerReview = review.copy(defaultTrackId = trackId, errorMessage = null))
+        }
+    }
+
+    /** Confirms that the selected AI tracks are the dancer options learners should see. */
+    fun confirmDancerReview() {
+        mutate { state ->
+            val review = state.dancerReview
+            if (!review.canConfirm) return@mutate state
+            val selectableTrackIds = review.template?.selectableTrackIds().orEmpty()
+            val selectedTrackIds = review.selectedTrackIds.intersect(selectableTrackIds)
+            if (selectedTrackIds.isEmpty()) {
+                return@mutate state.copy(
+                    dancerReview = review.copy(
+                        errorMessage = "Select at least one dancer before confirming."
+                    )
+                )
+            }
+            val defaultTrackId = review.defaultTrackId?.takeIf { it in selectedTrackIds }
+            if (defaultTrackId == null) {
+                return@mutate state.copy(
+                    dancerReview = review.copy(
+                        errorMessage = "Choose the default dancer track before confirming."
+                    )
+                )
+            }
+            state.copy(
+                dancerReview = review.copy(
+                    selectedTrackIds = selectedTrackIds,
+                    defaultTrackId = defaultTrackId,
+                    confirmed = true,
+                    errorMessage = null
+                )
+            )
+        }
+    }
+
+    fun clearDancerReview() {
+        mutate { it.copy(dancerReview = DancerReviewUiState()) }
     }
 
     /** Refreshes my uploads. */
@@ -260,8 +399,25 @@ class VideoUploadsViewModel @Inject constructor(
         continueWithoutTemplateOnFailure: Boolean = true
     ) {
         val draft = _uiState.value.uploadDraft
+        val dancerReview = _uiState.value.dancerReview
         val videoUri = draft.selectedVideoUri ?: return
         if (!draft.canUpload) return
+        if (!dancerReview.confirmed && !generateTemplate) {
+            mutate { it.copy(statusMessage = "Analyze and confirm the dancer options before uploading.") }
+            return
+        }
+
+        val confirmedTemplate = if (dancerReview.confirmed) {
+            dancerReview.template?.confirmedTemplate(
+                selectedTrackIds = dancerReview.selectedTrackIds,
+                defaultTrackId = dancerReview.defaultTrackId
+            ) ?: run {
+                mutate { it.copy(statusMessage = "Confirmed dancer template is unavailable.") }
+                return
+            }
+        } else {
+            null
+        }
 
         viewModelScope.launch {
             mutate {
@@ -295,6 +451,7 @@ class VideoUploadsViewModel @Inject constructor(
                     description = draft.description,
                     videoUri = videoUri,
                     generateTemplate = generateTemplate,
+                    confirmedTemplate = confirmedTemplate,
                     fps = fps,
                     onProgress = { progress ->
                         mutate { s -> s.copy(uploadProgress = progress) }
@@ -312,8 +469,11 @@ class VideoUploadsViewModel @Inject constructor(
                     onSuccess = {
                         mutate {
                             it.copy(
-                                statusMessage = "Uploaded. Template generation continues in the background.",
+                                statusMessage = confirmedTemplate?.let { template ->
+                                    "Uploaded with ${template.availableTracks().size} confirmed dancer option(s)."
+                                } ?: "Uploaded. Template generation continues in the background.",
                                 uploadDraft = UploadDraft(),
+                                dancerReview = DancerReviewUiState(),
                                 showVideoSourceDialog = false
                             )
                         }
@@ -327,5 +487,47 @@ class VideoUploadsViewModel @Inject constructor(
                 mutate { it.copy(saving = false, uploadProgress = null, uploadStageLabel = null) }
             }
         }
+    }
+}
+
+internal fun PoseTemplate.confirmedTemplate(
+    selectedTrackIds: Set<String>,
+    defaultTrackId: String?
+): PoseTemplate {
+    val selectableTrackIds = selectableTrackIds()
+    val allowedTrackIds = selectedTrackIds.intersect(selectableTrackIds)
+    val selectedTracks = availableTracks()
+        .filter { it.trackId in allowedTrackIds }
+        .mapIndexed { index, track -> track.copy(label = "Dancer ${index + 1}") }
+
+    val defaultTrack = selectedTracks.firstOrNull { it.trackId == defaultTrackId }
+        ?: selectedTracks.firstOrNull()
+    val selectedIds = selectedTracks.map { it.trackId }.toSet()
+    val filteredPreview = selectionPreview?.copy(
+        candidates = selectionPreview.candidates.filter { it.trackId in selectedIds }
+    )
+
+    return copy(
+        frames = defaultTrack?.frames.orEmpty(),
+        tracks = selectedTracks,
+        defaultTrackId = defaultTrack?.trackId,
+        selectionPreview = filteredPreview
+    )
+}
+
+private fun PoseTemplate.resolveUploadDefaultTrackId(selectedTrackIds: Set<String>): String? {
+    return defaultTrackId?.takeIf { it in selectedTrackIds }
+        ?: resolveTrack(null)?.trackId?.takeIf { it in selectedTrackIds }
+        ?: availableTracks().firstOrNull { it.trackId in selectedTrackIds }?.trackId
+}
+
+private fun PoseTemplate.selectableTrackIds(): Set<String> {
+    val previewableTrackIds = selectionPreview
+        ?.candidates
+        .orEmpty()
+        .map { it.trackId }
+        .toSet()
+    return previewableTrackIds.ifEmpty {
+        availableTracks().map { it.trackId }.toSet()
     }
 }

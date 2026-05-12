@@ -102,6 +102,7 @@ dependencies {
 
     // --- MediaPipe ---
     implementation(libs.mediapipe.tasks.vision)
+    implementation(libs.tensorflow.lite)
 
     implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)

@@ -1,5 +1,8 @@
 package com.example.chorevo.videouploads
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +34,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.AlertDialog
@@ -39,6 +44,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -54,13 +60,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -68,7 +77,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.chorevo.posedetection.PoseBounds
+import com.example.chorevo.posedetection.PoseSelectionPreview
+import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Displays the video upload activity screen. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -197,6 +211,28 @@ fun VideoUploadActivityScreen(
                 )
             }
 
+            uploadDraft.selectedVideoUri?.let { selectedVideoUri ->
+                DancerReviewPanel(
+                    videoUri = selectedVideoUri,
+                    tracks = uiState.dancerReview.template?.availableTracks().orEmpty(),
+                    detectedDancerCount = uiState.dancerReview.detectedCount,
+                    selectionPreview = uiState.dancerReview.template?.selectionPreview,
+                    selectedTrackIds = uiState.dancerReview.selectedTrackIds,
+                    defaultTrackId = uiState.dancerReview.defaultTrackId,
+                    confirmed = uiState.dancerReview.confirmed,
+                    isAnalyzing = uiState.dancerReview.isAnalyzing,
+                    progress = uiState.dancerReview.progress,
+                    errorMessage = uiState.dancerReview.errorMessage,
+                    warningMessages = uiState.dancerReview.warningMessages,
+                    brandTeal = brandTeal,
+                    onAnalyze = { videoUploadVm.analyzeDancers(context = context, fps = 8) },
+                    onToggleTrack = videoUploadVm::toggleDetectedDancer,
+                    onSelectDefaultTrack = videoUploadVm::selectDefaultDancerTrack,
+                    onConfirm = videoUploadVm::confirmDancerReview,
+                    onReset = videoUploadVm::clearDancerReview
+                )
+            }
+
             AnimatedVisibility(visible = uploading, enter = fadeIn(), exit = fadeOut()) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val p = uiState.uploadProgress
@@ -275,11 +311,11 @@ fun VideoUploadActivityScreen(
             Spacer(Modifier.height(4.dp))
 
             Button(
-                enabled = !uploading && uploadDraft.canUpload,
+                enabled = !uploading && uploadDraft.canUpload && uiState.dancerReview.confirmed,
                 onClick = {
                     videoUploadVm.uploadDance(
                         context = context,
-                        generateTemplate = true,
+                        generateTemplate = false,
                         fps = 15,
                         continueWithoutTemplateOnFailure = true
                     )
@@ -304,7 +340,27 @@ fun VideoUploadActivityScreen(
                         Text("Uploading...", style = MaterialTheme.typography.titleMedium)
                     }
                 } else {
-                    Text("Upload Dance", style = MaterialTheme.typography.titleMedium)
+                    Text("Upload Confirmed Dance", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+
+            if (!uiState.dancerReview.confirmed) {
+                TextButton(
+                    enabled = !uploading &&
+                            uploadDraft.canUpload &&
+                            !uiState.dancerReview.isAnalyzing,
+                    onClick = {
+                        videoUploadVm.uploadDance(
+                            context = context,
+                            generateTemplate = true,
+                            fps = 8,
+                            continueWithoutTemplateOnFailure = true
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
+                ) {
+                    Text("Upload and analyze in background")
                 }
             }
         }
@@ -451,6 +507,311 @@ private fun VideoPicker(
             }
         }
     }
+}
+
+@Composable
+private fun DancerReviewPanel(
+    videoUri: Uri,
+    tracks: List<PoseTrack>,
+    detectedDancerCount: Int,
+    selectionPreview: PoseSelectionPreview?,
+    selectedTrackIds: Set<String>,
+    defaultTrackId: String?,
+    confirmed: Boolean,
+    isAnalyzing: Boolean,
+    progress: Float?,
+    errorMessage: String?,
+    warningMessages: List<String>,
+    brandTeal: Color,
+    onAnalyze: () -> Unit,
+    onToggleTrack: (String) -> Unit,
+    onSelectDefaultTrack: (String) -> Unit,
+    onConfirm: () -> Unit,
+    onReset: () -> Unit
+) {
+    val context = LocalContext.current
+    val thumbnails by produceState<Map<String, Bitmap>>(
+        initialValue = emptyMap(),
+        videoUri,
+        selectionPreview
+    ) {
+        value = loadUploadTrackThumbnails(context, videoUri, selectionPreview)
+    }
+    val previewableTracks = remember(tracks, thumbnails) {
+        tracks.filter { track -> thumbnails.isEmpty() || thumbnails.containsKey(track.trackId) }
+    }
+    val previewableSelectedTrackIds = selectedTrackIds.intersect(
+        previewableTracks.map { it.trackId }.toSet()
+    )
+
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (confirmed) brandTeal.copy(alpha = 0.08f)
+            else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Dancer Review",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = when {
+                            confirmed -> "${previewableSelectedTrackIds.size} dancer option(s) confirmed"
+                            tracks.isNotEmpty() -> "${previewableTracks.size} previewable dancer(s). Select every real dancer before upload."
+                            else -> "Analyze the video before upload."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                    )
+                    if (detectedDancerCount > 0) {
+                        Text(
+                            text = "Detected $detectedDancerCount dancer(s)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                        )
+                    }
+                }
+
+                if (tracks.isNotEmpty() && !isAnalyzing) {
+                    TextButton(
+                        onClick = onReset,
+                        colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
+                    ) {
+                        Text("Redo")
+                    }
+                }
+            }
+
+            if (isAnalyzing) {
+                LinearProgressIndicator(
+                    progress = { progress?.coerceIn(0f, 1f) ?: 0f },
+                    modifier = Modifier.fillMaxWidth(),
+                    color = brandTeal,
+                    trackColor = brandTeal.copy(alpha = 0.2f)
+                )
+                Text(
+                    text = "Finding dancers with high-recall analysis...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+            } else if (tracks.isEmpty()) {
+                Button(
+                    onClick = onAnalyze,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = brandTeal,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text("Analyze Dancers")
+                }
+            } else if (previewableTracks.isEmpty()) {
+                Text(
+                    text = "No previewable dancer tracks were found. Redo analysis or choose another video.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    previewableTracks.forEach { track ->
+                        DancerTrackRow(
+                            track = track,
+                            thumbnail = thumbnails[track.trackId],
+                            selected = track.trackId in selectedTrackIds,
+                            isDefault = track.trackId == defaultTrackId,
+                            enabled = !confirmed,
+                            brandTeal = brandTeal,
+                            onClick = { onToggleTrack(track.trackId) },
+                            onSelectDefault = { onSelectDefaultTrack(track.trackId) }
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    FilterChip(
+                        selected = confirmed,
+                        enabled = false,
+                        onClick = {},
+                        label = {
+                            Text(if (confirmed) "Confirmed" else "${previewableSelectedTrackIds.size} selected")
+                        }
+                    )
+                    Button(
+                        onClick = onConfirm,
+                        enabled = previewableSelectedTrackIds.isNotEmpty() && !confirmed,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = brandTeal,
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Text("Confirm Dancers")
+                    }
+                }
+            }
+
+            errorMessage?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            warningMessages.forEach { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DancerTrackRow(
+    track: PoseTrack,
+    thumbnail: Bitmap?,
+    selected: Boolean,
+    isDefault: Boolean,
+    enabled: Boolean,
+    brandTeal: Color,
+    onClick: () -> Unit,
+    onSelectDefault: () -> Unit
+) {
+    val borderColor = if (selected) brandTeal else MaterialTheme.colorScheme.outlineVariant
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surface)
+            .border(1.5.dp, borderColor, RoundedCornerShape(14.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 58.dp, height = 76.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(brandTeal.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (thumbnail != null) {
+                Image(
+                    bitmap = thumbnail.asImageBitmap(),
+                    contentDescription = track.label,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Outlined.VideoFile,
+                    contentDescription = null,
+                    tint = brandTeal,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "${track.frames.size} frames - visibility ${(track.avgVisibility * 100).toInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (isDefault) {
+                Text(
+                    text = "Default dancer",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = brandTeal,
+                    maxLines = 1
+                )
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(
+                imageVector = Icons.Outlined.Star,
+                contentDescription = null,
+                tint = if (isDefault) brandTeal else MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier
+                    .size(22.dp)
+                    .clickable(enabled = enabled && selected, onClick = onSelectDefault)
+            )
+            Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = if (selected) brandTeal else MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+private suspend fun loadUploadTrackThumbnails(
+    context: Context,
+    videoUri: Uri,
+    selectionPreview: PoseSelectionPreview?
+): Map<String, Bitmap> = withContext(Dispatchers.IO) {
+    if (selectionPreview == null || selectionPreview.candidates.isEmpty()) {
+        return@withContext emptyMap()
+    }
+
+    val retriever = MediaMetadataRetriever()
+    return@withContext try {
+        retriever.setDataSource(context, videoUri)
+        val frame = retriever.getFrameAtTime(
+            selectionPreview.timeMs * 1000L,
+            MediaMetadataRetriever.OPTION_CLOSEST
+        ) ?: return@withContext emptyMap()
+
+        selectionPreview.candidates.associate { candidate ->
+            candidate.trackId to cropUploadThumbnail(frame, candidate.bounds)
+        }
+    } catch (_: Exception) {
+        emptyMap()
+    } finally {
+        runCatching { retriever.release() }
+    }
+}
+
+private fun cropUploadThumbnail(source: Bitmap, bounds: PoseBounds): Bitmap {
+    val left = (bounds.left * source.width).toInt().coerceIn(0, source.width - 1)
+    val top = (bounds.top * source.height).toInt().coerceIn(0, source.height - 1)
+    val right = (bounds.right * source.width).toInt().coerceIn(left + 1, source.width)
+    val bottom = (bounds.bottom * source.height).toInt().coerceIn(top + 1, source.height)
+
+    val cropped = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
+    return Bitmap.createScaledBitmap(cropped, 160, 220, true)
 }
 
 /** Displays the source picker for upload videos. */
