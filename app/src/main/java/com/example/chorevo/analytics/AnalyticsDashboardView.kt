@@ -1,6 +1,5 @@
 package com.example.chorevo.analytics
 
-import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -30,11 +29,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.PlayerView
+import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.analytics.viewmodel.AnalyticsDashboardViewModel
 import com.example.chorevo.ui.theme.SegmentColors
 import kotlinx.coroutines.delay
@@ -357,6 +355,7 @@ fun SessionDetailPanel(
         ExoPlayer.Builder(context).build().apply { playWhenReady = false }
     }
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
+    var isMirrored by rememberSaveable(summary.sessionId) { mutableStateOf(false) }
 
     LaunchedEffect(analysis?.videoUrl) {
         val url = analysis?.videoUrl
@@ -412,19 +411,21 @@ fun SessionDetailPanel(
         // UNCHANGED structure, just kept as-is
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
-                Text("Template Video", style = MaterialTheme.typography.titleSmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Template Video", style = MaterialTheme.typography.titleSmall)
+                    TextButton(onClick = { isMirrored = !isMirrored }) {
+                        Text(if (isMirrored) "Mirror On" else "Mirror Off")
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
-                AndroidView(
-                    factory = {
-                        PlayerView(it).apply {
-                            player = exoPlayer
-                            layoutParams = ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.WRAP_CONTENT
-                            )
-                            useController = true
-                        }
-                    },
+                SharedPlayerView(
+                    exoPlayer = exoPlayer,
+                    useController = true,
+                    isMirrored = isMirrored,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(220.dp)

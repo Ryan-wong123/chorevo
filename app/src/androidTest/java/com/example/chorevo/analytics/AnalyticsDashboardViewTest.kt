@@ -104,6 +104,7 @@ class AnalyticsDashboardViewTest {
         waitForTextExists("Template Video")
         waitForTextExists("Performance Segments")
         waitForTextExists("Alignment Timeline")
+        waitForTextExists("Mirror Off")
         waitForTextExists("Alignment: 91")
         waitForTextExists("Smooth: 82")
         waitForTextExists("Timing: 73")
@@ -115,6 +116,7 @@ class AnalyticsDashboardViewTest {
         assertTextExists("Template Video")
         assertTextExists("Performance Segments")
         assertTextExists("Alignment Timeline")
+        assertTextExists("Mirror Off")
         assertTextExists("Alignment: 91")
         assertTextExists("Smooth: 82")
         assertTextExists("Timing: 73")
@@ -122,6 +124,10 @@ class AnalyticsDashboardViewTest {
         assertTextExists("99")
         assertTextExists("Pose Error")
         assertTextExists("Frames")
+
+        composeRule.onNodeWithText("Mirror Off").performClick()
+        waitForTextExists("Mirror On")
+        assertTextExists("Mirror On")
     }
 
     @Test

@@ -104,9 +104,40 @@ class DanceLibraryListViewTest {
         composeRule.onNodeWithText("Salsa Basics").assertIsDisplayed()
         composeRule.onNodeWithText("by Coach A").assertIsDisplayed()
         composeRule.onNodeWithText("Practice").assertIsDisplayed()
+        composeRule.onNodeWithText("Mirror Off").assertIsDisplayed()
 
         // Since this screen should NOT have a Back button
         composeRule.onAllNodesWithText("Back").assertCountEquals(0)
+    }
+
+    @Test
+    fun mirrorButton_togglesPlaybackLabel() {
+        val items = listOf(
+            DanceLibraryModel(
+                danceId = "d1",
+                title = "Salsa Basics",
+                educatorName = "Coach A",
+                description = "Intro to salsa",
+                videoUrl = "https://example.com/video1.mp4",
+                enabled = true
+            )
+        )
+
+        coEvery { repo.listEnabled() } returns Result.success(items)
+
+        composeRule.setContent {
+            DanceLibraryListView(
+                onPickDance = { },
+                onBack = { },
+                vm = vm,
+                uid = "uid123"
+            )
+        }
+
+        waitForTextExists("Mirror Off")
+        composeRule.onNodeWithText("Mirror Off").performClick()
+        waitForTextExists("Mirror On")
+        composeRule.onNodeWithText("Mirror On").assertIsDisplayed()
     }
 
     @Test
