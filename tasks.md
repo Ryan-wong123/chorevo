@@ -93,12 +93,12 @@ Legend:
 
 ## Phase 8: Template and Storage Compatibility
 
-- [ ] Preserve existing `PoseTemplate` fields: `fps`, legacy `frames`, `tracks`, `defaultTrackId`, and `selectionPreview`.
-- [ ] Preserve flattened landmark format: repeating `x, y, z, visibility`.
-- [ ] Add optional quality metadata only in a backward-compatible way.
-- [ ] Ensure `PoseTemplateJson` can read older templates.
-- [ ] Store generated templates under `danceTemplates/{danceId}.json` as before.
-- [ ] Keep Firestore dance metadata fields compatible with existing UI and rules.
+- [x] Preserve existing `PoseTemplate` fields: `fps`, legacy `frames`, `tracks`, `defaultTrackId`, and `selectionPreview`.
+- [x] Preserve flattened landmark format: repeating `x, y, z, visibility`.
+- [x] Add optional quality metadata only in a backward-compatible way.
+- [x] Ensure `PoseTemplateJson` can read older templates.
+- [x] Store generated templates under `danceTemplates/{danceId}.json` as before.
+- [x] Keep Firestore dance metadata fields compatible with existing UI and rules.
 
 ## Phase 9: Upload UI and Review Flow
 
