@@ -23,6 +23,13 @@ interface PoseEstimator : AutoCloseable {
     ): List<EstimatedPoseFrame>
 }
 
+interface CropPoseEstimator : AutoCloseable {
+    fun estimate(
+        frame: Bitmap,
+        trackedDancers: List<TrackedDancerBox>
+    ): CropPoseEstimationResult
+}
+
 interface FramePreprocessor {
     fun process(frame: Bitmap, timestampMs: Long): FramePreprocessorResult
 }
@@ -48,6 +55,17 @@ class NoOpPoseEstimator : PoseEstimator {
     ): List<EstimatedPoseFrame> {
         // TODO: Replace with crop-based MediaPipe pose estimation in a later phase.
         return emptyList()
+    }
+
+    override fun close() = Unit
+}
+
+class NoOpCropPoseEstimator : CropPoseEstimator {
+    override fun estimate(
+        frame: Bitmap,
+        trackedDancers: List<TrackedDancerBox>
+    ): CropPoseEstimationResult {
+        return CropPoseEstimationResult()
     }
 
     override fun close() = Unit

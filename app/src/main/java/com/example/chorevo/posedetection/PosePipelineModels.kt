@@ -175,6 +175,39 @@ data class EstimatedPoseFrame(
     val confidence: Float
 )
 
+data class CropPoseEstimatorConfig(
+    val paddingFraction: Float = DEFAULT_PADDING_FRACTION,
+    val minBoxWidth: Float = DEFAULT_MIN_BOX_WIDTH,
+    val minBoxHeight: Float = DEFAULT_MIN_BOX_HEIGHT
+) {
+    companion object {
+        const val DEFAULT_PADDING_FRACTION = 0.18f
+        const val DEFAULT_MIN_BOX_WIDTH = 0.025f
+        const val DEFAULT_MIN_BOX_HEIGHT = 0.025f
+    }
+}
+
+data class PixelCropRect(
+    val left: Int,
+    val top: Int,
+    val width: Int,
+    val height: Int
+) {
+    val right: Int
+        get() = left + width
+
+    val bottom: Int
+        get() = top + height
+
+    val isValid: Boolean
+        get() = width > 0 && height > 0
+}
+
+data class CropPoseEstimationResult(
+    val poses: List<EstimatedPoseFrame> = emptyList(),
+    val warnings: List<PoseAnalysisWarning> = emptyList()
+)
+
 data class PoseAnalysisWarning(
     val code: String,
     val message: String
