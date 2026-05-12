@@ -128,6 +128,7 @@ fun DanceARPracticeScreen(
     var latestSegments by remember { mutableStateOf<List<PerformanceSegment>>(emptyList()) }
     var status by remember { mutableStateOf<String?>(if (testMode) "Test Mode" else null) }
     var countdownSecondsRemaining by rememberSaveable(item.danceId) { mutableStateOf<Int?>(null) }
+    var showReferenceSelector by rememberSaveable(item.danceId) { mutableStateOf(true) }
 
     val template = item.template
     val availableReferenceTracks = template?.availableTracks().orEmpty()
@@ -250,9 +251,24 @@ fun DanceARPracticeScreen(
         return out
     }
 
+    fun centerPoseOnScreen(flat: List<Float>): List<Float> {
+        val bounds = flat.poseBounds(padding = 0f) ?: return flat
+        val out = flat.toMutableList()
+        val dx = 0.5f - bounds.centerX
+        val dy = 0.5f - bounds.centerY
+        val n = out.size / 4
+        for (i in 0 until n) {
+            val base = i * 4
+            out[base] = (out[base] + dx).coerceIn(0f, 1f)
+            out[base + 1] = (out[base + 1] + dy).coerceIn(0f, 1f)
+        }
+        return out
+    }
+
     fun doReset(message: String = "Reset") {
         countdownSecondsRemaining = null
         isPracticeActive = false
+        showReferenceSelector = true
         tsStart = System.currentTimeMillis()
         practiceTimeMs = 0L
         learnerLandmarks = null
@@ -272,6 +288,7 @@ fun DanceARPracticeScreen(
     fun startPracticeCountdown() {
         countdownSecondsRemaining = 3
         isPracticeActive = false
+        showReferenceSelector = false
         latestTimelinePoints = emptyList()
         latestSegments = emptyList()
         learnerLandmarks = null
@@ -302,7 +319,7 @@ fun DanceARPracticeScreen(
         }
 
         val ref = frames.minByOrNull { abs(it.tMs - practiceTimeMs) }?.landmarks
-        refLandmarksForCamera = ref?.let(::mirrorX)
+        refLandmarksForCamera = ref?.let(::mirrorX)?.let(::centerPoseOnScreen)
     }
 
     val currentPracticeTimeMs by rememberUpdatedState(practiceTimeMs)
@@ -561,7 +578,7 @@ fun DanceARPracticeScreen(
                 )
             }
 
-            if (availableReferenceTracks.size > 1) {
+            if (showReferenceSelector && availableReferenceTracks.size > 1) {
                 ReferenceDancerSelectorCard(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
