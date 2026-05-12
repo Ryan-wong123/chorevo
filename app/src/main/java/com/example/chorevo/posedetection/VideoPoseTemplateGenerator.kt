@@ -221,8 +221,15 @@ object VideoPoseTemplateGenerator {
                     ?: return@withContext Result.failure(
                         IllegalStateException("No dancers were detected in the uploaded video")
                     )
+                val processedTemplate = postProcessUploadedTemplate(
+                    template = template,
+                    highRecall = highRecall,
+                    fps = safeFps,
+                    trackingConfig = trackingConfig,
+                    analysisWarnings = analysisWarnings
+                )
 
-                Result.success(template.withAdditionalWarnings(analysisWarnings.values))
+                Result.success(processedTemplate.withAdditionalWarnings(analysisWarnings.values))
             } catch (e: Exception) {
                 Result.failure(e)
             } finally {
@@ -340,5 +347,102 @@ object VideoPoseTemplateGenerator {
             warningsByCode.putIfAbsent(warning.code, warning)
         }
         return copy(qualityWarnings = warningsByCode.values.toList())
+    }
+
+    private fun postProcessUploadedTemplate(
+        template: PoseTemplate,
+        highRecall: Boolean,
+        fps: Int,
+        trackingConfig: PoseTrackingConfig,
+        analysisWarnings: MutableMap<String, PoseAnalysisWarning>
+    ): PoseTemplate {
+        if (!highRecall || template.tracks.isEmpty()) return template
+
+        return runCatching {
+            val mergeResult = TrackFragmentMerger(
+                fps = fps,
+                config = TrackFragmentMergerConfig(
+                    maxGapFrames = trackingConfig.maxMissedSteps,
+                    maxGapDurationMs = 3_000L
+                )
+            ).merge(template.tracks)
+
+            val interpolationResult = MissingLandmarkInterpolator(
+                fps = fps,
+                config = MissingLandmarkInterpolatorConfig(
+                    maxGapFrames = 3,
+                    maxGapDurationMs = 500L,
+                    interpolatedVisibilityCap = 0.20f
+                )
+            ).interpolate(mergeResult.tracks)
+
+            if (mergeResult.mergedTrackCount > 0) {
+                analysisWarnings.putIfAbsent(
+                    "mergedTrackFragments",
+                    PoseAnalysisWarning(
+                        code = "mergedTrackFragments",
+                        message = "Some split dancer tracks were merged after upload analysis."
+                    )
+                )
+            }
+            if (interpolationResult.interpolatedFrameCount > 0) {
+                analysisWarnings.putIfAbsent(
+                    "inferredLowConfidenceLandmarks",
+                    PoseAnalysisWarning(
+                        code = "inferredLowConfidenceLandmarks",
+                        message = "Short missing pose gaps were filled with low-confidence inferred landmarks."
+                    )
+                )
+            }
+
+            val tracks = interpolationResult.tracks
+            val trackIds = tracks.map { it.trackId }.toSet()
+            val defaultTrackId = mergeResult.replacedTrackIds[template.defaultTrackId]
+                ?: template.defaultTrackId?.takeIf { it in trackIds }
+                ?: tracks.maxWithOrNull(
+                    compareBy<PoseTrack> { it.frames.size }
+                        .thenBy { it.avgVisibility }
+                )?.trackId
+
+            val defaultFrames = tracks.firstOrNull { it.trackId == defaultTrackId }?.frames
+                ?: tracks.firstOrNull()?.frames
+                ?: template.frames
+
+            template.copy(
+                frames = defaultFrames,
+                tracks = tracks,
+                defaultTrackId = defaultTrackId,
+                selectionPreview = template.selectionPreview
+                    ?.withTrackReplacements(mergeResult.replacedTrackIds, trackIds)
+            )
+        }.getOrElse {
+            analysisWarnings.putIfAbsent(
+                "trackCleanupSkipped",
+                PoseAnalysisWarning(
+                    code = "trackCleanupSkipped",
+                    message = "Track cleanup was skipped; upload analysis kept the original detected tracks."
+                )
+            )
+            template
+        }
+    }
+
+    private fun PoseSelectionPreview.withTrackReplacements(
+        replacements: Map<String, String>,
+        availableTrackIds: Set<String>
+    ): PoseSelectionPreview {
+        val candidatesByTrack = candidates
+            .mapNotNull { candidate ->
+                val trackId = replacements[candidate.trackId] ?: candidate.trackId
+                if (trackId !in availableTrackIds) return@mapNotNull null
+                candidate.copy(trackId = trackId)
+            }
+            .groupBy { it.trackId }
+            .map { (_, candidatesForTrack) ->
+                candidatesForTrack.maxByOrNull { it.landmarks.averageVisibility() }
+                    ?: candidatesForTrack.first()
+            }
+
+        return copy(candidates = candidatesByTrack)
     }
 }

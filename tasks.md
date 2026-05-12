@@ -83,13 +83,13 @@ Legend:
 
 ## Phase 7: Track Cleanup and Interpolation
 
-- [ ] Add `TrackFragmentMerger` for post-processing split tracks.
-- [ ] Merge tracks only when gap, position, size, and movement direction are plausible.
-- [ ] Prevent merging tracks with significant time overlap unless they are clear duplicates.
-- [ ] Add `MissingLandmarkInterpolator` for short gaps only.
-- [ ] Mark interpolated landmarks as inferred or low-confidence in metadata if the template format supports it.
-- [ ] Do not fabricate high-confidence landmarks for fully hidden dancers.
-- [ ] Add tests for merge and non-merge cases.
+- [x] Add `TrackFragmentMerger` for post-processing split tracks.
+- [x] Merge tracks only when gap, position, size, and movement direction are plausible.
+- [x] Prevent merging tracks with significant time overlap unless they are clear duplicates.
+- [x] Add `MissingLandmarkInterpolator` for short gaps only.
+- [x] Mark interpolated landmarks as inferred or low-confidence in metadata if the template format supports it.
+- [x] Do not fabricate high-confidence landmarks for fully hidden dancers.
+- [x] Add tests for merge and non-merge cases.
 
 ## Phase 8: Template and Storage Compatibility
 
