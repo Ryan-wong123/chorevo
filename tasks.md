@@ -72,14 +72,14 @@ Legend:
 
 ## Phase 6: Per-Dancer Crop MediaPipe Estimation
 
-- [ ] Add `CropPoseEstimator` that receives original frame + tracked boxes.
-- [ ] Expand boxes with padding before cropping.
-- [ ] Clamp crops to frame boundaries.
-- [ ] Run MediaPipe Pose Landmarker on each crop.
-- [ ] Remap crop landmarks back to original normalized frame coordinates.
-- [ ] Mark failed crop estimations as missing/low-confidence rather than crashing.
-- [ ] Add unit tests for crop-to-full coordinate remapping.
-- [ ] Ensure all MediaPipe helpers and bitmaps/resources are closed or recycled where applicable.
+- [x] Add `CropPoseEstimator` that receives original frame + tracked boxes.
+- [x] Expand boxes with padding before cropping.
+- [x] Clamp crops to frame boundaries.
+- [x] Run MediaPipe Pose Landmarker on each crop.
+- [x] Remap crop landmarks back to original normalized frame coordinates.
+- [x] Mark failed crop estimations as missing/low-confidence rather than crashing.
+- [x] Add unit tests for crop-to-full coordinate remapping.
+- [x] Ensure all MediaPipe helpers and bitmaps/resources are closed or recycled where applicable.
 
 ## Phase 7: Track Cleanup and Interpolation
 

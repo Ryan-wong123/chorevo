@@ -88,6 +88,32 @@ object VideoPoseTemplateGenerator {
             } else {
                 null
             }
+            val cropPoseEstimator: CropPoseEstimator = if (highRecall) {
+                runCatching {
+                    MediaPipeCropPoseEstimator(
+                        poseLandmarkerHelper = PoseLandmarkerHelper(
+                            context = context,
+                            modelAssetPath = modelAssetPath,
+                            runningMode = RunningMode.IMAGE,
+                            maxPoses = 1,
+                            minPoseDetectionConfidence = 0.20f,
+                            minPosePresenceConfidence = 0.20f,
+                            minTrackingConfidence = 0.20f
+                        )
+                    )
+                }.getOrElse {
+                    analysisWarnings.putIfAbsent(
+                        MediaPipeCropPoseEstimator.WARNING_CROP_POSE_MISSING,
+                        PoseAnalysisWarning(
+                            code = MediaPipeCropPoseEstimator.WARNING_CROP_POSE_MISSING,
+                            message = "Per-dancer crop pose estimation was unavailable; upload analysis used fallback MediaPipe passes."
+                        )
+                    )
+                    NoOpCropPoseEstimator()
+                }
+            } else {
+                NoOpCropPoseEstimator()
+            }
 
             try {
                 retriever.setDataSource(context, Uri.parse(videoUriString))
@@ -148,12 +174,18 @@ object VideoPoseTemplateGenerator {
                             )
                             emptyList()
                         }
-                        // Phase 5 verifies detector-to-tracker plumbing only; crop pose estimation remains Phase 6.
-                        dancerTracker.update(
+                        val trackedDancerBoxes = dancerTracker.update(
                             frameIndex = idx,
                             timestampMs = tMs,
                             detections = personDetections
                         )
+                        val trackedCropResult = cropPoseEstimator.estimate(
+                            frame = processedBmp,
+                            trackedDancers = trackedDancerBoxes
+                        )
+                        trackedCropResult.warnings.forEach { warning ->
+                            analysisWarnings.putIfAbsent(warning.code, warning)
+                        }
 
                         // VIDEO running mode requires timestamped detect
                         val fullFrameDetections = helper.detectForVideo(processedBmp, tMs)
@@ -162,7 +194,9 @@ object VideoPoseTemplateGenerator {
                             ?.detectCropPasses(processedBmp)
                             .orEmpty()
                         val detections = PoseDetectionMerger.mergeDuplicateLandmarkDetections(
-                            fullFrameDetections + cropDetections
+                            fullFrameDetections +
+                                cropDetections +
+                                trackedCropResult.poses.map { it.frame.landmarks }
                         )
 
                         tracker.addFrame(
@@ -202,6 +236,10 @@ object VideoPoseTemplateGenerator {
                 }
                 try {
                     cropHelper?.close()
+                } catch (_: Exception) {
+                }
+                try {
+                    cropPoseEstimator.close()
                 } catch (_: Exception) {
                 }
                 try {
