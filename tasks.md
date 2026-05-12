@@ -111,10 +111,10 @@ Legend:
 ## Phase 10: Testing, Build, and Handoff
 
 - [x] Run JVM unit tests: `./gradlew testDebugUnitTest` or `gradlew.bat testDebugUnitTest`.
-- [ ] Run instrumentation tests if Android bitmap/model behavior or UI was changed.
+- [!] Run instrumentation tests if Android bitmap/model behavior or UI was changed. Not run locally because `adb devices` showed no attached emulator/device.
 - [x] Run `assembleDebug` at minimum.
-- [ ] Run `assembleRelease` before final handoff if Gradle dependencies/assets changed.
-- [ ] Report files changed, behavior changed, tests run, tests not run, and remaining risks.
+- [x] Run `assembleRelease` before final handoff if Gradle dependencies/assets changed. Not required for this Phase 10 verification because no Gradle dependencies or model/assets were changed.
+- [x] Report files changed, behavior changed, tests run, tests not run, and remaining risks.
 
 ## Future Enhancements
 
