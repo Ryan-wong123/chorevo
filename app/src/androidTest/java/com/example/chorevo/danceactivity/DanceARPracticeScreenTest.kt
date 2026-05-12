@@ -188,6 +188,28 @@ class DanceARPracticeScreenTest {
                 frames = tracks.first().frames,
                 tracks = tracks,
                 defaultTrackId = tracks.first().trackId
+            )
+        )
+
+        composeRule.setContent {
+            DanceARPracticeScreen(
+                item = multiDancerItem,
+                onBack = { backClicks++ },
+                onNavigateToProfile = {},
+                vm = vm,
+                achievementVm = achievementVm,
+                uid = "uid123",
+                testMode = true
+            )
+        }
+
+        composeRule.onNodeWithTag("dancerSelectorCard").assertIsDisplayed()
+        composeRule.onNodeWithTag("dancerChip_track_12")
+            .performScrollTo()
+            .assertIsDisplayed()
+    }
+
+    @Test
     fun practiceScreen_withTemplate_showsStepByStepModeControls() {
         val frames = List(12) { index ->
             PoseFrame(
@@ -205,7 +227,6 @@ class DanceARPracticeScreenTest {
 
         composeRule.setContent {
             DanceARPracticeScreen(
-                item = multiDancerItem,
                 item = itemWithTemplate,
                 onBack = { backClicks++ },
                 onNavigateToProfile = {},
@@ -216,10 +237,6 @@ class DanceARPracticeScreenTest {
             )
         }
 
-        composeRule.onNodeWithTag("dancerSelectorCard").assertIsDisplayed()
-        composeRule.onNodeWithTag("dancerChip_track_12")
-            .performScrollTo()
-            .assertIsDisplayed()
         composeRule.onNodeWithTag("stepPracticeCard").assertIsDisplayed()
         composeRule.onNodeWithText("Full Routine").assertIsDisplayed()
         composeRule.onNodeWithText("Step-by-Step").assertIsDisplayed()
