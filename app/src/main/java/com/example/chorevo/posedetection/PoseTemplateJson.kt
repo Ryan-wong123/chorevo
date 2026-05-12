@@ -226,8 +226,9 @@ object PoseTemplateJson {
 
     private fun Any?.toPoseAnalysisWarning(): PoseAnalysisWarning? {
         val map = this as? Map<*, *> ?: return null
+        val code = map.stringValue("code")?.takeIf { it.isNotBlank() } ?: return null
         return PoseAnalysisWarning(
-            code = map.stringValue("code").orEmpty(),
+            code = code,
             message = map.stringValue("message").orEmpty()
         )
     }
