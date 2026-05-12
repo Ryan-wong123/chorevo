@@ -10,12 +10,15 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -562,7 +565,8 @@ fun DanceARPracticeScreen(
                 ReferenceDancerSelectorCard(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .padding(start = 12.dp, top = 12.dp, bottom = 12.dp)
+                        .padding(start = 12.dp, top = 12.dp, bottom = 168.dp)
+                        .fillMaxHeight()
                         .width(112.dp),
                     videoUrl = item.videoUrl,
                     tracks = availableReferenceTracks,
@@ -749,7 +753,9 @@ private fun ReferenceDancerSelectorCard(
         )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 10.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(

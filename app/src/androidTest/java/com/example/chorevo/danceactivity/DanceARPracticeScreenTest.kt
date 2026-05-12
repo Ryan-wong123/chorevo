@@ -8,12 +8,16 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
 import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.posedetection.PoseFrame
+import com.example.chorevo.posedetection.PoseTemplate
+import com.example.chorevo.posedetection.PoseTrack
 import io.mockk.coEvery
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
@@ -162,5 +166,42 @@ class DanceARPracticeScreenTest {
             composeRule.onAllNodesWithTag("practiceStartCountdown").fetchSemanticsNodes().isEmpty()
         }
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
+    }
+
+    @Test
+    fun practiceScreen_referenceDancerSelector_scrollsToLaterDancers() {
+        val tracks = (1..12).map { index ->
+            PoseTrack(
+                trackId = "track_$index",
+                label = "Dancer $index",
+                frames = listOf(PoseFrame(tMs = 0L, landmarks = listOf(0f, 0f, 0f, 1f))),
+                avgVisibility = 1f
+            )
+        }
+        val multiDancerItem = item.copy(
+            template = PoseTemplate(
+                fps = 2,
+                frames = tracks.first().frames,
+                tracks = tracks,
+                defaultTrackId = tracks.first().trackId
+            )
+        )
+
+        composeRule.setContent {
+            DanceARPracticeScreen(
+                item = multiDancerItem,
+                onBack = { backClicks++ },
+                onNavigateToProfile = {},
+                vm = vm,
+                achievementVm = achievementVm,
+                uid = "uid123",
+                testMode = true
+            )
+        }
+
+        composeRule.onNodeWithTag("dancerSelectorCard").assertIsDisplayed()
+        composeRule.onNodeWithTag("dancerChip_track_12")
+            .performScrollTo()
+            .assertIsDisplayed()
     }
 }
