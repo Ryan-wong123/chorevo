@@ -113,6 +113,10 @@ class DanceARPracticeScreenTest {
 
         waitForTextExists("Live Analytics")
         composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
+        composeRule.onNodeWithTag("mirrorOrientationGuide").assertIsDisplayed()
+        composeRule.onNodeWithText("Left").assertIsDisplayed()
+        composeRule.onNodeWithText("Mirror View").assertIsDisplayed()
+        composeRule.onNodeWithText("Right").assertIsDisplayed()
 
         waitForTextExists("Reset")
         waitForTextExists("Submit")
@@ -184,12 +188,25 @@ class DanceARPracticeScreenTest {
                 frames = tracks.first().frames,
                 tracks = tracks,
                 defaultTrackId = tracks.first().trackId
+    fun practiceScreen_withTemplate_showsStepByStepModeControls() {
+        val frames = List(12) { index ->
+            PoseFrame(
+                tMs = index * 1000L,
+                landmarks = List(33 * 4) { 0.5f }
+            )
+        }
+
+        val itemWithTemplate = item.copy(
+            template = PoseTemplate(
+                fps = 2,
+                frames = frames
             )
         )
 
         composeRule.setContent {
             DanceARPracticeScreen(
                 item = multiDancerItem,
+                item = itemWithTemplate,
                 onBack = { backClicks++ },
                 onNavigateToProfile = {},
                 vm = vm,
@@ -203,5 +220,11 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithTag("dancerChip_track_12")
             .performScrollTo()
             .assertIsDisplayed()
+        composeRule.onNodeWithTag("stepPracticeCard").assertIsDisplayed()
+        composeRule.onNodeWithText("Full Routine").assertIsDisplayed()
+        composeRule.onNodeWithText("Step-by-Step").assertIsDisplayed()
+        composeRule.onNodeWithText("Step-by-Step").performClick()
+        composeRule.onNodeWithText("Step 1 of 2").assertIsDisplayed()
+        composeRule.onNodeWithText("Next").assertIsDisplayed()
     }
 }
