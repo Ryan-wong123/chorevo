@@ -144,15 +144,19 @@ class VideoUploadsViewModel @Inject constructor(
             result.fold(
                 onSuccess = { template ->
                     val tracks = template.availableTracks()
-                    val previewableTrackIds = template.previewableTrackIds()
+                    val selectableTrackIds = template.selectableTrackIds()
+                    val selectedTrackIds = tracks
+                        .map { track -> track.trackId }
+                        .filter { trackId -> trackId in selectableTrackIds }
+                        .toSet()
+                    val defaultTrackId = template.resolveUploadDefaultTrackId(selectedTrackIds)
                     mutate {
                         it.copy(
                             dancerReview = DancerReviewUiState(
                                 template = template,
-                                selectedTrackIds = tracks
-                                    .map { track -> track.trackId }
-                                    .filter { trackId -> trackId in previewableTrackIds }
-                                    .toSet()
+                                detectedDancerCount = tracks.size,
+                                selectedTrackIds = selectedTrackIds,
+                                defaultTrackId = defaultTrackId
                             )
                         )
                     }
@@ -179,7 +183,27 @@ class VideoUploadsViewModel @Inject constructor(
             if (!selected.add(trackId)) {
                 selected.remove(trackId)
             }
-            state.copy(dancerReview = review.copy(selectedTrackIds = selected))
+            val nextDefaultTrackId = review.defaultTrackId
+                ?.takeIf { it in selected }
+                ?: review.template.resolveUploadDefaultTrackId(selected)
+            state.copy(
+                dancerReview = review.copy(
+                    selectedTrackIds = selected,
+                    defaultTrackId = nextDefaultTrackId,
+                    errorMessage = null
+                )
+            )
+        }
+    }
+
+    /** Marks the selected detected dancer as the default reference track for learners. */
+    fun selectDefaultDancerTrack(trackId: String) {
+        mutate { state ->
+            val review = state.dancerReview
+            if (review.template == null || review.confirmed || trackId !in review.selectedTrackIds) {
+                return@mutate state
+            }
+            state.copy(dancerReview = review.copy(defaultTrackId = trackId, errorMessage = null))
         }
     }
 
@@ -188,18 +212,27 @@ class VideoUploadsViewModel @Inject constructor(
         mutate { state ->
             val review = state.dancerReview
             if (!review.canConfirm) return@mutate state
-            val previewableTrackIds = review.template?.previewableTrackIds().orEmpty()
-            val selectedTrackIds = review.selectedTrackIds.intersect(previewableTrackIds)
+            val selectableTrackIds = review.template?.selectableTrackIds().orEmpty()
+            val selectedTrackIds = review.selectedTrackIds.intersect(selectableTrackIds)
             if (selectedTrackIds.isEmpty()) {
                 return@mutate state.copy(
                     dancerReview = review.copy(
-                        errorMessage = "No previewable dancer tracks are selected."
+                        errorMessage = "Select at least one dancer before confirming."
+                    )
+                )
+            }
+            val defaultTrackId = review.defaultTrackId?.takeIf { it in selectedTrackIds }
+            if (defaultTrackId == null) {
+                return@mutate state.copy(
+                    dancerReview = review.copy(
+                        errorMessage = "Choose the default dancer track before confirming."
                     )
                 )
             }
             state.copy(
                 dancerReview = review.copy(
                     selectedTrackIds = selectedTrackIds,
+                    defaultTrackId = defaultTrackId,
                     confirmed = true,
                     errorMessage = null
                 )
@@ -375,7 +408,10 @@ class VideoUploadsViewModel @Inject constructor(
         }
 
         val confirmedTemplate = if (dancerReview.confirmed) {
-            dancerReview.template?.confirmedTemplate(dancerReview.selectedTrackIds) ?: run {
+            dancerReview.template?.confirmedTemplate(
+                selectedTrackIds = dancerReview.selectedTrackIds,
+                defaultTrackId = dancerReview.defaultTrackId
+            ) ?: run {
                 mutate { it.copy(statusMessage = "Confirmed dancer template is unavailable.") }
                 return
             }
@@ -454,14 +490,18 @@ class VideoUploadsViewModel @Inject constructor(
     }
 }
 
-private fun PoseTemplate.confirmedTemplate(selectedTrackIds: Set<String>): PoseTemplate {
-    val previewableTrackIds = previewableTrackIds()
-    val allowedTrackIds = selectedTrackIds.intersect(previewableTrackIds)
+internal fun PoseTemplate.confirmedTemplate(
+    selectedTrackIds: Set<String>,
+    defaultTrackId: String?
+): PoseTemplate {
+    val selectableTrackIds = selectableTrackIds()
+    val allowedTrackIds = selectedTrackIds.intersect(selectableTrackIds)
     val selectedTracks = availableTracks()
         .filter { it.trackId in allowedTrackIds }
         .mapIndexed { index, track -> track.copy(label = "Dancer ${index + 1}") }
 
-    val defaultTrack = selectedTracks.firstOrNull()
+    val defaultTrack = selectedTracks.firstOrNull { it.trackId == defaultTrackId }
+        ?: selectedTracks.firstOrNull()
     val selectedIds = selectedTracks.map { it.trackId }.toSet()
     val filteredPreview = selectionPreview?.copy(
         candidates = selectionPreview.candidates.filter { it.trackId in selectedIds }
@@ -475,10 +515,19 @@ private fun PoseTemplate.confirmedTemplate(selectedTrackIds: Set<String>): PoseT
     )
 }
 
-private fun PoseTemplate.previewableTrackIds(): Set<String> {
-    return selectionPreview
+private fun PoseTemplate.resolveUploadDefaultTrackId(selectedTrackIds: Set<String>): String? {
+    return defaultTrackId?.takeIf { it in selectedTrackIds }
+        ?: resolveTrack(null)?.trackId?.takeIf { it in selectedTrackIds }
+        ?: availableTracks().firstOrNull { it.trackId in selectedTrackIds }?.trackId
+}
+
+private fun PoseTemplate.selectableTrackIds(): Set<String> {
+    val previewableTrackIds = selectionPreview
         ?.candidates
         .orEmpty()
         .map { it.trackId }
         .toSet()
+    return previewableTrackIds.ifEmpty {
+        availableTracks().map { it.trackId }.toSet()
+    }
 }

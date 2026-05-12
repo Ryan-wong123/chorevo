@@ -102,11 +102,11 @@ Legend:
 
 ## Phase 9: Upload UI and Review Flow
 
-- [ ] Update upload UI state to include detected dancer count.
-- [ ] Show warnings for possible duplicates, low light, missing frames, and low-confidence tracks.
-- [ ] Let the creator select or confirm the default dancer track when multiple dancers exist.
-- [ ] Keep edit/delete upload flows unchanged unless directly affected.
-- [ ] Avoid exposing confusing internal detector details in the UI.
+- [x] Update upload UI state to include detected dancer count.
+- [x] Show warnings for possible duplicates, low light, missing frames, and low-confidence tracks.
+- [x] Let the creator select or confirm the default dancer track when multiple dancers exist.
+- [x] Keep edit/delete upload flows unchanged unless directly affected.
+- [x] Avoid exposing confusing internal detector details in the UI.
 
 ## Phase 10: Testing, Build, and Handoff
 
