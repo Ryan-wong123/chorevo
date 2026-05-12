@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.AlertDialog
@@ -76,7 +77,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.posedetection.PoseAnalysisWarning
 import com.example.chorevo.posedetection.PoseBounds
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTrack
@@ -215,16 +215,19 @@ fun VideoUploadActivityScreen(
                 DancerReviewPanel(
                     videoUri = selectedVideoUri,
                     tracks = uiState.dancerReview.template?.availableTracks().orEmpty(),
+                    detectedDancerCount = uiState.dancerReview.detectedCount,
                     selectionPreview = uiState.dancerReview.template?.selectionPreview,
                     selectedTrackIds = uiState.dancerReview.selectedTrackIds,
+                    defaultTrackId = uiState.dancerReview.defaultTrackId,
                     confirmed = uiState.dancerReview.confirmed,
                     isAnalyzing = uiState.dancerReview.isAnalyzing,
                     progress = uiState.dancerReview.progress,
                     errorMessage = uiState.dancerReview.errorMessage,
-                    warnings = uiState.dancerReview.template?.qualityWarnings.orEmpty(),
+                    warningMessages = uiState.dancerReview.warningMessages,
                     brandTeal = brandTeal,
                     onAnalyze = { videoUploadVm.analyzeDancers(context = context, fps = 8) },
                     onToggleTrack = videoUploadVm::toggleDetectedDancer,
+                    onSelectDefaultTrack = videoUploadVm::selectDefaultDancerTrack,
                     onConfirm = videoUploadVm::confirmDancerReview,
                     onReset = videoUploadVm::clearDancerReview
                 )
@@ -338,6 +341,26 @@ fun VideoUploadActivityScreen(
                     }
                 } else {
                     Text("Upload Confirmed Dance", style = MaterialTheme.typography.titleMedium)
+                }
+            }
+
+            if (!uiState.dancerReview.confirmed) {
+                TextButton(
+                    enabled = !uploading &&
+                            uploadDraft.canUpload &&
+                            !uiState.dancerReview.isAnalyzing,
+                    onClick = {
+                        videoUploadVm.uploadDance(
+                            context = context,
+                            generateTemplate = true,
+                            fps = 8,
+                            continueWithoutTemplateOnFailure = true
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
+                ) {
+                    Text("Upload and analyze in background")
                 }
             }
         }
@@ -490,16 +513,19 @@ private fun VideoPicker(
 private fun DancerReviewPanel(
     videoUri: Uri,
     tracks: List<PoseTrack>,
+    detectedDancerCount: Int,
     selectionPreview: PoseSelectionPreview?,
     selectedTrackIds: Set<String>,
+    defaultTrackId: String?,
     confirmed: Boolean,
     isAnalyzing: Boolean,
     progress: Float?,
     errorMessage: String?,
-    warnings: List<PoseAnalysisWarning>,
+    warningMessages: List<String>,
     brandTeal: Color,
     onAnalyze: () -> Unit,
     onToggleTrack: (String) -> Unit,
+    onSelectDefaultTrack: (String) -> Unit,
     onConfirm: () -> Unit,
     onReset: () -> Unit
 ) {
@@ -512,7 +538,7 @@ private fun DancerReviewPanel(
         value = loadUploadTrackThumbnails(context, videoUri, selectionPreview)
     }
     val previewableTracks = remember(tracks, thumbnails) {
-        tracks.filter { track -> thumbnails.containsKey(track.trackId) }
+        tracks.filter { track -> thumbnails.isEmpty() || thumbnails.containsKey(track.trackId) }
     }
     val previewableSelectedTrackIds = selectedTrackIds.intersect(
         previewableTracks.map { it.trackId }.toSet()
@@ -551,6 +577,13 @@ private fun DancerReviewPanel(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
                     )
+                    if (detectedDancerCount > 0) {
+                        Text(
+                            text = "Detected $detectedDancerCount dancer(s)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                        )
+                    }
                 }
 
                 if (tracks.isNotEmpty() && !isAnalyzing) {
@@ -600,9 +633,11 @@ private fun DancerReviewPanel(
                             track = track,
                             thumbnail = thumbnails[track.trackId],
                             selected = track.trackId in selectedTrackIds,
+                            isDefault = track.trackId == defaultTrackId,
                             enabled = !confirmed,
                             brandTeal = brandTeal,
-                            onClick = { onToggleTrack(track.trackId) }
+                            onClick = { onToggleTrack(track.trackId) },
+                            onSelectDefault = { onSelectDefaultTrack(track.trackId) }
                         )
                     }
                 }
@@ -642,9 +677,9 @@ private fun DancerReviewPanel(
                 )
             }
 
-            warnings.forEach { warning ->
+            warningMessages.forEach { message ->
                 Text(
-                    text = warning.message,
+                    text = message,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
                 )
@@ -658,9 +693,11 @@ private fun DancerTrackRow(
     track: PoseTrack,
     thumbnail: Bitmap?,
     selected: Boolean,
+    isDefault: Boolean,
     enabled: Boolean,
     brandTeal: Color,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onSelectDefault: () -> Unit
 ) {
     val borderColor = if (selected) brandTeal else MaterialTheme.colorScheme.outlineVariant
     Row(
@@ -711,14 +748,32 @@ private fun DancerTrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            if (isDefault) {
+                Text(
+                    text = "Default dancer",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = brandTeal,
+                    maxLines = 1
+                )
+            }
         }
 
-        Icon(
-            imageVector = Icons.Outlined.CheckCircle,
-            contentDescription = null,
-            tint = if (selected) brandTeal else MaterialTheme.colorScheme.outlineVariant,
-            modifier = Modifier.size(22.dp)
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(
+                imageVector = Icons.Outlined.Star,
+                contentDescription = null,
+                tint = if (isDefault) brandTeal else MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier
+                    .size(22.dp)
+                    .clickable(enabled = enabled && selected, onClick = onSelectDefault)
+            )
+            Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = if (selected) brandTeal else MaterialTheme.colorScheme.outlineVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
