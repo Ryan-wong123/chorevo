@@ -5,8 +5,17 @@ import android.net.Uri
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
+import com.example.chorevo.posedetection.PoseAnalysisWarning
+import com.example.chorevo.posedetection.PoseBounds
+import com.example.chorevo.posedetection.PoseFrame
+import com.example.chorevo.posedetection.PoseSelectionCandidate
+import com.example.chorevo.posedetection.PoseSelectionPreview
+import com.example.chorevo.posedetection.PoseTemplate
+import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.testing.MainDispatcherRule
+import com.example.chorevo.videouploads.ViewModel.DancerReviewUiState
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.ViewModel.confirmedTemplate
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -156,6 +165,7 @@ class VideoUploadsViewModelTest {
                 description = "Fast footwork",
                 videoUri = recordedUri,
                 generateTemplate = true,
+                confirmedTemplate = null,
                 fps = 15,
                 onProgress = any(),
                 onStageChanged = any(),
@@ -185,6 +195,7 @@ class VideoUploadsViewModelTest {
                 description = "Fast footwork",
                 videoUri = recordedUri,
                 generateTemplate = true,
+                confirmedTemplate = null,
                 fps = 15,
                 onProgress = any(),
                 onStageChanged = any(),
@@ -203,6 +214,92 @@ class VideoUploadsViewModelTest {
         assertEquals("", s.uploadDraft.description)
         assertNull(s.uploadDraft.selectedVideoUri)
         assertNull(s.uploadDraft.selectedVideoLabel)
+    }
+
+    @Test
+    fun dancerReviewState_exposesDetectedDancerCountAndSafeWarningsWhenAbsent() {
+        val state = DancerReviewUiState()
+
+        assertEquals(0, state.detectedCount)
+        assertTrue(state.warningMessages.isEmpty())
+        assertFalse(state.canConfirm)
+    }
+
+    @Test
+    fun dancerReviewState_mapsQualityWarningsToCreatorFriendlyMessages() {
+        val template = PoseTemplate(
+            tracks = listOf(sampleTrack("track_1")),
+            qualityWarnings = listOf(
+                PoseAnalysisWarning("possibleDuplicateTracks", "Internal duplicate detail"),
+                PoseAnalysisWarning("lowLightQuality", "Internal low light detail"),
+                PoseAnalysisWarning("missingFrames", "Internal missing detail"),
+                PoseAnalysisWarning("lowLandmarkConfidence", "Internal confidence detail")
+            )
+        )
+        val state = DancerReviewUiState(
+            template = template,
+            detectedDancerCount = 1,
+            selectedTrackIds = setOf("track_1"),
+            defaultTrackId = "track_1"
+        )
+
+        assertEquals(1, state.detectedCount)
+        assertEquals(4, state.warningMessages.size)
+        assertTrue(state.warningMessages.any { it.contains("duplicate dancer tracks") })
+        assertTrue(state.warningMessages.any { it.contains("dim") })
+        assertTrue(state.warningMessages.any { it.contains("Some frames") })
+        assertTrue(state.warningMessages.any { it.contains("low-confidence") })
+    }
+
+    @Test
+    fun confirmedTemplate_preservesSelectedDefaultTrackForMultipleDancers() {
+        val template = PoseTemplate(
+            fps = 8,
+            frames = sampleFrames("track_1"),
+            tracks = listOf(sampleTrack("track_1"), sampleTrack("track_2")),
+            defaultTrackId = "track_1",
+            selectionPreview = PoseSelectionPreview(
+                timeMs = 100,
+                frameWidth = 100,
+                frameHeight = 100,
+                candidates = listOf(
+                    sampleCandidate("track_1"),
+                    sampleCandidate("track_2")
+                )
+            )
+        )
+
+        val confirmed = template.confirmedTemplate(
+            selectedTrackIds = setOf("track_1", "track_2"),
+            defaultTrackId = "track_2"
+        )
+
+        assertEquals("track_2", confirmed.defaultTrackId)
+        assertEquals(sampleFrames("track_2"), confirmed.frames)
+        assertEquals(2, confirmed.availableTracks().size)
+        assertEquals(2, confirmed.selectionPreview?.candidates?.size)
+    }
+
+    @Test
+    fun confirmedTemplate_stillWorksWithOneDancer() {
+        val template = PoseTemplate(
+            fps = 8,
+            frames = sampleFrames("track_1"),
+            tracks = listOf(sampleTrack("track_1")),
+            defaultTrackId = "track_1",
+            selectionPreview = PoseSelectionPreview(
+                candidates = listOf(sampleCandidate("track_1"))
+            )
+        )
+
+        val confirmed = template.confirmedTemplate(
+            selectedTrackIds = setOf("track_1"),
+            defaultTrackId = "track_1"
+        )
+
+        assertEquals("track_1", confirmed.defaultTrackId)
+        assertEquals(1, confirmed.availableTracks().size)
+        assertEquals(sampleFrames("track_1"), confirmed.frames)
     }
 
     @Test
@@ -305,5 +402,37 @@ class VideoUploadsViewModelTest {
         assertNull(s.deleteItem)
         assertEquals("Deleted", s.statusMessage)
         coVerify(atLeast = 2) { uploadsRepo.loadVideos("uid123") }
+    }
+
+    private fun sampleTrack(trackId: String): PoseTrack {
+        return PoseTrack(
+            trackId = trackId,
+            label = trackId,
+            frames = sampleFrames(trackId),
+            avgVisibility = 0.8f
+        )
+    }
+
+    private fun sampleFrames(seed: String): List<PoseFrame> {
+        val offset = if (seed == "track_1") 0f else 0.1f
+        return listOf(
+            PoseFrame(
+                tMs = 0,
+                landmarks = listOf(
+                    0.1f + offset,
+                    0.2f,
+                    0f,
+                    0.9f
+                )
+            )
+        )
+    }
+
+    private fun sampleCandidate(trackId: String): PoseSelectionCandidate {
+        return PoseSelectionCandidate(
+            trackId = trackId,
+            landmarks = sampleFrames(trackId).first().landmarks,
+            bounds = PoseBounds(left = 0.1f, top = 0.1f, right = 0.5f, bottom = 0.9f)
+        )
     }
 }

@@ -14,3 +14,14 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local YOLO export/runtime artifacts. Keep model downloads out of Git unless
+# a future task explicitly chooses a small redistributable test fixture.
+/yolo_export_env/
+/yolo*_saved_model/
+/yolov*_saved_model/
+/yolo*.pt
+/yolov*.pt
+/yolo*.onnx
+/yolov*.onnx
+/calibration_image_sample_data_*.npy

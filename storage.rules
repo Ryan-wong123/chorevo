@@ -1,0 +1,51 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    match /danceVideos/{userId}/{fileName} {
+      allow read: if true;
+
+      allow write: if isOwner(userId)
+        && request.resource.size < 200 * 1024 * 1024
+        && request.resource.contentType.matches('video/.*');
+    }
+
+    match /danceThumbnails/{userId}/{fileName} {
+      allow read: if true;
+
+      allow write: if isOwner(userId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /profilePhotos/{userId}/{fileName} {
+      allow read: if isSignedIn();
+
+      allow write: if isOwner(userId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /danceTemplates/{fileName} {
+      allow read: if isSignedIn();
+
+      allow create, update: if isSignedIn()
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType == 'application/json';
+
+      allow delete: if isSignedIn();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

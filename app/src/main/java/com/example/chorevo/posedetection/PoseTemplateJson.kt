@@ -20,6 +20,9 @@ object PoseTemplateJson {
             append(',')
             appendKey("selectionPreview")
             appendSelectionPreview(template.selectionPreview)
+            append(',')
+            appendKey("qualityWarnings")
+            appendQualityWarnings(template.qualityWarnings)
             append('}')
         }
     }
@@ -33,7 +36,8 @@ object PoseTemplateJson {
             frames = root.listValue("frames").mapNotNull { it.toPoseFrame() },
             tracks = root.listValue("tracks").mapNotNull { it.toPoseTrack() },
             defaultTrackId = root.stringValue("defaultTrackId"),
-            selectionPreview = root.mapValue("selectionPreview")?.toPoseSelectionPreview()
+            selectionPreview = root.mapValue("selectionPreview")?.toPoseSelectionPreview(),
+            qualityWarnings = root.listValue("qualityWarnings").mapNotNull { it.toPoseAnalysisWarning() }
         )
     }
 
@@ -106,6 +110,21 @@ object PoseTemplateJson {
         }
         append(']')
         append('}')
+    }
+
+    private fun StringBuilder.appendQualityWarnings(warnings: List<PoseAnalysisWarning>) {
+        append('[')
+        warnings.forEachIndexed { index, warning ->
+            if (index > 0) append(',')
+            append('{')
+            appendKey("code")
+            appendQuoted(warning.code)
+            append(',')
+            appendKey("message")
+            appendQuoted(warning.message)
+            append('}')
+        }
+        append(']')
     }
 
     private fun StringBuilder.appendBounds(bounds: PoseBounds) {
@@ -202,6 +221,15 @@ object PoseTemplateJson {
             trackId = map.stringValue("trackId").orEmpty(),
             landmarks = map.floatListValue("landmarks"),
             bounds = map.mapValue("bounds")?.toPoseBounds() ?: PoseBounds()
+        )
+    }
+
+    private fun Any?.toPoseAnalysisWarning(): PoseAnalysisWarning? {
+        val map = this as? Map<*, *> ?: return null
+        val code = map.stringValue("code")?.takeIf { it.isNotBlank() } ?: return null
+        return PoseAnalysisWarning(
+            code = code,
+            message = map.stringValue("message").orEmpty()
         )
     }
 

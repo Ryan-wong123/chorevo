@@ -175,7 +175,9 @@ The main source package is `app/src/main/java/com/example/chorevo/`.
 - `.github/workflows/android.yml`
   - CI workflow for tests and build assembly
 - `app/src/main/assets/pose_landmarker_lite.task`
-  - MediaPipe model used by pose detection
+  - MediaPipe model used by real-time pose detection
+- `app/src/main/assets/pose_landmarker_full.task`
+  - Optional higher-accuracy MediaPipe model for uploaded video template generation. If this file is present, high-recall upload analysis uses it automatically; otherwise the app safely falls back to `pose_landmarker_lite.task`.
 - `app/google-services.json`
   - Firebase configuration required at runtime
 
@@ -336,6 +338,295 @@ The workflow assembles debug and release builds, but it does not currently uploa
    - Authentication
    - Firestore Database
    - Storage
+
+### Firestore indexes
+
+The app includes deployable Firestore index configuration:
+
+- `firebase.json`
+- `firestore.indexes.json`
+
+Deploy the indexes after creating or switching Firebase projects:
+
+```bash
+firebase login
+firebase deploy --only firestore:indexes --project YOUR_FIREBASE_PROJECT_ID
+```
+
+Replace `YOUR_FIREBASE_PROJECT_ID` with the Firebase project ID shown in Firebase Console.
+
+The required indexes are:
+
+#### `danceLibrary` collection index
+
+Used by the educator uploads list:
+
+```kotlin
+db.collection("danceLibrary")
+    .whereEqualTo("educatorUid", educatorUid)
+    .orderBy("createdAt", Query.Direction.DESCENDING)
+```
+
+Create this composite index:
+
+```text
+Collection ID: danceLibrary
+Query scope: Collection
+Fields:
+- educatorUid Ascending
+- createdAt Descending
+```
+
+#### `danceLearningSessions` collection-group single-field index
+
+Used by educator analytics across all learner session subcollections:
+
+```kotlin
+db.collectionGroup("danceLearningSessions")
+    .whereEqualTo("analysis.educatorUid", uploaderUid)
+```
+
+Create this single-field index:
+
+```text
+Collection ID: danceLearningSessions
+Query scope: Collection group
+Field:
+- analysis.educatorUid Ascending
+```
+
+#### `danceLearningSessions` collection-group composite index
+
+Used when educator analytics are filtered to one uploaded dance:
+
+```kotlin
+db.collectionGroup("danceLearningSessions")
+    .whereEqualTo("analysis.educatorUid", uploaderUid)
+    .whereEqualTo("analysis.danceId", uploadedDanceId)
+```
+
+Create this composite index:
+
+```text
+Collection ID: danceLearningSessions
+Query scope: Collection group
+Fields:
+- analysis.educatorUid Ascending
+- analysis.danceId Ascending
+```
+
+You can also create these manually in Firebase Console:
+
+1. Open Firebase Console.
+2. Go to Firestore Database.
+3. Open the Indexes tab.
+4. Click Add Index.
+5. Enter each index above.
+6. Wait for each index status to become Enabled.
+
+Most other app queries are covered by Firestore's automatic collection-scope single-field indexes.
+
+### Firestore security rules
+
+Add these Firestore rules in Firebase Console under Firestore Database -> Rules, or save them in a local `firestore.rules` file and deploy with Firebase CLI.
+
+```text
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function hasValidAnalysis(data) {
+      return data.analysis is map
+        && data.analysis.danceId is string
+        && data.analysis.educatorUid is string;
+    }
+
+    function linkedDanceExists(data) {
+      return hasValidAnalysis(data)
+        && exists(/databases/$(database)/documents/danceLibrary/$(data.analysis.danceId));
+    }
+
+    function linkedDanceOwner(data) {
+      return get(/databases/$(database)/documents/danceLibrary/$(data.analysis.danceId)).data.educatorUid;
+    }
+
+    function validSessionWrite(data) {
+      return linkedDanceExists(data)
+        && linkedDanceOwner(data) == data.analysis.educatorUid;
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || (signedIn() && request.auth.uid != uid);
+      allow create, update: if isOwner(uid);
+      allow delete: if false;
+
+      match /points/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /achievements/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /streak/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /streaks/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /friends/{friendUid} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /danceLearningSessions/{sessionId} {
+        allow read: if isOwner(uid) || (
+          signedIn()
+          && resource.data.analysis is map
+          && resource.data.analysis.educatorUid is string
+          && resource.data.analysis.educatorUid == request.auth.uid
+        );
+
+        allow create: if isOwner(uid)
+          && validSessionWrite(request.resource.data);
+
+        allow update: if isOwner(uid)
+          && validSessionWrite(request.resource.data)
+          && resource.data.analysis is map
+          && request.resource.data.analysis is map
+          && request.resource.data.analysis.danceId == resource.data.analysis.danceId
+          && request.resource.data.analysis.educatorUid == resource.data.analysis.educatorUid;
+
+        allow delete: if false;
+      }
+    }
+
+    match /{path=**}/danceLearningSessions/{sessionId} {
+      allow read: if signedIn()
+        && resource.data.analysis is map
+        && resource.data.analysis.educatorUid is string
+        && resource.data.analysis.educatorUid == request.auth.uid;
+    }
+
+    match /danceLibrary/{danceId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.educatorUid == request.auth.uid
+        && request.resource.data.danceId == danceId;
+
+      allow update: if signedIn()
+        && resource.data.educatorUid == request.auth.uid
+        && request.resource.data.educatorUid == resource.data.educatorUid
+        && request.resource.data.danceId == resource.data.danceId;
+
+      allow delete: if signedIn()
+        && resource.data.educatorUid == request.auth.uid;
+    }
+
+    match /leaderboardStats/{uid} {
+      allow read: if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if false;
+    }
+  }
+}
+```
+
+If using Firebase CLI, deploy rules with:
+
+```bash
+firebase deploy --only firestore:rules --project YOUR_FIREBASE_PROJECT_ID
+```
+
+### Storage security rules
+
+The app also includes deployable Firebase Storage rules:
+
+- `storage.rules`
+
+Add these rules in Firebase Console under Storage -> Rules, or deploy them with Firebase CLI.
+
+```text
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    match /danceVideos/{userId}/{fileName} {
+      allow read: if true;
+
+      allow write: if isOwner(userId)
+        && request.resource.size < 200 * 1024 * 1024
+        && request.resource.contentType.matches('video/.*');
+    }
+
+    match /danceThumbnails/{userId}/{fileName} {
+      allow read: if true;
+
+      allow write: if isOwner(userId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /profilePhotos/{userId}/{fileName} {
+      allow read: if isSignedIn();
+
+      allow write: if isOwner(userId)
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    match /danceTemplates/{fileName} {
+      allow read: if isSignedIn();
+
+      allow create, update: if isSignedIn()
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType == 'application/json';
+
+      allow delete: if isSignedIn();
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
+```
+
+Deploy Storage rules with:
+
+```bash
+firebase deploy --only storage --project YOUR_FIREBASE_PROJECT_ID
+```
+
+## Pose Landmark Models
+
+Real-time AR practice uses `pose_landmarker_lite.task` to keep camera inference fast.
+
+Uploaded dance video analysis uses a high-recall pipeline. For best multi-dancer detection, add the stronger MediaPipe model file here:
+
+```text
+app/src/main/assets/pose_landmarker_full.task
+```
+
+When `pose_landmarker_full.task` exists, uploaded-video template generation uses it automatically. If it is missing, the app still works and falls back to `pose_landmarker_lite.task`, but crowded or low-light group videos may detect fewer dancers.
 
 ## Permissions Used
 

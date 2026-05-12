@@ -9,7 +9,8 @@ data class PoseTemplate(
     val frames: List<PoseFrame> = emptyList(),
     val tracks: List<PoseTrack> = emptyList(),
     val defaultTrackId: String? = null,
-    val selectionPreview: PoseSelectionPreview? = null
+    val selectionPreview: PoseSelectionPreview? = null,
+    val qualityWarnings: List<PoseAnalysisWarning> = emptyList()
 ) {
     /** Returns all usable tracks, including a synthetic legacy track for old templates. */
     fun availableTracks(): List<PoseTrack> {
@@ -125,7 +126,7 @@ fun List<Float>.averageVisibility(): Float {
 }
 
 /** Builds a normalized pose bounds box using visible landmarks only. */
-fun List<Float>.poseBounds(visibilityThreshold: Float = 0.3f, padding: Float = 0.05f): PoseBounds? {
+fun List<Float>.poseBounds(visibilityThreshold: Float = 0.15f, padding: Float = 0.08f): PoseBounds? {
     if (size < 4) return null
 
     var minX = Float.POSITIVE_INFINITY

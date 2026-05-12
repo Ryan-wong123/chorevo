@@ -15,7 +15,9 @@ data class DanceLibraryModel(
     val template: PoseTemplate? = null,
     val templateStoragePath: String = "",
     val templateGenerationStatus: String = "ready",
-    val templateGenerationError: String = ""
+    val templateGenerationError: String = "",
+    val dancerCount: Int = 0,
+    val templateReviewStatus: String = ""
 ) {
     val isTemplateReady: Boolean
         get() = templateGenerationStatus.equals("ready", ignoreCase = true)
