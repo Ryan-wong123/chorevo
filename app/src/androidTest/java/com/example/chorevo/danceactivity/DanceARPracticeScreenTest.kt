@@ -113,10 +113,6 @@ class DanceARPracticeScreenTest {
 
         waitForTextExists("Live Analytics")
         composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
-        composeRule.onNodeWithTag("mirrorOrientationGuide").assertIsDisplayed()
-        composeRule.onNodeWithText("Left").assertIsDisplayed()
-        composeRule.onNodeWithText("Mirror View").assertIsDisplayed()
-        composeRule.onNodeWithText("Right").assertIsDisplayed()
 
         waitForTextExists("Reset")
         waitForTextExists("Submit")

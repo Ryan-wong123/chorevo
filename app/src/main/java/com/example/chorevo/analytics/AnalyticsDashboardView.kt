@@ -355,7 +355,6 @@ fun SessionDetailPanel(
         ExoPlayer.Builder(context).build().apply { playWhenReady = false }
     }
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
-    var isMirrored by rememberSaveable(summary.sessionId) { mutableStateOf(false) }
 
     LaunchedEffect(analysis?.videoUrl) {
         val url = analysis?.videoUrl
@@ -411,21 +410,11 @@ fun SessionDetailPanel(
         // UNCHANGED structure, just kept as-is
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Template Video", style = MaterialTheme.typography.titleSmall)
-                    TextButton(onClick = { isMirrored = !isMirrored }) {
-                        Text(if (isMirrored) "Mirror On" else "Mirror Off")
-                    }
-                }
+                Text("Template Video", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.height(8.dp))
                 SharedPlayerView(
                     exoPlayer = exoPlayer,
                     useController = true,
-                    isMirrored = isMirrored,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(220.dp)
