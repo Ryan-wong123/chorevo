@@ -14,8 +14,7 @@ import androidx.media3.ui.PlayerView
 fun SharedPlayerView(
     exoPlayer: ExoPlayer,
     modifier: Modifier = Modifier,
-    useController: Boolean = false,
-    isMirrored: Boolean = false
+    useController: Boolean = false
 ) {
     AndroidView(
         modifier = modifier,
@@ -26,7 +25,6 @@ fun SharedPlayerView(
                 resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                 keepScreenOn = true
-                videoSurfaceView?.scaleX = if (isMirrored) -1f else 1f
             }
         },
         update = { view ->
@@ -34,7 +32,6 @@ fun SharedPlayerView(
             view.useController = useController
             view.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             view.keepScreenOn = true
-            view.videoSurfaceView?.scaleX = if (isMirrored) -1f else 1f
         }
     )
 }

@@ -693,18 +693,11 @@ fun DanceARPracticeScreen(
                 )
             }
 
-            MirrorOrientationGuide(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                brandTeal = brandTeal
-            )
-
             if (practiceSegments.size > 1) {
                 StepPracticeCard(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 76.dp, start = 16.dp, end = 16.dp),
+                        .padding(top = 12.dp, start = 16.dp, end = 16.dp),
                     brandTeal = brandTeal,
                     practiceMode = practiceMode,
                     currentSegment = currentPracticeSegment,
@@ -1005,48 +998,6 @@ private fun StepPracticeCard(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun MirrorOrientationGuide(
-    modifier: Modifier = Modifier,
-    brandTeal: Color
-) {
-    Card(
-        modifier = modifier
-            .fillMaxWidth(0.9f)
-            .testTag("mirrorOrientationGuide"),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = "Left",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = brandTeal
-            )
-            Text(
-                text = "Mirror View",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
-            )
-            Text(
-                text = "Right",
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = brandTeal
-            )
         }
     }
 }
