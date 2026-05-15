@@ -1,6 +1,7 @@
 package com.example.chorevo.danceactivity
 
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -20,7 +21,6 @@ import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack
 import io.mockk.coEvery
 import io.mockk.mockk
-import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -108,22 +108,13 @@ class DanceARPracticeScreenTest {
             )
         }
 
-        waitForTextExists("AR Practice: Salsa Basics")
-        composeRule.onNodeWithText("AR Practice: Salsa Basics").assertIsDisplayed()
-
-        waitForTextExists("Live Analytics")
-        composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
-
         waitForTextExists("Reset")
         waitForTextExists("Submit")
-        waitForTextExists("Back")
 
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
-        composeRule.onNodeWithText("Back").assertIsDisplayed()
-
-        composeRule.onNodeWithText("Back").performClick()
-        assertEquals(1, backClicks)
+        composeRule.onNodeWithText("Back").assertDoesNotExist()
+        composeRule.onNodeWithText("Live Analytics").assertDoesNotExist()
     }
 
     @Test
@@ -166,6 +157,9 @@ class DanceARPracticeScreenTest {
             composeRule.onAllNodesWithTag("practiceStartCountdown").fetchSemanticsNodes().isEmpty()
         }
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
+        composeRule.onNodeWithText("Submit").assertIsDisplayed()
+        composeRule.onNodeWithText("Back").assertDoesNotExist()
+        composeRule.onNodeWithText("Live Analytics").assertDoesNotExist()
     }
 
     @Test

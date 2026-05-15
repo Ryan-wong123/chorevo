@@ -157,6 +157,7 @@ fun DanceARPracticeScreen(
     var practiceMode by rememberSaveable(item.danceId) { mutableStateOf(PracticeMode.FULL_ROUTINE) }
     var currentStepIndex by rememberSaveable(item.danceId) { mutableIntStateOf(0) }
     val isCountdownActive = countdownSecondsRemaining != null
+    val isPracticeFocused = isPracticeActive
 
     LaunchedEffect(template) {
         selectedReferenceTrackId = template?.resolveTrack(selectedReferenceTrackId)?.trackId
@@ -599,17 +600,19 @@ fun DanceARPracticeScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            TopAppBar(
-                title = { Text("AR Practice: ${item.title}") },
-                navigationIcon = {
-                    TextButton(
-                        onClick = onBack,
-                        colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
-                    ) {
-                        Text("Back")
+            if (!isPracticeFocused) {
+                TopAppBar(
+                    title = { Text("AR Practice: ${item.title}") },
+                    navigationIcon = {
+                        TextButton(
+                            onClick = onBack,
+                            colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
+                        ) {
+                            Text("Back")
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { pad ->
         Box(
@@ -671,7 +674,7 @@ fun DanceARPracticeScreen(
                 )
             }
 
-            if (showReferenceSelector && availableReferenceTracks.size > 1) {
+            if (!isPracticeFocused && showReferenceSelector && availableReferenceTracks.size > 1) {
                 ReferenceDancerSelectorCard(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
@@ -693,7 +696,7 @@ fun DanceARPracticeScreen(
                 )
             }
 
-            if (practiceSegments.size > 1) {
+            if (!isPracticeFocused && practiceSegments.size > 1) {
                 StepPracticeCard(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
@@ -774,6 +777,7 @@ fun DanceARPracticeScreen(
                     modifier = Modifier.padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    if (!isPracticeFocused) {
                     Text(
                         if (practiceMode == PracticeMode.STEP_BY_STEP) "Step Analytics" else "Live Analytics",
                         style = MaterialTheme.typography.titleSmall,
@@ -822,6 +826,7 @@ fun DanceARPracticeScreen(
 
                     status?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall)
+                    }
                     }
 
                     Row(
