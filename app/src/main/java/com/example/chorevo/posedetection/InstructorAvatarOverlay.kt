@@ -31,7 +31,7 @@ import io.github.sceneview.rememberView
 import io.github.sceneview.math.Rotation
 import kotlin.math.acos
 import kotlin.math.atan2
-import kotlin.math.max
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 private const val INSTRUCTOR_MODEL_ASSET = "models/instructor.glb"
@@ -50,6 +50,10 @@ private object PoseLandmark {
     const val RIGHT_KNEE = 26
     const val LEFT_ANKLE = 27
     const val RIGHT_ANKLE = 28
+    const val LEFT_HEEL = 29
+    const val RIGHT_HEEL = 30
+    const val LEFT_FOOT_INDEX = 31
+    const val RIGHT_FOOT_INDEX = 32
 }
 
 private data class PoseVector3(
@@ -129,13 +133,12 @@ private data class BoneRetarget(
     val aliases: List<String>,
     val startLandmark: Int,
     val endLandmark: Int,
-    val restDirection: PoseVector3,
-    val mode: RetargetMode = RetargetMode.REPLACE_ROTATION
+    val restDirection: PoseVector3
 )
 
-private enum class RetargetMode {
-    REPLACE_ROTATION,
-    ADD_LOCAL_Z
+private enum class Side {
+    LEFT,
+    RIGHT
 }
 
 private class InstructorPoseRetargeter(
@@ -170,34 +173,6 @@ private class InstructorPoseRetargeter(
             restDirection = PoseVector3(1f, 0f, 0f)
         ),
         BoneRetarget(
-            aliases = mixamoAliases("LeftUpLeg"),
-            startLandmark = PoseLandmark.LEFT_HIP,
-            endLandmark = PoseLandmark.LEFT_KNEE,
-            restDirection = PoseVector3(0f, -1f, 0f),
-            mode = RetargetMode.ADD_LOCAL_Z
-        ),
-        BoneRetarget(
-            aliases = mixamoAliases("LeftLeg"),
-            startLandmark = PoseLandmark.LEFT_KNEE,
-            endLandmark = PoseLandmark.LEFT_ANKLE,
-            restDirection = PoseVector3(0f, -1f, 0f),
-            mode = RetargetMode.ADD_LOCAL_Z
-        ),
-        BoneRetarget(
-            aliases = mixamoAliases("RightUpLeg"),
-            startLandmark = PoseLandmark.RIGHT_HIP,
-            endLandmark = PoseLandmark.RIGHT_KNEE,
-            restDirection = PoseVector3(0f, -1f, 0f),
-            mode = RetargetMode.ADD_LOCAL_Z
-        ),
-        BoneRetarget(
-            aliases = mixamoAliases("RightLeg"),
-            startLandmark = PoseLandmark.RIGHT_KNEE,
-            endLandmark = PoseLandmark.RIGHT_ANKLE,
-            restDirection = PoseVector3(0f, -1f, 0f),
-            mode = RetargetMode.ADD_LOCAL_Z
-        ),
-        BoneRetarget(
             aliases = mixamoAliases("Spine") + mixamoAliases("Spine1") + mixamoAliases("Spine2"),
             startLandmark = PoseLandmark.LEFT_HIP,
             endLandmark = PoseLandmark.LEFT_SHOULDER,
@@ -225,24 +200,16 @@ private class InstructorPoseRetargeter(
                 FloatArray(16).also { transformManager.getTransform(instance, it) }
             }
             val transform = rest.copyOf()
-            when (bone.mode) {
-                RetargetMode.REPLACE_ROTATION -> {
-                    val rotation = PoseQuaternion.fromTo(
-                        bone.restDirection,
-                        end - start
-                    ).toColumnMajorRotationMatrix()
-                    writeRotationKeepingTranslation(transform, rotation)
-                }
-                RetargetMode.ADD_LOCAL_Z -> {
-                    val delta = screenAngleDelta(bone.restDirection, end - start)
-                    val localRotation = zRotationMatrix(delta)
-                    val composed = multiplyColumnMajor(rest, localRotation)
-                    writeRotationKeepingTranslation(transform, composed)
-                }
-            }
+            val rotation = PoseQuaternion.fromTo(
+                bone.restDirection,
+                end - start
+            ).toColumnMajorRotationMatrix()
+            writeRotationKeepingTranslation(transform, rotation)
             transformManager.setTransform(instance, transform)
         }
 
+        applyLegIk(landmarks, Side.LEFT)
+        applyLegIk(landmarks, Side.RIGHT)
         node.animator.updateBoneMatrices()
     }
 
@@ -267,6 +234,61 @@ private class InstructorPoseRetargeter(
             y = (0.5f - landmarks[base + 1]) * 2f,
             z = -(landmarks[base + 2])
         )
+    }
+
+    private fun applyLegIk(landmarks: List<Float>, side: Side) {
+        val hipIndex = if (side == Side.LEFT) PoseLandmark.LEFT_HIP else PoseLandmark.RIGHT_HIP
+        val kneeIndex = if (side == Side.LEFT) PoseLandmark.LEFT_KNEE else PoseLandmark.RIGHT_KNEE
+        val ankleIndex = if (side == Side.LEFT) PoseLandmark.LEFT_ANKLE else PoseLandmark.RIGHT_ANKLE
+        val footIndex = if (side == Side.LEFT) PoseLandmark.LEFT_FOOT_INDEX else PoseLandmark.RIGHT_FOOT_INDEX
+        val prefix = if (side == Side.LEFT) "Left" else "Right"
+
+        val hip = landmark(landmarks, hipIndex) ?: return
+        val knee = landmark(landmarks, kneeIndex) ?: return
+        val ankle = landmark(landmarks, ankleIndex) ?: return
+
+        val thighSwing = screenAngleDelta(PoseVector3(0f, -1f, 0f), knee - hip)
+            .coerceIn(-0.45f, 0.45f)
+        applyAdditiveLocalRotation(
+            aliases = mixamoAliases("${prefix}UpLeg"),
+            rotation = zRotationMatrix(thighSwing)
+        )
+
+        val kneeBend = kneeFlexion(hip = hip, knee = knee, ankle = ankle)
+        if (kneeBend > 0.04f) {
+            val bendSign = if (side == Side.LEFT) 1f else -1f
+            applyAdditiveLocalRotation(
+                aliases = mixamoAliases("${prefix}Leg"),
+                rotation = xRotationMatrix(bendSign * kneeBend)
+            )
+        }
+
+        val foot = landmark(landmarks, footIndex)
+        if (foot != null) {
+            val ankleFlex = screenAngleDelta(ankle - knee, foot - ankle)
+                .coerceIn(-0.35f, 0.35f)
+            val bendSign = if (side == Side.LEFT) 1f else -1f
+            applyAdditiveLocalRotation(
+                aliases = mixamoAliases("${prefix}Foot"),
+                rotation = xRotationMatrix(bendSign * ankleFlex)
+            )
+        }
+    }
+
+    private fun applyAdditiveLocalRotation(aliases: List<String>, rotation: FloatArray) {
+        val entity = aliases.firstNotNullOfOrNull {
+            node.model.getFirstEntityByName(it).takeIf { found -> found != 0 }
+        } ?: return
+        val instance = transformManager.getInstance(entity)
+        if (instance == 0) return
+
+        val rest = restTransforms.getOrPut(entity) {
+            FloatArray(16).also { transformManager.getTransform(instance, it) }
+        }
+        val composed = multiplyColumnMajor(rest, rotation)
+        val transform = rest.copyOf()
+        writeRotationKeepingTranslation(transform, composed)
+        transformManager.setTransform(instance, transform)
     }
 
     private fun avatarBodyRotation(landmarks: List<Float>): Rotation {
@@ -307,6 +329,26 @@ private class InstructorPoseRetargeter(
         while (delta > Math.PI) delta -= (Math.PI * 2f).toFloat()
         while (delta < -Math.PI) delta += (Math.PI * 2f).toFloat()
         return delta.coerceIn(-0.65f, 0.65f)
+    }
+
+    private fun kneeFlexion(hip: PoseVector3, knee: PoseVector3, ankle: PoseVector3): Float {
+        val upper = (hip - knee).normalized()
+        val lower = (ankle - knee).normalized()
+        val straightness = upper.dot(lower).coerceIn(-1f, 1f)
+        val angle = acos(straightness)
+        val bend = (Math.PI.toFloat() - angle).coerceAtLeast(0f)
+        return if (abs(bend) < 0.08f) 0f else bend.coerceIn(0f, 1.65f)
+    }
+
+    private fun xRotationMatrix(angle: Float): FloatArray {
+        val sin = kotlin.math.sin(angle)
+        val cos = kotlin.math.cos(angle)
+        return floatArrayOf(
+            1f, 0f, 0f, 0f,
+            0f, cos, sin, 0f,
+            0f, -sin, cos, 0f,
+            0f, 0f, 0f, 1f
+        )
     }
 
     private fun zRotationMatrix(angle: Float): FloatArray {
