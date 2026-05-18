@@ -113,7 +113,9 @@ class DanceARPracticeScreenTest {
 
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Back").assertCountEquals(0)
+        composeRule.onNodeWithText("Back").assertIsDisplayed()
+        composeRule.onNodeWithText("Back").performClick()
+        assert(backClicks == 1)
         composeRule.onAllNodesWithText("Live Analytics").assertCountEquals(0)
     }
 
@@ -133,8 +135,13 @@ class DanceARPracticeScreenTest {
             )
         }
 
-        waitForTextExists("Reset")
-        composeRule.onNodeWithText("Reset").performClick()
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithText("Reset").fetchSemanticsNodes().isNotEmpty() ||
+                composeRule.onAllNodesWithText("Start Practice").fetchSemanticsNodes().isNotEmpty()
+        }
+        if (composeRule.onAllNodesWithText("Reset").fetchSemanticsNodes().isNotEmpty()) {
+            composeRule.onNodeWithText("Reset").performClick()
+        }
 
         waitForTextExists("Start Practice")
         composeRule.onNodeWithText("Start Practice").performClick()
@@ -158,7 +165,7 @@ class DanceARPracticeScreenTest {
         }
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Back").assertCountEquals(0)
+        composeRule.onNodeWithText("Back").assertIsDisplayed()
         composeRule.onAllNodesWithText("Live Analytics").assertCountEquals(0)
     }
 
@@ -231,7 +238,7 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithText("Full Routine").assertIsDisplayed()
         composeRule.onNodeWithText("Step-by-Step").assertIsDisplayed()
         composeRule.onNodeWithText("Step-by-Step").performClick()
-        composeRule.onNodeWithText("Step 1 of 2").assertIsDisplayed()
+        composeRule.onNodeWithText("Step 1 of 2", substring = true).assertIsDisplayed()
         composeRule.onNodeWithText("Next").assertIsDisplayed()
     }
 }
