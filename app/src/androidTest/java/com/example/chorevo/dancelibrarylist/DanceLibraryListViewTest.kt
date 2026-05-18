@@ -15,6 +15,7 @@ import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.posedetection.PoseTemplate
 import io.mockk.coEvery
 import io.mockk.mockk
 import io.mockk.unmockkAll
@@ -174,6 +175,7 @@ class DanceLibraryListViewTest {
         )
 
         coEvery { repo.listEnabled() } returns Result.success(items)
+        coEvery { repo.loadTemplate(any()) } returns Result.success(PoseTemplate())
 
         var picked: DanceLibraryModel? = null
 
