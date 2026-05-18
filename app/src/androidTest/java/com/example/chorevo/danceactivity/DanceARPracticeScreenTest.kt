@@ -116,13 +116,11 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithText("Back").assertIsDisplayed()
         composeRule.onNodeWithText("Back").performClick()
         assert(backClicks == 1)
-        composeRule.onAllNodesWithText("Live Analytics").assertCountEquals(0)
+        composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
     }
 
     @Test
     fun practiceScreen_showsThreeSecondCountdown_beforePracticeStarts() {
-        composeRule.mainClock.autoAdvance = false
-
         composeRule.setContent {
             DanceARPracticeScreen(
                 item = item,
@@ -135,15 +133,11 @@ class DanceARPracticeScreenTest {
             )
         }
 
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.onAllNodesWithText("Reset").fetchSemanticsNodes().isNotEmpty() ||
-                composeRule.onAllNodesWithText("Start Practice").fetchSemanticsNodes().isNotEmpty()
-        }
-        if (composeRule.onAllNodesWithText("Reset").fetchSemanticsNodes().isNotEmpty()) {
-            composeRule.onNodeWithText("Reset").performClick()
-        }
-
+        waitForTextExists("Reset")
+        composeRule.onNodeWithText("Reset").performClick()
         waitForTextExists("Start Practice")
+
+        composeRule.mainClock.autoAdvance = false
         composeRule.onNodeWithText("Start Practice").performClick()
 
         composeRule.onNodeWithTag("practiceStartCountdown").assertIsDisplayed()
@@ -166,7 +160,7 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
         composeRule.onNodeWithText("Back").assertIsDisplayed()
-        composeRule.onAllNodesWithText("Live Analytics").assertCountEquals(0)
+        composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
     }
 
     @Test
@@ -238,7 +232,7 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithText("Full Routine").assertIsDisplayed()
         composeRule.onNodeWithText("Step-by-Step").assertIsDisplayed()
         composeRule.onNodeWithText("Step-by-Step").performClick()
-        composeRule.onNodeWithText("Step 1 of 2", substring = true).assertIsDisplayed()
+        composeRule.onAllNodesWithText("Step 1 of 2", substring = true).assertCountEquals(3)
         composeRule.onNodeWithText("Next").assertIsDisplayed()
     }
 }
