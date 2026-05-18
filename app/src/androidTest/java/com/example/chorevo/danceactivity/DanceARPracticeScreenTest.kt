@@ -1,7 +1,7 @@
 package com.example.chorevo.danceactivity
 
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -113,14 +113,14 @@ class DanceARPracticeScreenTest {
 
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
-        composeRule.onNodeWithText("Back").assertDoesNotExist()
-        composeRule.onNodeWithText("Live Analytics").assertDoesNotExist()
+        composeRule.onNodeWithText("Back").assertIsDisplayed()
+        composeRule.onNodeWithText("Back").performClick()
+        assert(backClicks == 1)
+        composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
     }
 
     @Test
     fun practiceScreen_showsThreeSecondCountdown_beforePracticeStarts() {
-        composeRule.mainClock.autoAdvance = false
-
         composeRule.setContent {
             DanceARPracticeScreen(
                 item = item,
@@ -135,8 +135,9 @@ class DanceARPracticeScreenTest {
 
         waitForTextExists("Reset")
         composeRule.onNodeWithText("Reset").performClick()
-
         waitForTextExists("Start Practice")
+
+        composeRule.mainClock.autoAdvance = false
         composeRule.onNodeWithText("Start Practice").performClick()
 
         composeRule.onNodeWithTag("practiceStartCountdown").assertIsDisplayed()
@@ -158,8 +159,8 @@ class DanceARPracticeScreenTest {
         }
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
-        composeRule.onNodeWithText("Back").assertDoesNotExist()
-        composeRule.onNodeWithText("Live Analytics").assertDoesNotExist()
+        composeRule.onNodeWithText("Back").assertIsDisplayed()
+        composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
     }
 
     @Test
@@ -231,7 +232,7 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithText("Full Routine").assertIsDisplayed()
         composeRule.onNodeWithText("Step-by-Step").assertIsDisplayed()
         composeRule.onNodeWithText("Step-by-Step").performClick()
-        composeRule.onNodeWithText("Step 1 of 2").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Step 1 of 2", substring = true).assertCountEquals(3)
         composeRule.onNodeWithText("Next").assertIsDisplayed()
     }
 }
