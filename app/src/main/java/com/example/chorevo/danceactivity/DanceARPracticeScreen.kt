@@ -78,6 +78,7 @@ import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.posedetection.ImageProxyUtils
+import com.example.chorevo.posedetection.InstructorAvatarOverlay
 import com.example.chorevo.posedetection.PoseDrawSpec
 import com.example.chorevo.posedetection.PoseFrame
 import com.example.chorevo.posedetection.PoseLandmarkerHelper
@@ -86,7 +87,6 @@ import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseSimilarityEvaluator
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack
-import com.example.chorevo.posedetection.RenderMode
 import com.example.chorevo.posedetection.averageVisibility
 import com.example.chorevo.posedetection.poseBounds
 import kotlinx.coroutines.delay
@@ -648,19 +648,18 @@ fun DanceARPracticeScreen(
                     modifier = Modifier.fillMaxSize()
                 )
 
+                InstructorAvatarOverlay(
+                    context = context,
+                    landmarks = refLandmarksForCamera,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .width(660.dp)
+                        .height(1080.dp)
+                )
+
                 PoseOverlay(
                     modifier = Modifier.fillMaxSize(),
                     poses = listOfNotNull(
-                        refLandmarksForCamera?.let {
-                            PoseDrawSpec(
-                                landmarks = it,
-                                color = Color.Cyan,
-                                alpha = 0.35f,
-                                jointRadius = 6f,
-                                boneWidth = 5f,
-                                renderMode = RenderMode.AVATAR
-                            )
-                        },
                         learnerLandmarks?.let {
                             PoseDrawSpec(
                                 landmarks = it,

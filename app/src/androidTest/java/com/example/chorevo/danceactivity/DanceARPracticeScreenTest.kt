@@ -1,7 +1,7 @@
 package com.example.chorevo.danceactivity
 
 import androidx.activity.ComponentActivity
-import androidx.compose.ui.test.assertDoesNotExist
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -113,8 +113,8 @@ class DanceARPracticeScreenTest {
 
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
-        composeRule.onNodeWithText("Back").assertDoesNotExist()
-        composeRule.onNodeWithText("Live Analytics").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Back").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Live Analytics").assertCountEquals(0)
     }
 
     @Test
@@ -158,8 +158,8 @@ class DanceARPracticeScreenTest {
         }
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
-        composeRule.onNodeWithText("Back").assertDoesNotExist()
-        composeRule.onNodeWithText("Live Analytics").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Back").assertCountEquals(0)
+        composeRule.onAllNodesWithText("Live Analytics").assertCountEquals(0)
     }
 
     @Test

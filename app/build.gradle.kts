@@ -103,6 +103,7 @@ dependencies {
     // --- MediaPipe ---
     implementation(libs.mediapipe.tasks.vision)
     implementation(libs.tensorflow.lite)
+    implementation("io.github.sceneview:sceneview:2.2.1")
 
     implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
