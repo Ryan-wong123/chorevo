@@ -157,7 +157,7 @@ fun DanceARPracticeScreen(
     var practiceMode by rememberSaveable(item.danceId) { mutableStateOf(PracticeMode.FULL_ROUTINE) }
     var currentStepIndex by rememberSaveable(item.danceId) { mutableIntStateOf(0) }
     val isCountdownActive = countdownSecondsRemaining != null
-    val isPracticeFocused = isPracticeActive
+    val isPracticeFocused = isPracticeActive && !testMode
 
     LaunchedEffect(template) {
         selectedReferenceTrackId = template?.resolveTrack(selectedReferenceTrackId)?.trackId
