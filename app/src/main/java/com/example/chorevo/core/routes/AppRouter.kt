@@ -111,6 +111,7 @@ private fun AppRouteContent(
             Screen.HOME -> {
                 HomeRoute(
                     uid = uid,
+                    username = profile.displayName ?: "User",
                     onPickDance = onPickDance,
                     onBack = {},
                     vm = danceLibraryViewModel

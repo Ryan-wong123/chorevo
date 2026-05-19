@@ -2,10 +2,13 @@ package com.example.chorevo.dancelibrarylist.Repository
 
 import com.example.chorevo.danceactivity.DanceSessionEntity
 import com.example.chorevo.danceactivity.Repository.DanceSessionDao
+import com.example.chorevo.dancelibrarylist.DanceComment
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -24,6 +27,7 @@ class DanceLibraryRepository @Inject constructor(
 
     companion object {
         private const val MAX_TEMPLATE_DOWNLOAD_BYTES = 20L * 1024L * 1024L
+        const val COMMENTS_PAGE_SIZE = 20L
     }
 
     /** Handles list enabled. */
@@ -193,6 +197,76 @@ class DanceLibraryRepository @Inject constructor(
             else -> v.toString()
         }
     }
+
+    /** social methods */
+    suspend fun loadSocialData(danceId: String, currentUid: String): Result<Pair<Int, Boolean>> {
+        return try {
+            val likesSnap = firestore.collection("danceLibrary")
+                .document(danceId).collection("likes").get().await()
+            val likeCount = likesSnap.size()
+            val isLiked = likesSnap.documents.any { it.id == currentUid }
+            Result.success(Pair(likeCount, isLiked))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun toggleLike(danceId: String, uid: String, isCurrentlyLiked: Boolean): Result<Unit> {
+        return try {
+            val ref = firestore.collection("danceLibrary")
+                .document(danceId).collection("likes").document(uid)
+            if (isCurrentlyLiked) ref.delete().await()
+            else ref.set(mapOf("likedAt" to System.currentTimeMillis())).await()
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    /**
+     * Loads the first page of comments (oldest-first).
+     * Returns the list and the last document snapshot used as a cursor for [loadMoreComments].
+     */
+    suspend fun loadComments(danceId: String): Result<Pair<List<DanceComment>, DocumentSnapshot?>> {
+        return try {
+            val snap = firestore.collection("danceLibrary")
+                .document(danceId).collection("comments")
+                .orderBy("createdAt", Query.Direction.ASCENDING)
+                .limit(COMMENTS_PAGE_SIZE)
+                .get().await()
+            val comments = snap.documents.mapNotNull { it.toObject(DanceComment::class.java) }
+            val cursor = snap.documents.lastOrNull()
+            Result.success(Pair(comments, cursor))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    /**
+     * Loads the next page of comments after [after].
+     * Returns the new batch and an updated cursor, or null cursor when no more pages exist.
+     */
+    suspend fun loadMoreComments(
+        danceId: String,
+        after: DocumentSnapshot
+    ): Result<Pair<List<DanceComment>, DocumentSnapshot?>> {
+        return try {
+            val snap = firestore.collection("danceLibrary")
+                .document(danceId).collection("comments")
+                .orderBy("createdAt", Query.Direction.ASCENDING)
+                .startAfter(after)
+                .limit(COMMENTS_PAGE_SIZE)
+                .get().await()
+            val comments = snap.documents.mapNotNull { it.toObject(DanceComment::class.java) }
+            val cursor = snap.documents.lastOrNull()
+            // If we got fewer docs than the page size, we've reached the end
+            val nextCursor = if (comments.size < COMMENTS_PAGE_SIZE) null else cursor
+            Result.success(Pair(comments, nextCursor))
+        } catch (e: Exception) { Result.failure(e) }
+    }
+
+    suspend fun postComment(danceId: String, uid: String, username: String, text: String): Result<Unit> {
+        return try {
+            val commentId = java.util.UUID.randomUUID().toString()
+            val comment = DanceComment(commentId, uid, username, text)
+            firestore.collection("danceLibrary")
+                .document(danceId).collection("comments")
+                .document(commentId).set(comment).await()
+            Result.success(Unit)
+        } catch (e: Exception) { Result.failure(e) }
+    }
 }
-
-
