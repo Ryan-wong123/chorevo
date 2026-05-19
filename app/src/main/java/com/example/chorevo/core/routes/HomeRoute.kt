@@ -10,6 +10,7 @@ import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 @Composable
 fun HomeRoute(
     uid: String,
+    username: String,
     onPickDance: (DanceLibraryModel) -> Unit,
     onBack: () -> Unit,
     vm: DanceLibraryListViewModel
@@ -18,6 +19,7 @@ fun HomeRoute(
         onPickDance = onPickDance,
         onBack = onBack,
         vm = vm,
-        uid = uid
+        uid = uid,
+        username = username
     )
 }
