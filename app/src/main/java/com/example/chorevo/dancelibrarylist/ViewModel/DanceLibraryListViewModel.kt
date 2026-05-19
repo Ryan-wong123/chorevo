@@ -4,8 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.danceactivity.DanceSessionEntity
 import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
+import com.example.chorevo.dancelibrarylist.DanceComment
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
+import com.google.firebase.firestore.DocumentSnapshot
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
 import com.example.chorevo.posedetection.PoseTemplate
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,20 +29,42 @@ data class DanceSessionUploadUiState(
     val message: String? = null
 )
 
+/**
+ * Holds the social state for one dance video.
+ * Lives in the ViewModel so it survives:
+ *  - scrolling away and back            (fix for issue #2)
+ *  - pressing back from practice mode  (fix for issue #4)
+ */
+data class DanceSocialState(
+    val likeCount: Int = 0,
+    val isLiked: Boolean = false,
+    val comments: List<DanceComment> = emptyList(),
+    val isLoadingMoreComments: Boolean = false,
+    val hasMoreComments: Boolean = false,
+    val commentCursor: DocumentSnapshot? = null
+)
+
 @HiltViewModel
 class DanceLibraryListViewModel @Inject constructor(
     private val repo: DanceLibraryRepository,
     private val streakRepository: FirebaseStreakRepository,
     private val leaderboardRepository: LeaderboardRepository
 ) : ViewModel() {
-    private val templateCache = linkedMapOf<String, PoseTemplate>()
 
+    private val templateCache = linkedMapOf<String, PoseTemplate>()
 
     private val _uiState = MutableStateFlow(DanceLibraryUiState(isLoading = true, message = "Loading dances…"))
     val uiState: StateFlow<DanceLibraryUiState> = _uiState.asStateFlow()
 
     private val _uploadState = MutableStateFlow(DanceSessionUploadUiState())
     val uploadState: StateFlow<DanceSessionUploadUiState> = _uploadState.asStateFlow()
+
+    // ── Social cache ──────────────────────────────────────────────────────
+    // Keyed by danceId. Persists for the ViewModel lifetime so counts are
+    // never wiped when the pager discards and recreates a page composable.
+    private val _socialCache = MutableStateFlow<Map<String, DanceSocialState>>(emptyMap())
+    val socialCache: StateFlow<Map<String, DanceSocialState>> = _socialCache.asStateFlow()
+
     /** Refreshes when ready. */
     fun refreshWhenReady(isLoggedIn: Boolean) {
         if (!isLoggedIn) {
@@ -132,6 +156,113 @@ class DanceLibraryListViewModel @Inject constructor(
         return repo.loadTemplate(item).mapCatching { template ->
             templateCache[item.danceId] = template
             item.copy(template = template)
+        }
+    }
+
+    // ── Social actions ────────────────────────────────────────────────────
+
+    /**
+     * Loads likes + comments for [danceId] into the ViewModel cache.
+     *
+     * If the danceId is already cached the network call is skipped entirely —
+     * this is what keeps counts alive when scrolling back (issue #2) or
+     * pressing back from practice (issue #4).
+     */
+    fun loadSocialData(danceId: String, uid: String) {
+        if (_socialCache.value.containsKey(danceId)) return  // already cached — skip fetch
+        viewModelScope.launch {
+            repo.loadSocialData(danceId, uid).onSuccess { (count, liked) ->
+                _socialCache.update { cache ->
+                    cache + (danceId to (cache[danceId] ?: DanceSocialState()).copy(
+                        likeCount = count,
+                        isLiked = liked
+                    ))
+                }
+            }
+            repo.loadComments(danceId).onSuccess { (loaded, cursor) ->
+                _socialCache.update { cache ->
+                    cache + (danceId to (cache[danceId] ?: DanceSocialState()).copy(
+                        comments = loaded,
+                        commentCursor = cursor,
+                        hasMoreComments = cursor != null
+                    ))
+                }
+            }
+        }
+    }
+
+    /**
+     * Loads the next page of comments for [danceId].
+     * Appends results to the existing list and updates the cursor.
+     */
+    fun loadMoreComments(danceId: String) {
+        val current = _socialCache.value[danceId] ?: return
+        val cursor = current.commentCursor ?: return
+        if (current.isLoadingMoreComments) return
+
+        _socialCache.update { cache ->
+            cache + (danceId to current.copy(isLoadingMoreComments = true))
+        }
+        viewModelScope.launch {
+            repo.loadMoreComments(danceId, cursor).onSuccess { (more, nextCursor) ->
+                _socialCache.update { cache ->
+                    val existing = cache[danceId] ?: DanceSocialState()
+                    cache + (danceId to existing.copy(
+                        comments = existing.comments + more,
+                        commentCursor = nextCursor,
+                        hasMoreComments = nextCursor != null,
+                        isLoadingMoreComments = false
+                    ))
+                }
+            }.onFailure {
+                _socialCache.update { cache ->
+                    cache + (danceId to (cache[danceId] ?: DanceSocialState())
+                        .copy(isLoadingMoreComments = false))
+                }
+            }
+        }
+    }
+
+    /**
+     * Optimistically flips the like in the cache so the UI responds instantly,
+     * then persists to Firestore in the background.
+     */
+    fun toggleLike(danceId: String, uid: String, isCurrentlyLiked: Boolean) {
+        _socialCache.update { cache ->
+            val current = cache[danceId] ?: DanceSocialState()
+            cache + (danceId to current.copy(
+                isLiked = !isCurrentlyLiked,
+                likeCount = current.likeCount + if (isCurrentlyLiked) -1 else 1
+            ))
+        }
+        viewModelScope.launch {
+            repo.toggleLike(danceId, uid, isCurrentlyLiked)
+        }
+    }
+
+    /**
+     * Optimistically appends the comment so it appears immediately, then
+     * persists to Firestore and refreshes to replace the local entry with the
+     * real server doc (server-assigned commentId + createdAt).
+     */
+    fun postComment(danceId: String, uid: String, username: String, text: String) {
+        val optimistic = DanceComment(uid = uid, username = username, text = text)
+        _socialCache.update { cache ->
+            val current = cache[danceId] ?: DanceSocialState()
+            cache + (danceId to current.copy(comments = current.comments + optimistic))
+        }
+        viewModelScope.launch {
+            repo.postComment(danceId, uid, username, text).onSuccess {
+                repo.loadComments(danceId).onSuccess { (loaded, cursor) ->
+                    _socialCache.update { cache ->
+                        cache + (danceId to (cache[danceId] ?: DanceSocialState()).copy(
+                            comments = loaded,
+                            commentCursor = cursor,
+                            hasMoreComments = cursor != null
+                        ))
+                    }
+                }
+            }
         }
     }
 }
