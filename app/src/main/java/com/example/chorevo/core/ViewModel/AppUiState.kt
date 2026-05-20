@@ -19,7 +19,16 @@ data class AppUiState(
     val notificationHour: Int = 9,
     val notificationMinute: Int = 0,
     val isUploadingProfilePhoto: Boolean = false,
-    val profilePhotoUploadError: String? = null
+    val profilePhotoUploadError: String? = null,
+
+    // ── Deep-link state ───────────────────────────────────────────────────────
+    /** True while a shared dance link is being fetched from Firestore. */
+    val deepLinkLoading: Boolean = false,
+    /**
+     * Non-null when a deep-link fetch failed.  The UI should display this as a
+     * snackbar / toast and then call [AppViewModel.clearDeepLinkError].
+     */
+    val deepLinkError: String? = null,
 ) {
     val displayName: String =
         profile?.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User"
