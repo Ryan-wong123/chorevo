@@ -18,7 +18,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Flip
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -65,7 +64,6 @@ fun DanceLibraryListView(
     val state by vm.uiState.collectAsStateWithLifecycle()
     val upload by vm.uploadState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var isMirrored by rememberSaveable { mutableStateOf(false) }
 
     val items = state.items
     val status = state.message
@@ -170,11 +168,9 @@ fun DanceLibraryListView(
                 item = items[page],
                 isActive = pagerState.currentPage == page,
                 exoPlayer = mainPlayer,
-                isMirrored = isMirrored,
                 uid = uid,
                 username = username,
                 vm = vm,
-                onToggleMirror = { isMirrored = !isMirrored },
                 onStartPractice = {
                     val selectedItem = items[page]
                     if (openingDanceId != null) return@TikTokVideoPage
@@ -223,22 +219,15 @@ private fun TikTokVideoPage(
     item: DanceLibraryModel,
     isActive: Boolean,
     exoPlayer: ExoPlayer,
-    isMirrored: Boolean,
     uid: String?,
     username: String,
     vm: DanceLibraryListViewModel,
-    onToggleMirror: () -> Unit,
     onStartPractice: () -> Unit
 ) {
     val context = LocalContext.current
     val accentColor = Color(0xFF00B8C8)
     val scope = rememberCoroutineScope()
 
-    // ── FIX for issues #2 & #4 ────────────────────────────────────────────
-    // Read directly from the ViewModel cache instead of local `remember {}`.
-    // Local remember is scoped to the composable — it resets to 0/false/empty
-    // every time the pager recreates this page (scroll away) or the activity
-    // is recreated (back from practice). The ViewModel outlives both.
     val socialCache by vm.socialCache.collectAsStateWithLifecycle()
     val social = socialCache[item.danceId] ?: DanceSocialState()
     val likeCount  = social.likeCount
@@ -248,8 +237,6 @@ private fun TikTokVideoPage(
     var showComments by rememberSaveable { mutableStateOf(false) }
     var commentText  by remember { mutableStateOf("") }
 
-    // Trigger a cache-load when the page first becomes visible.
-    // The ViewModel guards with containsKey() so revisiting never re-fetches.
     LaunchedEffect(item.danceId) {
         if (uid != null) {
             vm.loadSocialData(item.danceId, uid)
@@ -323,7 +310,7 @@ private fun TikTokVideoPage(
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 Text(
-                    text = "@${item.educatorName}",
+                    text = "by ${item.educatorName}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = accentColor
@@ -361,26 +348,25 @@ private fun TikTokVideoPage(
             likeCount    = likeCount,
             isLiked      = isLiked,
             commentCount = comments.size,
-            isMirrored   = isMirrored,
             accentColor  = accentColor,
             onLike = {
                 if (uid != null) {
                     vm.toggleLike(item.danceId, uid, isCurrentlyLiked = isLiked)
                 }
             },
-            onComment      = { showComments = true },
-            onShare        = {
+            onComment = { showComments = true },
+            onShare = {
+                val deepLink = "https://chorevo.app/dance/${item.danceId}"
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_SUBJECT, item.title)
                     putExtra(
                         Intent.EXTRA_TEXT,
-                        "Check out \"${item.title}\" by ${item.educatorName} on Chorevo!\n${item.videoUrl}"
+                        "Check out \"${item.title}\" by ${item.educatorName} on Chorevo!\n$deepLink"
                     )
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Share via"))
             },
-            onToggleMirror = onToggleMirror,
             onStartPractice = onStartPractice
         )
     }
@@ -466,7 +452,6 @@ private fun TikTokVideoPage(
                                 }
                             }
                         }
-                        // Load more footer
                         if (social.hasMoreComments) {
                             item {
                                 Box(
@@ -514,7 +499,6 @@ private fun TikTokVideoPage(
                             val trimmed = commentText.trim()
                             if (trimmed.isNotEmpty() && uid != null) {
                                 commentText = ""
-                                // The ViewModel handles optimistic update + Firestore write
                                 vm.postComment(item.danceId, uid, username, trimmed)
                             }
                         },
@@ -539,7 +523,7 @@ private fun TikTokVideoPage(
  *   ┌─────────────────────────────────────┐
  *   │  ❤️ 120    💬 32    ↗ Share         │
  *   │─────────────────────────────────────│
- *   │  [ Practice ]       [ ⇌ Mirror ]    │
+ *   │         [ Practice ]                │
  *   └─────────────────────────────────────┘
  */
 @Composable
@@ -548,12 +532,10 @@ private fun PracticeDock(
     likeCount: Int,
     isLiked: Boolean,
     commentCount: Int,
-    isMirrored: Boolean,
     accentColor: Color,
     onLike: () -> Unit,
     onComment: () -> Unit,
     onShare: () -> Unit,
-    onToggleMirror: () -> Unit,
     onStartPractice: () -> Unit
 ) {
     Column(
@@ -569,11 +551,11 @@ private fun PracticeDock(
             verticalAlignment     = Alignment.CenterVertically
         ) {
             DockAction(
-                icon     = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                label    = if (likeCount > 0) likeCount.toString() else "Like",
-                tint     = if (isLiked) Color(0xFFFF4466) else Color.White,
-                onClick  = onLike,
-                testTag  = "likeButton"
+                icon    = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                label   = if (likeCount > 0) likeCount.toString() else "Like",
+                tint    = if (isLiked) Color(0xFFFF4466) else Color.White,
+                onClick = onLike,
+                testTag = "likeButton"
             )
             DockAction(
                 icon    = Icons.Outlined.ChatBubbleOutline,
@@ -593,55 +575,25 @@ private fun PracticeDock(
         }
 
         // CTA row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment     = Alignment.CenterVertically
+        Button(
+            onClick  = onStartPractice,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp)
+                .testTag("practiceButton"),
+            shape  = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = accentColor,
+                contentColor   = Color.White
+            ),
+            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
         ) {
-            Button(
-                onClick  = onStartPractice,
-                modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-                    .testTag("practiceButton"),
-                shape  = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = accentColor,
-                    contentColor   = Color.White
-                ),
-                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-            ) {
-                Text(
-                    text          = "Practice",
-                    style         = MaterialTheme.typography.titleSmall,
-                    fontWeight    = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
-                )
-            }
-
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(14.dp))
-                    .clickable { onToggleMirror() }
-                    .background(Color.White.copy(alpha = if (isMirrored) 0.18f else 0.08f))
-                    .padding(horizontal = 14.dp, vertical = 13.dp)
-                    .testTag("mirrorPlaybackButton"),
-                verticalAlignment     = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Icon(
-                    imageVector      = Icons.Outlined.Flip,
-                    contentDescription = "Toggle mirror",
-                    tint             = if (isMirrored) accentColor else Color.White.copy(alpha = 0.8f),
-                    modifier         = Modifier.size(18.dp)
-                )
-                Text(
-                    text       = if (isMirrored) "Mirror On" else "Mirror",
-                    style      = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium,
-                    color      = if (isMirrored) accentColor else Color.White.copy(alpha = 0.8f)
-                )
-            }
+            Text(
+                text          = "Practice",
+                style         = MaterialTheme.typography.titleSmall,
+                fontWeight    = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
         }
     }
 }
@@ -656,9 +608,9 @@ private fun DockAction(
     testTag: String
 ) {
     val iconTint by animateColorAsState(
-        targetValue  = tint,
+        targetValue   = tint,
         animationSpec = tween(200),
-        label        = "dockIconTint"
+        label         = "dockIconTint"
     )
 
     Row(
