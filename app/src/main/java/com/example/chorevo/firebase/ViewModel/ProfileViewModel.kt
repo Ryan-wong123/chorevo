@@ -1,12 +1,12 @@
 package com.example.chorevo.firebase.ViewModel
 
-
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
 import com.example.chorevo.danceactivity.Repository.PointsRepository
 import com.example.chorevo.danceactivity.Repository.PointsSnapshot
 import com.example.chorevo.danceactivity.Repository.WeeklyStreak
+import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,34 +18,43 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val firebaseStreakRepository: FirebaseStreakRepository,
-    private val pointsRepository: PointsRepository
+    private val pointsRepository: PointsRepository,
+    private val danceLibraryRepository: DanceLibraryRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ProfileUiState())
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
 
-    /** Handles refresh. */
+    /** Refreshes streak, points, and liked dances for [uid]. */
     fun refresh(uid: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, statusMessage = null) }
 
             val streak = runCatching {
                 firebaseStreakRepository.getWeeklyStreak(uid)
-            }.getOrElse {
-                WeeklyStreak()
-            }
+            }.getOrElse { WeeklyStreak() }
 
             val points = runCatching {
                 pointsRepository.getPoints(uid)
-            }.getOrElse {
-                PointsSnapshot()
-            }
+            }.getOrElse { PointsSnapshot() }
 
             _uiState.update {
-                it.copy(
-                    streak = streak,
-                    points = points,
-                    isLoading = false
+                it.copy(streak = streak, points = points, isLoading = false)
+            }
+        }
+
+        loadLikedDances(uid)
+    }
+
+    /** Loads (or reloads) the list of dances this user has liked. */
+    fun loadLikedDances(uid: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingLikes = true) }
+            val result = danceLibraryRepository.getLikedDances(uid)
+            _uiState.update { state ->
+                state.copy(
+                    likedDances = result.getOrElse { emptyList() },
+                    isLoadingLikes = false
                 )
             }
         }
