@@ -259,6 +259,38 @@ class DanceLibraryRepository @Inject constructor(
         } catch (e: Exception) { Result.failure(e) }
     }
 
+    /**
+     * Returns all dances that [uid] has liked, by querying each danceLibrary doc's
+     * likes sub-collection for a document matching the uid.
+     */
+    suspend fun getLikedDances(uid: String): Result<List<DanceLibraryModel>> {
+        return try {
+            // Firestore doesn't support cross-collection-group queries on sub-collections
+            // easily when we need the parent doc data, so we fetch all enabled dances
+            // and filter client-side to those where the uid document exists in /likes.
+            val allSnap = firestore.collection("danceLibrary")
+                .whereEqualTo("enabled", true)
+                .get()
+                .await()
+
+            val liked = mutableListOf<DanceLibraryModel>()
+            for (doc in allSnap.documents) {
+                val likeDoc = firestore.collection("danceLibrary")
+                    .document(doc.id)
+                    .collection("likes")
+                    .document(uid)
+                    .get()
+                    .await()
+                if (likeDoc.exists()) {
+                    doc.toObject(DanceLibraryModel::class.java)?.let { liked.add(it) }
+                }
+            }
+            Result.success(liked)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun postComment(danceId: String, uid: String, username: String, text: String): Result<Unit> {
         return try {
             val commentId = java.util.UUID.randomUUID().toString()

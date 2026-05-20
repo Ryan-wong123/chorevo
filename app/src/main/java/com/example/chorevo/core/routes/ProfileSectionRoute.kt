@@ -5,6 +5,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.chorevo.analytics.viewmodel.AnalyticsDashboardViewModel
 import com.example.chorevo.core.ViewModel.AppViewModel
 import com.example.chorevo.core.ViewModel.Screen
+import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.firebase.UserProfileScreen
 import com.example.chorevo.firebase.ViewModel.ProfileViewModel
@@ -18,6 +19,7 @@ fun ProfileSectionRoute(
     profile: UserProfile,
     appViewModel: AppViewModel,
     videoUploadsVm: VideoUploadsViewModel,
+    danceLibraryVm: DanceLibraryListViewModel,
     profileVm: ProfileViewModel = hiltViewModel(),
     analyticsVm: AnalyticsDashboardViewModel = hiltViewModel()
 ) {
@@ -29,7 +31,8 @@ fun ProfileSectionRoute(
                 onOpenSettings = appViewModel::openSettings,
                 analyticsVm = analyticsVm,
                 videoUploadsVm = videoUploadsVm,
-                profileVm = profileVm
+                profileVm = profileVm,
+                danceLibraryVm = danceLibraryVm
             )
         }
 
@@ -37,7 +40,7 @@ fun ProfileSectionRoute(
             SettingsScreen(
                 appViewModel = appViewModel,
                 profile = profile,
-                onBack = appViewModel::openProfile, // better than backToHome
+                onBack = appViewModel::openProfile,
                 onLogout = appViewModel::logout
             )
         }

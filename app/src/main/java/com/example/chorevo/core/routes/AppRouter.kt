@@ -150,7 +150,8 @@ private fun AppRouteContent(
                     screen = screen,
                     profile = profile,
                     appViewModel = appViewModel,
-                    videoUploadsVm = videoUploadsViewModel
+                    videoUploadsVm = videoUploadsViewModel,
+                    danceLibraryVm = danceLibraryViewModel
                 )
             }
         }
