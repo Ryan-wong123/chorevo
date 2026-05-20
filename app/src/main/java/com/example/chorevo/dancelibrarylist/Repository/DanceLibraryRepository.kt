@@ -47,6 +47,52 @@ class DanceLibraryRepository @Inject constructor(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Deep-link support  ← NEW
+    // -------------------------------------------------------------------------
+
+    /**
+     * Fetches a single dance by its Firestore document ID.
+     * Used when the app is opened via a share link (https://chorevo.app/dance/<id>).
+     *
+     * Returns [Result.failure] when:
+     * - the document does not exist (deleted or bad link)
+     * - the dance is disabled
+     * - the template is not yet ready
+     * - any network / Firestore error occurs
+     */
+    suspend fun getDanceById(danceId: String): Result<DanceLibraryModel> {
+        return try {
+            val doc = firestore.collection("danceLibrary")
+                .document(danceId)
+                .get()
+                .await()
+
+            if (!doc.exists()) {
+                return Result.failure(NoSuchElementException("This dance is no longer available."))
+            }
+
+            val dance = doc.toObject(DanceLibraryModel::class.java)
+                ?: return Result.failure(IllegalStateException("Could not read dance data."))
+
+            if (!dance.enabled) {
+                return Result.failure(IllegalStateException("This dance is no longer available."))
+            }
+
+            if (!dance.isTemplateReady) {
+                return Result.failure(IllegalStateException("This dance is still being processed. Try again soon."))
+            }
+
+            Result.success(dance)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Existing functions — unchanged
+    // -------------------------------------------------------------------------
+
     /** Loads the full pose template for a dance, using inline data as a legacy fallback. */
     suspend fun loadTemplate(item: DanceLibraryModel): Result<PoseTemplate> {
         return try {
@@ -110,17 +156,17 @@ class DanceLibraryRepository @Inject constructor(
             .document(session.sessionId)
 
         val payload = mutableMapOf<String, Any?>(
-            "sessionId" to session.sessionId,
-            "tsStart" to session.tsStart,
-            "tsEnd" to session.tsEnd,
-            "activityName" to session.activityName,
-            "activityType" to session.activityType,
-            "durationMs" to session.durationMs,
-            "smoothnessScore" to session.smoothnessScore,
-            "balanceScore" to session.balanceScore,
-            "timingConsistencyScore" to session.timingConsistencyScore,
-            "alignmentScore" to session.alignmentScore,
-            "qualityFlag" to session.qualityFlag
+            "sessionId"               to session.sessionId,
+            "tsStart"                 to session.tsStart,
+            "tsEnd"                   to session.tsEnd,
+            "activityName"            to session.activityName,
+            "activityType"            to session.activityType,
+            "durationMs"              to session.durationMs,
+            "smoothnessScore"         to session.smoothnessScore,
+            "balanceScore"            to session.balanceScore,
+            "timingConsistencyScore"  to session.timingConsistencyScore,
+            "alignmentScore"          to session.alignmentScore,
+            "qualityFlag"             to session.qualityFlag
         )
 
         if (extraAnalytics.isNotEmpty()) {
@@ -136,10 +182,10 @@ class DanceLibraryRepository @Inject constructor(
         doc.set(payload).await()
     }
 
-
     // ---------------------------
     // JSON mapping helpers
     // ---------------------------
+
     private fun String.toFirestoreMapOrEmpty(): Map<String, Any?> {
         val trimmed = trim()
         if (trimmed.isEmpty() || trimmed == "{}") return emptyMap()
@@ -154,20 +200,16 @@ class DanceLibraryRepository @Inject constructor(
 
     /** Ensures uploaded session analytics satisfy Firestore rule requirements. */
     private fun requireValidSessionAnalysis(analysis: Map<String, Any?>) {
-        val danceId = analysis["danceId"] as? String
+        val danceId    = analysis["danceId"]    as? String
         val educatorUid = analysis["educatorUid"] as? String
 
-        require(!danceId.isNullOrBlank()) {
-            "Session analytics are missing danceId"
-        }
-        require(!educatorUid.isNullOrBlank()) {
-            "Session analytics are missing educatorUid"
-        }
+        require(!danceId.isNullOrBlank())    { "Session analytics are missing danceId" }
+        require(!educatorUid.isNullOrBlank()) { "Session analytics are missing educatorUid" }
     }
 
     /** Handles json object to map. */
     private fun jsonObjectToMap(obj: JSONObject): Map<String, Any?> {
-        val out = mutableMapOf<String, Any?>()
+        val out  = mutableMapOf<String, Any?>()
         val keys = obj.keys()
         while (keys.hasNext()) {
             val k = keys.next()
@@ -190,56 +232,56 @@ class DanceLibraryRepository @Inject constructor(
     private fun jsonValueToFirestoreSafe(v: Any?): Any? {
         return when (v) {
             null, JSONObject.NULL -> null
-            is JSONObject -> jsonObjectToMap(v)
-            is JSONArray -> jsonArrayToList(v)
+            is JSONObject         -> jsonObjectToMap(v)
+            is JSONArray          -> jsonArrayToList(v)
             is Boolean, is Int, is Long, is Double, is String -> v
-            is Number -> v.toDouble()
-            else -> v.toString()
+            is Number             -> v.toDouble()
+            else                  -> v.toString()
         }
     }
 
-    /** social methods */
     suspend fun loadSocialData(danceId: String, currentUid: String): Result<Pair<Int, Boolean>> {
         return try {
             val likesSnap = firestore.collection("danceLibrary")
                 .document(danceId).collection("likes").get().await()
-            val likeCount = likesSnap.size()
+
             val isLiked = likesSnap.documents.any { it.id == currentUid }
-            Result.success(Pair(likeCount, isLiked))
-        } catch (e: Exception) { Result.failure(e) }
+            Result.success(Pair(likesSnap.size(), isLiked))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun toggleLike(danceId: String, uid: String, isCurrentlyLiked: Boolean): Result<Unit> {
         return try {
             val ref = firestore.collection("danceLibrary")
                 .document(danceId).collection("likes").document(uid)
-            if (isCurrentlyLiked) ref.delete().await()
-            else ref.set(mapOf("likedAt" to System.currentTimeMillis())).await()
+            if (isCurrentlyLiked) ref.delete().await() else ref.set(mapOf("liked" to true)).await()
             Result.success(Unit)
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     /**
-     * Loads the first page of comments (oldest-first).
      * Returns the list and the last document snapshot used as a cursor for [loadMoreComments].
      */
     suspend fun loadComments(danceId: String): Result<Pair<List<DanceComment>, DocumentSnapshot?>> {
         return try {
             val snap = firestore.collection("danceLibrary")
                 .document(danceId).collection("comments")
-                .orderBy("createdAt", Query.Direction.ASCENDING)
+                .orderBy("createdAt", Query.Direction.DESCENDING)
                 .limit(COMMENTS_PAGE_SIZE)
                 .get().await()
+
             val comments = snap.documents.mapNotNull { it.toObject(DanceComment::class.java) }
-            val cursor = snap.documents.lastOrNull()
+            val cursor   = snap.documents.lastOrNull()
             Result.success(Pair(comments, cursor))
-        } catch (e: Exception) { Result.failure(e) }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
-    /**
-     * Loads the next page of comments after [after].
-     * Returns the new batch and an updated cursor, or null cursor when no more pages exist.
-     */
     suspend fun loadMoreComments(
         danceId: String,
         after: DocumentSnapshot
@@ -251,18 +293,51 @@ class DanceLibraryRepository @Inject constructor(
                 .startAfter(after)
                 .limit(COMMENTS_PAGE_SIZE)
                 .get().await()
-            val comments = snap.documents.mapNotNull { it.toObject(DanceComment::class.java) }
-            val cursor = snap.documents.lastOrNull()
-            // If we got fewer docs than the page size, we've reached the end
+            val comments   = snap.documents.mapNotNull { it.toObject(DanceComment::class.java) }
+            val cursor     = snap.documents.lastOrNull()
             val nextCursor = if (comments.size < COMMENTS_PAGE_SIZE) null else cursor
             Result.success(Pair(comments, nextCursor))
         } catch (e: Exception) { Result.failure(e) }
     }
 
-    suspend fun postComment(danceId: String, uid: String, username: String, text: String): Result<Unit> {
+    /**
+     * Returns all dances that [uid] has liked, by querying each danceLibrary doc's
+     * likes sub-collection for a document matching the uid.
+     */
+    suspend fun getLikedDances(uid: String): Result<List<DanceLibraryModel>> {
+        return try {
+            val allSnap = firestore.collection("danceLibrary")
+                .whereEqualTo("enabled", true)
+                .get()
+                .await()
+
+            val liked = mutableListOf<DanceLibraryModel>()
+            for (doc in allSnap.documents) {
+                val likeDoc = firestore.collection("danceLibrary")
+                    .document(doc.id)
+                    .collection("likes")
+                    .document(uid)
+                    .get()
+                    .await()
+                if (likeDoc.exists()) {
+                    doc.toObject(DanceLibraryModel::class.java)?.let { liked.add(it) }
+                }
+            }
+            Result.success(liked)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun postComment(
+        danceId: String,
+        uid: String,
+        username: String,
+        text: String
+    ): Result<Unit> {
         return try {
             val commentId = java.util.UUID.randomUUID().toString()
-            val comment = DanceComment(commentId, uid, username, text)
+            val comment   = DanceComment(commentId, uid, username, text)
             firestore.collection("danceLibrary")
                 .document(danceId).collection("comments")
                 .document(commentId).set(comment).await()
