@@ -1,13 +1,16 @@
 package com.routes
 
-
-
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -25,52 +28,71 @@ import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
 
-/** Routes the user to the correct top-level screen based on app state and auth status. */
+/**
+ * Routes the user to the correct top-level screen based on app state and auth status.
+ *
+ * [appViewModel] is provided by [MainActivity] so the same instance that received
+ * the deep-link intent is used here (avoids a second hiltViewModel() lookup that
+ * would create a fresh, uninitialized instance in some edge cases).
+ */
 @Composable
 fun AppRouter(
     appViewModel: AppViewModel = hiltViewModel()
 ) {
     val state = appViewModel.uiState.collectAsStateWithLifecycle().value
+    val snackbarHostState = remember { SnackbarHostState() }
 
-    // Keep startup neutral until session restore finishes so logged-in users
-    // do not briefly see the login UI.
-    if (!state.didAuthCheck) {
-        StartupLoadingRoute()
-        return
+    // Show deep-link errors (dance not found, disabled, etc.) as a snackbar.
+    LaunchedEffect(state.deepLinkError) {
+        val error = state.deepLinkError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(error)
+        appViewModel.clearDeepLinkError()
     }
 
-    // After auth check, if no signed-in profile exists, force auth
-    if (state.profile == null) {
-        AuthRoute(
-            onAuthed = appViewModel::onAuthed
-        )
-        return
-    }
-
-    val danceLibraryViewModel: DanceLibraryListViewModel = hiltViewModel()
-    val videoUploadsViewModel: VideoUploadsViewModel = hiltViewModel()
-
-    AppNavigationRoute(
-        screen = state.screen,
-        onHomeSelected = appViewModel::backToHome,
-        onUploadSelected = appViewModel::openUpload,
-        onLeaderboardSelected = appViewModel::openLeaderboard,
-        onProfileSelected = appViewModel::openProfile
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
-        AppRouteContent(
-            innerPadding = innerPadding,
+
+        // Keep startup neutral until session restore finishes so logged-in users
+        // do not briefly see the login UI.
+        if (!state.didAuthCheck) {
+            StartupLoadingRoute()
+            return@Scaffold
+        }
+
+        // After auth check, if no signed-in profile exists, force auth
+        if (state.profile == null) {
+            AuthRoute(
+                onAuthed = appViewModel::onAuthed
+            )
+            return@Scaffold
+        }
+
+        val danceLibraryViewModel: DanceLibraryListViewModel = hiltViewModel()
+        val videoUploadsViewModel: VideoUploadsViewModel = hiltViewModel()
+
+        AppNavigationRoute(
             screen = state.screen,
-            uid = state.profile.uid,
-            onAuthed = appViewModel::onAuthed,
-            onPickDance = appViewModel::pickDance,
-            onBackToHome = appViewModel::backToHome,
-            onOpenProfile = appViewModel::openProfile,
-            selectedDanceItem = state.selectedDanceItem,
-            profile = state.profile,
-            appViewModel = appViewModel,
-            danceLibraryViewModel = danceLibraryViewModel,
-            videoUploadsViewModel = videoUploadsViewModel
-        )
+            onHomeSelected = appViewModel::backToHome,
+            onUploadSelected = appViewModel::openUpload,
+            onLeaderboardSelected = appViewModel::openLeaderboard,
+            onProfileSelected = appViewModel::openProfile
+        ) { navInnerPadding ->
+            AppRouteContent(
+                innerPadding = navInnerPadding,
+                screen = state.screen,
+                uid = state.profile.uid,
+                onAuthed = appViewModel::onAuthed,
+                onPickDance = appViewModel::pickDance,
+                onBackToHome = appViewModel::backToHome,
+                onOpenProfile = appViewModel::openProfile,
+                selectedDanceItem = state.selectedDanceItem,
+                profile = state.profile,
+                appViewModel = appViewModel,
+                danceLibraryViewModel = danceLibraryViewModel,
+                videoUploadsViewModel = videoUploadsViewModel
+            )
+        }
     }
 }
 

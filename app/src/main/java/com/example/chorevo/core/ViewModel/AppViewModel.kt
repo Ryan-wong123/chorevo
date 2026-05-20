@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.firebase.AutoRetryUploaderService
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
@@ -24,13 +25,20 @@ class AppViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val authRepository: FirebaseAuthRepository,
     private val retryUploader: AutoRetryUploaderService,
-    private val settings: NotificationPreferencesDataStore
+    private val settings: NotificationPreferencesDataStore,
+    private val danceLibraryRepository: DanceLibraryRepository   // ← added
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
 
     private val reminderScheduler = ReminderScheduler(appContext, settings)
+
+    /**
+     * Holds a danceId that arrived via a deep link before auth finished.
+     * Once auth resolves we consume this and navigate to the dance.
+     */
+    private var pendingDeepLinkDanceId: String? = null
 
     init {
         viewModelScope.launch {
@@ -45,6 +53,11 @@ class AppViewModel @Inject constructor(
 
             if (p != null) {
                 retryUploader.retryUnsyncedSessions(p.uid)
+                // Consume any deep link that arrived before auth was ready.
+                pendingDeepLinkDanceId?.let { id ->
+                    pendingDeepLinkDanceId = null
+                    fetchAndOpenDance(id)
+                }
             }
         }
 
@@ -66,6 +79,65 @@ class AppViewModel @Inject constructor(
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Deep-link entry point
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Called by [MainActivity] when a https://chorevo.app/dance/<id> link is
+     * tapped.  If auth has already resolved we navigate immediately; otherwise
+     * we park the ID and consume it once login completes.
+     */
+    fun openDanceById(danceId: String) {
+        val state = _uiState.value
+        if (!state.didAuthCheck || state.profile == null) {
+            // Auth not ready yet — park and retry after init() finishes.
+            pendingDeepLinkDanceId = danceId
+            return
+        }
+        viewModelScope.launch { fetchAndOpenDance(danceId) }
+    }
+
+    /**
+     * Fetches the [DanceLibraryModel] for [danceId] from Firestore and
+     * navigates to it, or sets a user-visible error if the fetch fails.
+     */
+    private suspend fun fetchAndOpenDance(danceId: String) {
+        _uiState.update { it.copy(deepLinkLoading = true, deepLinkError = null) }
+
+        val result = danceLibraryRepository.getDanceById(danceId)
+
+        result.fold(
+            onSuccess = { dance ->
+                _uiState.update {
+                    it.copy(
+                        selectedDanceItem = dance,
+                        screen = Screen.DANCE_PRACTICE,
+                        deepLinkLoading = false,
+                        deepLinkError = null
+                    )
+                }
+            },
+            onFailure = { error ->
+                _uiState.update {
+                    it.copy(
+                        deepLinkLoading = false,
+                        deepLinkError = error.message ?: "Could not open shared dance."
+                    )
+                }
+            }
+        )
+    }
+
+    /** Clears any deep-link error banner after it has been shown. */
+    fun clearDeepLinkError() {
+        _uiState.update { it.copy(deepLinkError = null) }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Existing functions (unchanged)
+    // ─────────────────────────────────────────────────────────────────────────
+
     /** Updates whether daily reminder notifications are enabled and reschedules them if needed. */
     fun setPushEnabled(enabled: Boolean) {
         viewModelScope.launch {
@@ -78,7 +150,6 @@ class AppViewModel @Inject constructor(
     fun setNotificationTime(hour: Int, minute: Int) {
         viewModelScope.launch {
             settings.setNotificationTime(hour, minute)
-
             if (_uiState.value.pushEnabled) {
                 reminderScheduler.rescheduleFromPreferences()
             }
@@ -123,6 +194,11 @@ class AppViewModel @Inject constructor(
     /** Stores the authenticated user and sends the app to the home screen. */
     fun onAuthed(profile: UserProfile) {
         _uiState.update { it.copy(profile = profile, screen = Screen.HOME) }
+        // Consume any deep link that arrived before the user logged in.
+        pendingDeepLinkDanceId?.let { id ->
+            pendingDeepLinkDanceId = null
+            viewModelScope.launch { fetchAndOpenDance(id) }
+        }
     }
 
     /** Signs the user out and resets screen state that depends on an active session. */
@@ -134,7 +210,9 @@ class AppViewModel @Inject constructor(
                 screen = Screen.AUTH,
                 selectedDanceItem = null,
                 isUploadingProfilePhoto = false,
-                profilePhotoUploadError = null
+                profilePhotoUploadError = null,
+                deepLinkLoading = false,
+                deepLinkError = null
             )
         }
     }
