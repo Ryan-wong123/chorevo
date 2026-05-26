@@ -5,6 +5,7 @@ import android.content.Context
 import com.example.chorevo.core.ViewModel.AppViewModel
 import com.example.chorevo.core.ViewModel.Screen
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.firebase.AutoRetryUploaderService
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
@@ -39,6 +40,7 @@ class AppViewModelTest {
     private lateinit var authRepository: FirebaseAuthRepository
     private lateinit var retryUploader: AutoRetryUploaderService
     private lateinit var settings: NotificationPreferencesDataStore
+    private lateinit var danceLibraryRepository: DanceLibraryRepository
     private lateinit var vm: AppViewModel
 
     @Before
@@ -50,6 +52,7 @@ class AppViewModelTest {
         authRepository = mockk(relaxed = true)
         retryUploader = mockk(relaxed = true)
         settings = mockk(relaxed = true)
+        danceLibraryRepository = mockk(relaxed = true)
 
         // ReminderScheduler is constructed in AppViewModel body — provide AlarmManager
         every { context.getSystemService(Context.ALARM_SERVICE) } returns alarmManager
@@ -59,7 +62,7 @@ class AppViewModelTest {
         every { settings.pushEnabledFlow } returns flowOf(false)
         every { settings.notificationTimeFlow } returns flowOf(9 to 0)
 
-        vm = AppViewModel(context, authRepository, retryUploader, settings)
+        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
     }
 
     @After
@@ -105,7 +108,7 @@ class AppViewModelTest {
         val profile = makeProfile()
         coEvery { authRepository.getCurrentUserProfile() } returns profile
 
-        val newVm = AppViewModel(context, authRepository, retryUploader, settings)
+        val newVm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
         advanceUntilIdle()
 
         val state = newVm.uiState.value
