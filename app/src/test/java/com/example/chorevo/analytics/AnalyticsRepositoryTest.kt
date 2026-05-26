@@ -225,6 +225,8 @@ class AnalyticsRepositoryTest {
         assertEquals("Footwork • Jamie", detail.summary.activityName)
         assertEquals("danceA", detail.analysis?.danceId)
         assertEquals("educator1", detail.analysis?.educatorUid)
+        assertEquals(listOf(150L), detail.analysis?.feedbackMessages?.map { it.tMs })
+        assertEquals(listOf("Lift your left arm."), detail.analysis?.feedbackMessages?.map { it.message })
         assertEquals(listOf(100L, 200L), detail.analysis?.timelinePoints?.map { it.tMs })
         assertEquals(listOf(0L, 100L), detail.analysis?.performanceSegments?.map { it.startMs })
         assertEquals(SegmentLabel.OK, detail.analysis?.performanceSegments?.first()?.label)
@@ -302,6 +304,9 @@ class AnalyticsRepositoryTest {
             "smoothnessScore" to 88.0,
             "avgPoseError" to 0.11,
             "frames" to 300,
+            "feedbackMessages" to listOf(
+                mapOf("tMs" to 150L, "message" to "Lift your left arm.")
+            ),
             "timelinePoints" to listOf(
                 mapOf("tMs" to 200L, "score" to 80.0, "err" to 0.2),
                 mapOf("tMs" to 100L, "score" to 90.0, "err" to 0.1)
