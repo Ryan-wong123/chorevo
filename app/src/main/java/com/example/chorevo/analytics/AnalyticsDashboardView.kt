@@ -469,6 +469,7 @@ fun SessionDetailPanel(
                     )
                     GanttSegmentChart(
                         segments = analysis.performanceSegments,
+                        feedbackMessages = analysis.feedbackMessages,
                         totalMs = durationT,
                         currentMs = playheadMs,
                         onSeek = { exoPlayer.seekTo(it) }
@@ -1098,6 +1099,7 @@ fun DonutLegendRow(color: Color, label: String, count: Int, pct: Int) {
 @Composable
 fun GanttSegmentChart(
     segments: List<PerformanceSegment>,
+    feedbackMessages: List<FeedbackMessage> = emptyList(),
     totalMs: Long,
     currentMs: Long,
     onSeek: (Long) -> Unit
@@ -1117,6 +1119,9 @@ fun GanttSegmentChart(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         validSegments.forEachIndexed { idx, seg ->
+            val segmentFeedback = feedbackMessages
+                .filter { it.tMs >= seg.startMs && it.tMs <= seg.endMs }
+                .distinctBy { it.message }
             val color = when (seg.label) {
                 SegmentLabel.GOOD -> goodColor
                 SegmentLabel.OK -> okColor
@@ -1132,95 +1137,101 @@ fun GanttSegmentChart(
             val widthRatio = (seg.endMs - seg.startMs).toFloat() / safeTotal.toFloat()
             val durationSec = (seg.endMs - seg.startMs) / 1000
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onSeek(seg.startMs) },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                // Row number
-                Text(
-                    text = "#${idx + 1}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
-                    modifier = Modifier.width(22.dp)
-                )
-
-                // Gantt bar track
-                Box(
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(28.dp)
-                        .background(surfaceVariant, RoundedCornerShape(6.dp))
+                        .fillMaxWidth()
+                        .clickable { onSeek(seg.startMs) },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // The filled segment bar, offset by startRatio
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(startRatio + widthRatio)  // total width up to end
-                            .padding(start = (startRatio * 1000).dp.coerceAtMost(300.dp)) // approximate offset
+                    Text(
+                        text = "#${idx + 1}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
+                        modifier = Modifier.width(22.dp)
                     )
 
-                    // Draw the actual bar using Canvas for precise positioning
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val barStart = startRatio * size.width
-                        val barWidth = (widthRatio * size.width).coerceAtLeast(6f)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(28.dp)
+                            .background(surfaceVariant, RoundedCornerShape(6.dp))
+                    ) {
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            val barStart = startRatio * size.width
+                            val barWidth = (widthRatio * size.width).coerceAtLeast(6f)
 
-                        // Background already handled by Box
-                        // Draw segment fill
-                        drawRoundRect(
-                            color = color.copy(alpha = 0.85f),
-                            topLeft = Offset(barStart, 0f),
-                            size = androidx.compose.ui.geometry.Size(barWidth, size.height),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f)
-                        )
-
-                        // Playhead line if within this segment
-                        if (currentMs in seg.startMs..seg.endMs) {
-                            val playRatio =
-                                (currentMs - seg.startMs).toFloat() / (seg.endMs - seg.startMs).toFloat()
-                            val playX = barStart + playRatio * barWidth
-                            drawLine(
-                                color = onSurface,
-                                start = Offset(playX, 0f),
-                                end = Offset(playX, size.height),
-                                strokeWidth = 3f
+                            drawRoundRect(
+                                color = color.copy(alpha = 0.85f),
+                                topLeft = Offset(barStart, 0f),
+                                size = androidx.compose.ui.geometry.Size(barWidth, size.height),
+                                cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f)
                             )
+
+                            if (currentMs in seg.startMs..seg.endMs) {
+                                val playRatio =
+                                    (currentMs - seg.startMs).toFloat() / (seg.endMs - seg.startMs).toFloat()
+                                val playX = barStart + playRatio * barWidth
+                                drawLine(
+                                    color = onSurface,
+                                    start = Offset(playX, 0f),
+                                    end = Offset(playX, size.height),
+                                    strokeWidth = 3f
+                                )
+                            }
                         }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = color.copy(alpha = 0.15f),
+                        modifier = Modifier.width(80.dp)
+                    ) {
+                        Text(
+                            text = labelText,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = color,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            maxLines = 1
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        modifier = Modifier.width(42.dp)
+                    ) {
+                        Text(
+                            text = "${"%.0f".format(seg.avgScore * 100)}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = color
+                        )
+                        Text(
+                            text = "${durationSec}s",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
+                        )
                     }
                 }
 
-                // Label badge
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = color.copy(alpha = 0.15f),
-                    modifier = Modifier.width(80.dp)
-                ) {
-                    Text(
-                        text = labelText,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = color,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        maxLines = 1
-                    )
-                }
-
-                // Score + duration stacked
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    modifier = Modifier.width(42.dp)
-                ) {
-                    Text(
-                        text = "${"%.0f".format(seg.avgScore * 100)}%",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = color
-                    )
-                    Text(
-                        text = "${durationSec}s",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
-                    )
+                if (segmentFeedback.isNotEmpty()) {
+                    Column(
+                        modifier = Modifier
+                            .padding(start = 30.dp, end = 122.dp)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        segmentFeedback.forEach { feedback ->
+                            Text(
+                                text = "${formatMmSs(feedback.tMs)}  ${feedback.message}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.72f)
+                            )
+                        }
+                    }
                 }
             }
         }

@@ -6,6 +6,7 @@ import com.example.chorevo.analytics.DanceDashboardArgs
 import com.example.chorevo.analytics.DanceDashboardMode
 import com.example.chorevo.analytics.DanceSessionDetail
 import com.example.chorevo.analytics.DanceSessionSummary
+import com.example.chorevo.analytics.FeedbackMessage
 import com.example.chorevo.analytics.PerformanceSegment
 import com.example.chorevo.analytics.SegmentLabel
 import com.example.chorevo.analytics.TimelinePoint
@@ -420,6 +421,24 @@ class AnalyticsRepository @Inject constructor(
             )
         }.orEmpty()
 
+        val feedbackMessages = (analysis["feedbackMessages"] as? List<*>)
+            ?.mapIndexedNotNull { index, item ->
+                when (item) {
+                    is String -> item
+                        .takeIf { it.isNotBlank() }
+                        ?.let { FeedbackMessage(tMs = index.toLong(), message = it) }
+                    is Map<*, *> -> {
+                        val message = item["message"] as? String ?: return@mapIndexedNotNull null
+                        val tMs = (item["tMs"] as? Number)?.toLong() ?: return@mapIndexedNotNull null
+                        message.takeIf { it.isNotBlank() }?.let {
+                            FeedbackMessage(tMs = tMs, message = it)
+                        }
+                    }
+                    else -> null
+                }
+            }
+            .orEmpty()
+
         return AnalysisData(
             danceId = str("danceId"),
             educatorUid = str("educatorUid"),
@@ -432,6 +451,7 @@ class AnalyticsRepository @Inject constructor(
             smoothnessScore = num("smoothnessScore"),
             avgPoseError = num("avgPoseError"),
             frames = int("frames"),
+            feedbackMessages = feedbackMessages,
             timelinePoints = timeline.sortedBy { it.tMs },
             performanceSegments = segments.sortedBy { it.startMs }
         )

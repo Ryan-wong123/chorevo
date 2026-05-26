@@ -117,6 +117,7 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithText("Back").performClick()
         assert(backClicks == 1)
         composeRule.onNodeWithText("Live Analytics").assertIsDisplayed()
+        composeRule.onNodeWithText("Nice match. Keep the timing steady.").assertIsDisplayed()
     }
 
     @Test

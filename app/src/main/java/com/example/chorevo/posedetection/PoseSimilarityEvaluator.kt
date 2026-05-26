@@ -2,6 +2,7 @@ package com.example.chorevo.posedetection
 
 import com.example.chorevo.analytics.PerformanceSegment
 import com.example.chorevo.analytics.SegmentLabel
+import com.example.chorevo.analytics.FeedbackMessage
 import com.example.chorevo.analytics.TimelinePoint
 import kotlin.math.abs
 import kotlin.math.exp
@@ -10,6 +11,10 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
 
+data class PoseWordFeedback(
+    val message: String,
+    val focusArea: String
+)
 
 class PoseSimilarityEvaluator(
     private val template: PoseTemplate,
@@ -33,6 +38,8 @@ class PoseSimilarityEvaluator(
         val timingConsistencyScore: Double,
         val smoothnessScore: Double,
         val avgPoseError: Double,
+        val latestFeedback: PoseWordFeedback? = null,
+        val feedbackMessages: List<FeedbackMessage> = emptyList(),
 
         // dashboard series (optional; only filled when includeSeries = true)
         val timelinePoints: List<TimelinePoint> = emptyList(),
@@ -56,6 +63,9 @@ class PoseSimilarityEvaluator(
 
     // EWMA score (reacts live) - KEEP (not persisted by default)
     private var ewmaScore: Double? = null
+    private var latestFeedback: PoseWordFeedback? = null
+    private val feedbackMessages = mutableListOf<FeedbackMessage>()
+    private val seenFeedbackMessages = mutableSetOf<String>()
 
     // Stable joints only
     private val stableJoints = intArrayOf(
@@ -90,6 +100,13 @@ class PoseSimilarityEvaluator(
 
         // Gaussian mapping prevents collapse to ~0
         val score = gaussianScore(err, sigma).coerceIn(0.0, 1.0)
+        updateWordFeedback(
+            learner = learnerFlat,
+            reference = ref.landmarks,
+            mirrorRefX = mirrorReferenceX,
+            score = score,
+            timeMs = timeMs
+        )
 
         // EWMA (optional)
         ewmaScore = if (ewmaScore == null) score else (ewmaScore!! + ewmaBeta * (score - ewmaScore!!))
@@ -170,7 +187,9 @@ class PoseSimilarityEvaluator(
                 alignmentScore = meanScore.coerceIn(0.0, 1.0),
                 timingConsistencyScore = timingConsistency,
                 smoothnessScore = smoothness,
-                avgPoseError = meanErr
+                avgPoseError = meanErr,
+                latestFeedback = latestFeedback,
+                feedbackMessages = feedbackMessages.toList()
             )
         }
 
@@ -186,6 +205,8 @@ class PoseSimilarityEvaluator(
             timingConsistencyScore = timingConsistency,
             smoothnessScore = smoothness,
             avgPoseError = meanErr,
+            latestFeedback = latestFeedback,
+            feedbackMessages = feedbackMessages.toList(),
             timelinePoints = timeline.toList(),
             performanceSegments = segments.toList()
         )
@@ -243,6 +264,104 @@ class PoseSimilarityEvaluator(
         }
 
         return if (wsum > 0.0) sum / wsum else 1.0
+    }
+
+    private fun updateWordFeedback(
+        learner: List<Float>,
+        reference: List<Float>,
+        mirrorRefX: Boolean,
+        score: Double,
+        timeMs: Long
+    ) {
+        val feedback = buildWordFeedback(
+            learner = learner,
+            reference = reference,
+            mirrorRefX = mirrorRefX,
+            score = score
+        )
+
+        latestFeedback = feedback
+        if (feedback != null && score < goodThreshold && seenFeedbackMessages.add(feedback.message)) {
+            feedbackMessages.add(
+                FeedbackMessage(
+                    tMs = timeMs,
+                    message = feedback.message
+                )
+            )
+        }
+    }
+
+    private fun buildWordFeedback(
+        learner: List<Float>,
+        reference: List<Float>,
+        mirrorRefX: Boolean,
+        score: Double
+    ): PoseWordFeedback? {
+        if (score >= goodThreshold) {
+            return PoseWordFeedback(
+                message = "Nice match. Keep the timing steady.",
+                focusArea = "overall"
+            )
+        }
+
+        val ln = normalizeXY(learner, mirrorX = false)
+        val rn = normalizeXY(reference, mirrorX = mirrorRefX)
+        val feedbackSamples = mutableListOf<JointFeedbackSample>()
+        for (idx in stableJoints) {
+            val base = idx * 4
+            val w = min(learner[base + 3], reference[base + 3])
+            if (w < minVisibility) continue
+
+            val dx = ln[idx * 2] - rn[idx * 2]
+            val dy = ln[idx * 2 + 1] - rn[idx * 2 + 1]
+            val distance = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+            if (distance < FEEDBACK_JOINT_ERROR_THRESHOLD) continue
+
+            feedbackSamples.add(
+                JointFeedbackSample(
+                    area = jointAreaName(idx),
+                    dx = dx,
+                    dy = dy,
+                    distance = distance
+                )
+            )
+        }
+
+        val areas = feedbackSamples
+            .groupBy { it.area }
+            .mapValues { (_, samples) ->
+                JointFeedbackSample(
+                    area = samples.first().area,
+                    dx = samples.map { it.dx }.average().toFloat(),
+                    dy = samples.map { it.dy }.average().toFloat(),
+                    distance = samples.map { it.distance }.average().toFloat()
+                )
+            }
+
+        val focus = areas.values.maxByOrNull { it.distance }
+            ?: return PoseWordFeedback(
+                message = "Reset your posture and match the reference shape.",
+                focusArea = "overall"
+            )
+
+        val action = if (abs(focus.dy) >= abs(focus.dx)) {
+            if (focus.dy > 0f) "Lift" else "Lower"
+        } else {
+            if (focus.dx > 0f) "Move" else "Move"
+        }
+
+        val direction = if (abs(focus.dy) >= abs(focus.dx)) {
+            ""
+        } else if (focus.dx > 0f) {
+            " left"
+        } else {
+            " right"
+        }
+
+        return PoseWordFeedback(
+            message = "$action your ${focus.area}$direction.",
+            focusArea = focus.area
+        )
     }
 
     /** Handles normalize xy. */
@@ -304,6 +423,23 @@ class PoseSimilarityEvaluator(
         return out
     }
 
+    private data class JointFeedbackSample(
+        val area: String,
+        val dx: Float,
+        val dy: Float,
+        val distance: Float
+    )
+
+    private fun jointAreaName(idx: Int): String {
+        return when (idx) {
+            11, 13, 15 -> "left arm"
+            12, 14, 16 -> "right arm"
+            23, 25, 27 -> "left leg"
+            24, 26, 28 -> "right leg"
+            else -> "posture"
+        }
+    }
+
     /** Closes segment. */
     private fun closeSegment(endMs: Long) {
         val start = currentSegmentStartMs ?: return
@@ -334,5 +470,9 @@ class PoseSimilarityEvaluator(
         // prevent double-finalize
         currentSegmentStartMs = null
         currentSegmentLabel = null
+    }
+
+    private companion object {
+        const val FEEDBACK_JOINT_ERROR_THRESHOLD = 0.28f
     }
 }
