@@ -69,6 +69,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.chorevo.analytics.PerformanceSegment
+import com.example.chorevo.analytics.FeedbackMessage
 import com.example.chorevo.analytics.SessionAnalysisPayload
 import com.example.chorevo.analytics.TimelinePoint
 import com.example.chorevo.core.CameraBinder
@@ -142,9 +143,11 @@ fun DanceARPracticeScreen(
     var smoothnessScore by remember { mutableDoubleStateOf(if (testMode) 0.88 else 1.0) }
     var avgPoseError by remember { mutableDoubleStateOf(if (testMode) 0.1234 else 0.0) }
     var frameCount by remember { mutableIntStateOf(if (testMode) 42 else 0) }
+    var wordFeedback by remember { mutableStateOf(if (testMode) "Nice match. Keep the timing steady." else null) }
 
     var latestTimelinePoints by remember { mutableStateOf<List<TimelinePoint>>(emptyList()) }
     var latestSegments by remember { mutableStateOf<List<PerformanceSegment>>(emptyList()) }
+    var latestFeedbackMessages by remember { mutableStateOf<List<FeedbackMessage>>(emptyList()) }
     var status by remember { mutableStateOf<String?>(if (testMode) "Test Mode" else null) }
     var countdownSecondsRemaining by rememberSaveable(item.danceId) { mutableStateOf<Int?>(null) }
     var showReferenceSelector by rememberSaveable(item.danceId) { mutableStateOf(true) }
@@ -336,6 +339,8 @@ fun DanceARPracticeScreen(
         frameCount = if (testMode) 42 else 0
         latestTimelinePoints = emptyList()
         latestSegments = emptyList()
+        latestFeedbackMessages = emptyList()
+        wordFeedback = if (testMode) "Nice match. Keep the timing steady." else null
 
         status = message
     }
@@ -353,6 +358,8 @@ fun DanceARPracticeScreen(
         smoothnessScore = if (testMode) 0.88 else 1.0
         avgPoseError = if (testMode) 0.1234 else 0.0
         frameCount = if (testMode) 42 else 0
+        latestFeedbackMessages = emptyList()
+        wordFeedback = if (testMode) "Nice match. Keep the timing steady." else null
         practiceTimeMs = 0L
         status = if (practiceMode == PracticeMode.STEP_BY_STEP && currentPracticeSegment != null) {
             "Starting ${currentPracticeSegment.title.lowercase()} in 3..."
@@ -371,8 +378,10 @@ fun DanceARPracticeScreen(
             smoothnessScore = snap.smoothnessScore
             avgPoseError = snap.avgPoseError
             frameCount = snap.frameCount
+            wordFeedback = snap.latestFeedback?.message
             latestTimelinePoints = snap.timelinePoints
             latestSegments = snap.performanceSegments
+            latestFeedbackMessages = snap.feedbackMessages
         }
 
         status = when {
@@ -472,6 +481,8 @@ fun DanceARPracticeScreen(
                             smoothnessScore = snap.smoothnessScore
                             avgPoseError = snap.avgPoseError
                             frameCount = snap.frameCount
+                            wordFeedback = snap.latestFeedback?.message
+                            latestFeedbackMessages = snap.feedbackMessages
                         } else {
                             frameCount += 1
                         }
@@ -510,9 +521,11 @@ fun DanceARPracticeScreen(
         val snapshot = ev?.snapshot(includeSeries = true)
         val payloadTimeline = snapshot?.timelinePoints ?: latestTimelinePoints
         val payloadSegments = snapshot?.performanceSegments ?: latestSegments
+        val payloadFeedbackMessages = snapshot?.feedbackMessages ?: latestFeedbackMessages
 
         latestTimelinePoints = payloadTimeline
         latestSegments = payloadSegments
+        latestFeedbackMessages = payloadFeedbackMessages
 
         val analysisPayload = SessionAnalysisPayload(
             danceId = item.danceId,
@@ -526,6 +539,7 @@ fun DanceARPracticeScreen(
             videoPositionMs = practiceTimeMs,
             referenceTrackId = selectedReferenceTrack?.trackId,
             referenceTrackLabel = selectedReferenceTrack?.label,
+            feedbackMessages = payloadFeedbackMessages,
             timelinePoints = payloadTimeline,
             performanceSegments = payloadSegments
         )
@@ -822,6 +836,16 @@ fun DanceARPracticeScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                     )
+
+                    wordFeedback?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = brandTeal,
+                            modifier = Modifier.testTag("wordFeedback")
+                        )
+                    }
 
                     status?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall)

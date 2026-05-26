@@ -27,6 +27,7 @@ data class AnalysisData(
     val smoothnessScore: Double?,
     val avgPoseError: Double?,
     val frames: Int?,
+    val feedbackMessages: List<FeedbackMessage> = emptyList(),
     val timelinePoints: List<TimelinePoint>,
     val performanceSegments: List<PerformanceSegment>
 )
@@ -67,6 +68,10 @@ data class TimelinePoint(
     val err: Double
 )
 
+data class FeedbackMessage(
+    val tMs: Long,
+    val message: String
+)
 
 data class SessionAnalysisPayload(
     val danceId: String,
@@ -80,6 +85,7 @@ data class SessionAnalysisPayload(
     val videoPositionMs: Long,
     val referenceTrackId: String? = null,
     val referenceTrackLabel: String? = null,
+    val feedbackMessages: List<FeedbackMessage> = emptyList(),
     val timelinePoints: List<TimelinePoint> = emptyList(),
     val performanceSegments: List<PerformanceSegment> = emptyList()
 ) {
@@ -98,6 +104,15 @@ data class SessionAnalysisPayload(
         obj.put("videoPositionMs", videoPositionMs)
         obj.put("referenceTrackId", referenceTrackId)
         obj.put("referenceTrackLabel", referenceTrackLabel)
+
+        val feedbackArr = JSONArray()
+        for (feedback in feedbackMessages) {
+            val o = JSONObject()
+            o.put("tMs", feedback.tMs)
+            o.put("message", feedback.message)
+            feedbackArr.put(o)
+        }
+        obj.put("feedbackMessages", feedbackArr)
 
         val tArr = JSONArray()
         for (p in timelinePoints) {
