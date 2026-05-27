@@ -13,6 +13,7 @@ fun AppNavigationRoute(
     screen: Screen,
     onHomeSelected: () -> Unit,
     onUploadSelected: () -> Unit,
+    onCommunitySelected: () -> Unit,
     onLeaderboardSelected: () -> Unit,
     onProfileSelected: () -> Unit,
     content: @Composable (PaddingValues) -> Unit
@@ -26,6 +27,7 @@ fun AppNavigationRoute(
                         when (tab) {
                             BottomNavItem.HOME -> onHomeSelected()
                             BottomNavItem.UPLOAD -> onUploadSelected()
+                            BottomNavItem.COMMUNITY -> onCommunitySelected()
                             BottomNavItem.LEADERBOARD -> onLeaderboardSelected()
                             BottomNavItem.PROFILE -> onProfileSelected()
                         }
@@ -38,14 +40,15 @@ fun AppNavigationRoute(
     }
 }
 
-/** Hides the bottom bar only on the authentication screen. */
-private fun Screen.shouldShowBottomBar(): Boolean = this != Screen.AUTH
+/** Hides shared navigation on immersive screens that need the full viewport. */
+private fun Screen.shouldShowBottomBar(): Boolean = this != Screen.AUTH && this != Screen.DANCE_PRACTICE
 
 /** Maps each screen to the bottom navigation item that should appear selected. */
 private fun Screen.toBottomNavItem(): BottomNavItem = when (this) {
     Screen.AUTH -> BottomNavItem.HOME
     Screen.HOME, Screen.DANCE_PRACTICE -> BottomNavItem.HOME
     Screen.UPLOAD -> BottomNavItem.UPLOAD
+    Screen.COMMUNITY -> BottomNavItem.COMMUNITY
     Screen.LEADERBOARD -> BottomNavItem.LEADERBOARD
     Screen.PROFILE, Screen.SETTINGS -> BottomNavItem.PROFILE
 }

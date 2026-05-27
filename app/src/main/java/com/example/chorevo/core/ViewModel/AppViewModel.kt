@@ -232,6 +232,9 @@ class AppViewModel @Inject constructor(
     /** Opens the upload screen for submitting a new dance video. */
     fun openUpload() = _uiState.update { it.copy(screen = Screen.UPLOAD) }
 
+    /** Opens the shared community discussion screen. */
+    fun openCommunity() = _uiState.update { it.copy(screen = Screen.COMMUNITY) }
+
     /** Opens the profile section to view account details, stats, and uploads. */
     fun openProfile() = _uiState.update { it.copy(screen = Screen.PROFILE) }
 
