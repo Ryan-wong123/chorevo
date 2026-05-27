@@ -18,10 +18,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,7 +39,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -66,8 +65,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.chorevo.analytics.PerformanceSegment
 import com.example.chorevo.analytics.FeedbackMessage
 import com.example.chorevo.analytics.SessionAnalysisPayload
@@ -75,6 +78,7 @@ import com.example.chorevo.analytics.TimelinePoint
 import com.example.chorevo.core.CameraBinder
 import com.example.chorevo.core.CameraPreview
 import com.example.chorevo.core.Ids
+import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
@@ -211,6 +215,58 @@ fun DanceARPracticeScreen(
         } else {
             selectedTrackTemplate
         }
+    }
+
+    val segmentLoopPlayer = if (!testMode) {
+        remember(context) {
+            ExoPlayer.Builder(context).build().apply {
+                repeatMode = Player.REPEAT_MODE_ONE
+                playWhenReady = false
+                volume = 0f
+            }
+        }
+    } else {
+        null
+    }
+
+    DisposableEffect(segmentLoopPlayer) {
+        onDispose { segmentLoopPlayer?.release() }
+    }
+
+    LaunchedEffect(
+        segmentLoopPlayer,
+        item.videoUrl,
+        currentPracticeSegment,
+        practiceMode,
+        isPracticeFocused,
+        isCountdownActive
+    ) {
+        val player = segmentLoopPlayer ?: return@LaunchedEffect
+        val segment = currentPracticeSegment
+        if (
+            item.videoUrl.isBlank() ||
+            segment == null ||
+            practiceMode != PracticeMode.STEP_BY_STEP ||
+            isPracticeFocused ||
+            isCountdownActive
+        ) {
+            player.pause()
+            return@LaunchedEffect
+        }
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(item.videoUrl.toUri())
+            .setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(segment.startMs)
+                    .setEndPositionMs(segment.endMs.coerceAtLeast(segment.startMs + 1L))
+                    .build()
+            )
+            .build()
+
+        player.setMediaItem(mediaItem)
+        player.prepare()
+        player.playWhenReady = true
     }
 
     val camPermissionLauncher =
@@ -612,22 +668,7 @@ fun DanceARPracticeScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            if (!isPracticeFocused) {
-                TopAppBar(
-                    title = { Text("AR Practice: ${item.title}") },
-                    navigationIcon = {
-                        TextButton(
-                            onClick = onBack,
-                            colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
-                        ) {
-                            Text("Back")
-                        }
-                    }
-                )
-            }
-        }
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { pad ->
         Box(
             modifier = Modifier
@@ -650,6 +691,13 @@ fun DanceARPracticeScreen(
                     ) {
                         Text("Grant Permission")
                     }
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(
+                        onClick = onBack,
+                        colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
+                    ) {
+                        Text("Back")
+                    }
                 }
                 return@Box
             }
@@ -667,8 +715,7 @@ fun DanceARPracticeScreen(
                     landmarks = refLandmarksForCamera,
                     modifier = Modifier
                         .align(Alignment.Center)
-                        .width(660.dp)
-                        .height(1080.dp)
+                        .fillMaxSize()
                 )
 
                 PoseOverlay(
@@ -687,58 +734,81 @@ fun DanceARPracticeScreen(
                 )
             }
 
-            if (!isPracticeFocused && showReferenceSelector && availableReferenceTracks.size > 1) {
-                ReferenceDancerSelectorCard(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 12.dp, top = 12.dp, bottom = 168.dp)
-                        .fillMaxHeight()
-                        .width(112.dp),
-                    videoUrl = item.videoUrl,
-                    tracks = availableReferenceTracks,
-                    selectionPreview = template?.selectionPreview,
-                    selectedTrackId = selectedReferenceTrack?.trackId,
-                    brandTeal = brandTeal,
-                    onTrackSelected = { trackId ->
-                        if (trackId == selectedReferenceTrack?.trackId) return@ReferenceDancerSelectorCard
-                        val selectedTrack = availableReferenceTracks.firstOrNull { it.trackId == trackId }
-                            ?: return@ReferenceDancerSelectorCard
-                        selectedReferenceTrackId = selectedTrack.trackId
-                        doReset(message = "Using ${selectedTrack.label}. Tap Start Practice when ready.")
-                    }
-                )
-            }
+            FloatingPracticeBackButton(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(12.dp),
+                brandTeal = brandTeal,
+                onBack = onBack
+            )
 
-            if (!isPracticeFocused && practiceSegments.size > 1) {
-                StepPracticeCard(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 12.dp, start = 16.dp, end = 16.dp),
-                    brandTeal = brandTeal,
-                    practiceMode = practiceMode,
-                    currentSegment = currentPracticeSegment,
-                    canGoPrevious = currentStepIndex > 0,
-                    canGoNext = currentStepIndex < practiceSegments.lastIndex,
-                    onSelectFullRoutine = {
-                        practiceMode = PracticeMode.FULL_ROUTINE
-                        doReset(message = "Full routine ready. Tap Start Practice when ready.")
-                    },
-                    onSelectStepByStep = {
-                        practiceMode = PracticeMode.STEP_BY_STEP
-                        currentStepIndex = currentStepIndex.coerceIn(0, practiceSegments.lastIndex)
-                        doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
-                    },
-                    onPreviousStep = {
-                        if (currentStepIndex == 0) return@StepPracticeCard
-                        currentStepIndex -= 1
-                        doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
-                    },
-                    onNextStep = {
-                        if (currentStepIndex >= practiceSegments.lastIndex) return@StepPracticeCard
-                        currentStepIndex += 1
-                        doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
+            if (!isPracticeFocused) {
+                val showSelector = showReferenceSelector && availableReferenceTracks.size > 1
+                val showStepControls = practiceSegments.size > 1
+
+                if (showSelector || showStepControls) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 64.dp, start = 12.dp, end = 12.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        if (showSelector) {
+                            ReferenceDancerSelectorCard(
+                                modifier = Modifier
+                                    .width(128.dp)
+                                    .heightIn(max = 340.dp),
+                                videoUrl = item.videoUrl,
+                                tracks = availableReferenceTracks,
+                                selectionPreview = template?.selectionPreview,
+                                selectedTrackId = selectedReferenceTrack?.trackId,
+                                brandTeal = brandTeal,
+                                onTrackSelected = { trackId ->
+                                    if (trackId == selectedReferenceTrack?.trackId) return@ReferenceDancerSelectorCard
+                                    val selectedTrack = availableReferenceTracks.firstOrNull { it.trackId == trackId }
+                                        ?: return@ReferenceDancerSelectorCard
+                                    selectedReferenceTrackId = selectedTrack.trackId
+                                    doReset(message = "Using ${selectedTrack.label}. Tap Start Practice when ready.")
+                                }
+                            )
+                        }
+
+                        if (showStepControls) {
+                            StepPracticeCard(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .heightIn(max = 340.dp),
+                                brandTeal = brandTeal,
+                                practiceMode = practiceMode,
+                                currentSegment = currentPracticeSegment,
+                                canGoPrevious = currentStepIndex > 0,
+                                canGoNext = currentStepIndex < practiceSegments.lastIndex,
+                                onSelectFullRoutine = {
+                                    practiceMode = PracticeMode.FULL_ROUTINE
+                                    doReset(message = "Full routine ready. Tap Start Practice when ready.")
+                                },
+                                onSelectStepByStep = {
+                                    practiceMode = PracticeMode.STEP_BY_STEP
+                                    currentStepIndex = currentStepIndex.coerceIn(0, practiceSegments.lastIndex)
+                                    doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
+                                },
+                                onPreviousStep = {
+                                    if (currentStepIndex == 0) return@StepPracticeCard
+                                    currentStepIndex -= 1
+                                    doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
+                                },
+                                onNextStep = {
+                                    if (currentStepIndex >= practiceSegments.lastIndex) return@StepPracticeCard
+                                    currentStepIndex += 1
+                                    doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
+                                },
+                                loopPlayer = segmentLoopPlayer
+                            )
+                        }
                     }
-                )
+                }
             }
 
             if (isCountdownActive) {
@@ -780,14 +850,17 @@ fun DanceARPracticeScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(12.dp)
-                    .fillMaxWidth(0.92f),
+                    .fillMaxWidth(0.92f)
+                    .heightIn(max = if (isPracticeFocused) 96.dp else 228.dp),
                 shape = RoundedCornerShape(18.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(10.dp),
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (!isPracticeFocused) {
@@ -939,6 +1012,29 @@ fun DanceARPracticeScreen(
 }
 
 @Composable
+private fun FloatingPracticeBackButton(
+    modifier: Modifier = Modifier,
+    brandTeal: Color,
+    onBack: () -> Unit
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
+        )
+    ) {
+        TextButton(
+            onClick = onBack,
+            colors = ButtonDefaults.textButtonColors(contentColor = brandTeal),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Text("Back", fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
 private fun StepPracticeCard(
     modifier: Modifier = Modifier,
     brandTeal: Color,
@@ -949,11 +1045,12 @@ private fun StepPracticeCard(
     onSelectFullRoutine: () -> Unit,
     onSelectStepByStep: () -> Unit,
     onPreviousStep: () -> Unit,
-    onNextStep: () -> Unit
+    onNextStep: () -> Unit,
+    loopPlayer: ExoPlayer?
 ) {
     Card(
         modifier = modifier
-            .fillMaxWidth(0.92f)
+            .fillMaxWidth()
             .testTag("stepPracticeCard"),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
@@ -961,7 +1058,9 @@ private fun StepPracticeCard(
         )
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
@@ -1002,6 +1101,34 @@ private fun StepPracticeCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                 )
+
+                Text(
+                    text = "Loop Preview",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = brandTeal
+                )
+
+                if (loopPlayer != null) {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color.Black)
+                    ) {
+                        SharedPlayerView(
+                            exoPlayer = loopPlayer,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(150.dp),
+                            useController = true
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Selected segment is ready to loop.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
