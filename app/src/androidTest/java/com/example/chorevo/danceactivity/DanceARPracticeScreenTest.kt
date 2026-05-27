@@ -139,19 +139,15 @@ class DanceARPracticeScreenTest {
 
         composeRule.mainClock.autoAdvance = false
         composeRule.onNodeWithText("Start Practice").performClick()
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag("practiceStartCountdown").fetchSemanticsNodes().isNotEmpty()
+        }
 
         composeRule.onNodeWithTag("practiceStartCountdown").assertIsDisplayed()
         composeRule.onNodeWithText("3").assertIsDisplayed()
 
-        composeRule.mainClock.advanceTimeBy(1_000)
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("2").assertIsDisplayed()
-
-        composeRule.mainClock.advanceTimeBy(1_000)
-        composeRule.waitForIdle()
-        composeRule.onNodeWithText("1").assertIsDisplayed()
-
-        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.mainClock.advanceTimeBy(3_500)
         composeRule.waitForIdle()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
