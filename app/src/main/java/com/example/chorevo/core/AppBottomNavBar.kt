@@ -6,9 +6,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
@@ -28,7 +30,7 @@ import androidx.compose.material.icons.outlined.EmojiEvents
 enum class BottomNavItem(val label: String) {
     HOME("Home"),
     UPLOAD("Upload"),
-
+    COMMUNITY("Community"),
     LEADERBOARD("Score"),
     PROFILE("Profile")
 }
@@ -107,6 +109,24 @@ fun AppBottomNavBar(
                     )
                 },
                 label = { Text(BottomNavItem.LEADERBOARD.label) },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
+                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                    indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            )
+            NavigationBarItem(
+                selected = selected == BottomNavItem.COMMUNITY,
+                onClick = { onSelect(BottomNavItem.COMMUNITY) },
+                icon = {
+                    Icon(
+                        imageVector = if (selected == BottomNavItem.COMMUNITY) Icons.Filled.Forum else Icons.Outlined.Forum,
+                        contentDescription = "Community"
+                    )
+                },
+                label = { Text(BottomNavItem.COMMUNITY.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onSurface,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
