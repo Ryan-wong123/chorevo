@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.chorevo.core.ViewModel.AppViewModel
 import com.example.chorevo.core.ViewModel.Screen
 import com.example.chorevo.core.routes.AuthRoute
+import com.example.chorevo.core.routes.CommunityRoute
 import com.example.chorevo.core.routes.DancePracticeRoute
 import com.example.chorevo.core.routes.HomeRoute
 import com.example.chorevo.core.routes.LeaderboardRoute
@@ -75,6 +76,7 @@ fun AppRouter(
             screen = state.screen,
             onHomeSelected = appViewModel::backToHome,
             onUploadSelected = appViewModel::openUpload,
+            onCommunitySelected = appViewModel::openCommunity,
             onLeaderboardSelected = appViewModel::openLeaderboard,
             onProfileSelected = appViewModel::openProfile
         ) { navInnerPadding ->
@@ -158,6 +160,12 @@ private fun AppRouteContent(
                 UploadRoute(
                     onBack = onBackToHome,
                     vm = videoUploadsViewModel
+                )
+            }
+
+            Screen.COMMUNITY -> {
+                CommunityRoute(
+                    profile = profile
                 )
             }
 

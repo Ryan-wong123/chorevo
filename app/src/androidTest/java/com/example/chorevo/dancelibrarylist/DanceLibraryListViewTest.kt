@@ -41,6 +41,8 @@ class DanceLibraryListViewTest {
         repo = mockk()
         streakRepository = mockk(relaxed = true)
         leaderboardRepository = mockk(relaxed = true)
+        coEvery { repo.loadSocialData(any(), any()) } returns Result.success(0 to false)
+        coEvery { repo.loadComments(any()) } returns Result.success(emptyList<DanceComment>() to null)
         vm = DanceLibraryListViewModel(repo, streakRepository, leaderboardRepository)
     }
 
