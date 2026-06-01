@@ -339,6 +339,58 @@ The workflow assembles debug and release builds, but it does not currently uploa
    - Firestore Database
    - Storage
 
+### Google Sign-In fingerprint setup
+
+Firebase Authentication with Google sign-in requires your Android app certificate fingerprint to be registered in Firebase. Without the correct SHA values, Google sign-in commonly fails with OAuth or client ID related errors.
+
+#### Where to add the fingerprint in Firebase
+
+1. Open Firebase Console.
+2. Go to your project.
+3. Click `Project settings`.
+4. Under `Your apps`, select the Android app `com.example.chorevo`.
+5. Click `Add fingerprint`.
+6. Paste the `SHA-1`.
+7. Paste the `SHA-256`.
+8. Save.
+9. Re-download `google-services.json`.
+10. Replace `app/google-services.json`.
+
+#### How to get the fingerprints
+
+In Android Studio:
+
+1. Open the `Gradle` panel.
+2. Go to `Tasks`.
+3. Open `android`.
+4. Run `signingReport`.
+
+Or from the project root in a terminal:
+
+```powershell
+.\gradlew.bat signingReport
+```
+
+You will see output similar to:
+
+```text
+Variant: debug
+SHA1: ...
+SHA-256: ...
+```
+
+#### Which fingerprints to use
+
+- For local testing, add the `debug` fingerprint values.
+- For release builds, also add the `release` fingerprint values.
+- If you use Google Play App Signing, also add the Play signing certificate fingerprint from Play Console.
+
+#### Important
+
+- After adding fingerprints in Firebase, always download a fresh `google-services.json` again.
+- Make sure the new file replaces the existing file at `app/google-services.json`.
+- If the fingerprint is missing or wrong, Google sign-in may fail even if the app builds correctly.
+
 ### Firestore indexes
 
 The app includes deployable Firestore index configuration:
