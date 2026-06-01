@@ -50,6 +50,7 @@ class AuthScreenTest {
         composeRule.onNodeWithText("Username / Email").assertIsDisplayed()
         composeRule.onNodeWithText("Enter your password").assertIsDisplayed()
         composeRule.onNodeWithText("Sign up here").assertIsDisplayed()
+        composeRule.onNodeWithText("Continue with Google").assertIsDisplayed()
 
         composeRule.onAllNodesWithText("Login").assertCountEquals(2)
         loginButton().assertIsDisplayed()
