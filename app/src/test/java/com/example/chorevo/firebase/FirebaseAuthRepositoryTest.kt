@@ -4,6 +4,7 @@ import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.testing.MainDispatcherRule
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.AuthResult
+import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.CollectionReference
@@ -54,9 +55,12 @@ class FirebaseAuthRepositoryTest {
 
         val authResult = mockk<AuthResult>()
         val user = mockk<FirebaseUser>()
+        val snapshot = mockk<DocumentSnapshot>()
 
         every { authResult.user } returns user
         every { user.uid } returns "uid123"
+        every { user.email } returns "a@b.com"
+        every { user.photoUrl } returns null
 
         every {
             auth.createUserWithEmailAndPassword("a@b.com", "pass123")
@@ -64,11 +68,21 @@ class FirebaseAuthRepositoryTest {
 
         val usersCollection = mockk<CollectionReference>()
         val docRef = mockk<DocumentReference>()
+        val leaderboardCollection = mockk<CollectionReference>()
+        val leaderboardDoc = mockk<DocumentReference>()
 
         every { db.collection("users") } returns usersCollection
+        every { db.collection("leaderboardStats") } returns leaderboardCollection
         every { usersCollection.document("uid123") } returns docRef
+        every { leaderboardCollection.document("uid123") } returns leaderboardDoc
         every {
             docRef.set(any<Map<String, Any?>>(), SetOptions.merge())
+        } returns Tasks.forResult(null)
+        every { docRef.get() } returns Tasks.forResult(snapshot)
+        every { snapshot.getString("displayName") } returns "Mark"
+        every { snapshot.getString("photoUrl") } returns null
+        every {
+            leaderboardDoc.set(any<Map<String, Any?>>(), SetOptions.merge())
         } returns Tasks.forResult(null)
 
         val result = repo.signUp(
@@ -90,6 +104,7 @@ class FirebaseAuthRepositoryTest {
             auth.createUserWithEmailAndPassword("a@b.com", "pass123")
         }
         verify(exactly = 1) { db.collection("users") }
+        verify(exactly = 1) { db.collection("leaderboardStats") }
         verify(exactly = 1) { usersCollection.document("uid123") }
         verify(exactly = 1) {
             docRef.set(
@@ -99,6 +114,8 @@ class FirebaseAuthRepositoryTest {
                 SetOptions.merge()
             )
         }
+        verify(exactly = 1) { docRef.get() }
+        verify(exactly = 1) { leaderboardCollection.document("uid123") }
     }
 
     @Test
@@ -134,17 +151,22 @@ class FirebaseAuthRepositoryTest {
         val usersCollection = mockk<CollectionReference>()
         val docRef = mockk<DocumentReference>()
         val snapshot = mockk<DocumentSnapshot>()
+        val leaderboardCollection = mockk<CollectionReference>()
+        val leaderboardDoc = mockk<DocumentReference>()
 
         every { authResult.user } returns user
         every { user.uid } returns "uid999"
         every { user.email } returns "real@user.com"
+        every { user.photoUrl } returns null
 
         every {
             auth.signInWithEmailAndPassword("x@y.com", "pw")
         } returns Tasks.forResult(authResult)
 
         every { db.collection("users") } returns usersCollection
+        every { db.collection("leaderboardStats") } returns leaderboardCollection
         every { usersCollection.document("uid999") } returns docRef
+        every { leaderboardCollection.document("uid999") } returns leaderboardDoc
 
         every { docRef.get() } returns Tasks.forResult(snapshot)
         every { snapshot.getString("displayName") } returns "  Devin  "
@@ -152,6 +174,9 @@ class FirebaseAuthRepositoryTest {
 
         every {
             docRef.set(any<Map<String, Any?>>(), SetOptions.merge())
+        } returns Tasks.forResult(null)
+        every {
+            leaderboardDoc.set(any<Map<String, Any?>>(), SetOptions.merge())
         } returns Tasks.forResult(null)
 
         val result = repo.signIn("x@y.com", "pw")
@@ -171,8 +196,9 @@ class FirebaseAuthRepositoryTest {
         assertNull(profile.photoUrl)
 
         verify(exactly = 1) { auth.signInWithEmailAndPassword("x@y.com", "pw") }
-        verify(exactly = 2) { db.collection("users") }
-        verify(exactly = 2) { usersCollection.document("uid999") }
+        verify(exactly = 1) { db.collection("users") }
+        verify(exactly = 1) { db.collection("leaderboardStats") }
+        verify(exactly = 1) { usersCollection.document("uid999") }
         verify(exactly = 1) { docRef.get() }
         verify(exactly = 1) { snapshot.getString("displayName") }
         verify(exactly = 1) { snapshot.getString("photoUrl") }
@@ -184,6 +210,55 @@ class FirebaseAuthRepositoryTest {
                 SetOptions.merge()
             )
         }
+        verify(exactly = 1) { leaderboardCollection.document("uid999") }
+    }
+
+    @Test
+    fun signInWithGoogle_success_syncsFirebaseUserIntoFirestore() = runTest {
+        val auth = mockk<FirebaseAuth>()
+        val db = mockk<FirebaseFirestore>()
+        val repo = makeRepo(auth, db)
+
+        val authResult = mockk<AuthResult>()
+        val user = mockk<FirebaseUser>()
+        val usersCollection = mockk<CollectionReference>()
+        val docRef = mockk<DocumentReference>()
+        val snapshot = mockk<DocumentSnapshot>()
+        val leaderboardCollection = mockk<CollectionReference>()
+        val leaderboardDoc = mockk<DocumentReference>()
+
+        every { authResult.user } returns user
+        every { user.uid } returns "google123"
+        every { user.email } returns "google@example.com"
+        every { user.displayName } returns "Google User"
+        every { user.photoUrl } returns null
+
+        every {
+            auth.signInWithCredential(any<AuthCredential>())
+        } returns Tasks.forResult(authResult)
+
+        every { db.collection("users") } returns usersCollection
+        every { db.collection("leaderboardStats") } returns leaderboardCollection
+        every { usersCollection.document("google123") } returns docRef
+        every { leaderboardCollection.document("google123") } returns leaderboardDoc
+        every { docRef.set(any<Map<String, Any?>>(), SetOptions.merge()) } returns Tasks.forResult(null)
+        every { docRef.get() } returns Tasks.forResult(snapshot)
+        every { snapshot.getString("displayName") } returns "Google User"
+        every { snapshot.getString("photoUrl") } returns null
+        every { leaderboardDoc.set(any<Map<String, Any?>>(), SetOptions.merge()) } returns Tasks.forResult(null)
+
+        val result = repo.signInWithGoogle("id-token-123")
+
+        advanceUntilIdle()
+
+        assertTrue(result.isSuccess)
+        assertEquals("google123", result.getOrThrow().uid)
+        assertEquals("google@example.com", result.getOrThrow().email)
+        assertEquals("Google User", result.getOrThrow().displayName)
+
+        verify(exactly = 1) { auth.signInWithCredential(any<AuthCredential>()) }
+        verify(exactly = 1) { db.collection("users") }
+        verify(exactly = 1) { db.collection("leaderboardStats") }
     }
 
     @Test
