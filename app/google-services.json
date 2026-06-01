@@ -12,7 +12,20 @@
           "package_name": "com.example.chorevo"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "432503115723-sd88qi9l42m2u3rsgi1f1evme64aduiq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.chorevo",
+            "certificate_hash": "121dd9f4985b3e1ad75a6a00401e995505d46f1d"
+          }
+        },
+        {
+          "client_id": "432503115723-k31gbph4r006o7e3uda6taim1npd9e1b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDD7qMDtrKO1z_vMHcYrToD0NdU9vlOibc"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "432503115723-k31gbph4r006o7e3uda6taim1npd9e1b.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

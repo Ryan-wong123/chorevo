@@ -3,6 +3,8 @@ package com.example.chorevo.firebase.Repository
 import android.net.Uri
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.firebase.UserRole
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
@@ -26,28 +28,10 @@ class FirebaseAuthRepository @Inject constructor(
     ): Result<UserProfile> = runCatching {
         val res = auth.createUserWithEmailAndPassword(email, password).await()
         val user = res.user ?: error("Signup failed")
-
-        db.collection("users")
-            .document(user.uid)
-            .set(
-                mapOf(
-                    "uid" to user.uid,
-                    "email" to email,
-                    "role" to UserRole.USER.name,
-                    "displayName" to displayName.trim(),
-                    "photoUrl" to null,
-                    "lastSeen" to System.currentTimeMillis()
-                ),
-                SetOptions.merge()
-            )
-            .await()
-
-        UserProfile(
-            uid = user.uid,
-            email = email,
-            displayName = displayName.trim(),
-            role = UserRole.USER,
-            photoUrl = null
+        syncUserProfile(
+            user = user,
+            fallbackEmail = email,
+            fallbackDisplayName = displayName.trim()
         )
     }
 
@@ -58,23 +42,17 @@ class FirebaseAuthRepository @Inject constructor(
     ): Result<UserProfile> = runCatching {
         val res = auth.signInWithEmailAndPassword(email, password).await()
         val user = res.user ?: error("Login failed")
+        syncUserProfile(user = user, fallbackEmail = email)
+    }
 
-        val snap = db.collection("users")
-            .document(user.uid)
-            .get()
-            .await()
-
-        db.collection("users")
-            .document(user.uid)
-            .set(mapOf("lastSeen" to System.currentTimeMillis()), SetOptions.merge())
-            .await()
-
-        UserProfile(
-            uid = user.uid,
-            email = user.email ?: email,
-            displayName = snap.getString("displayName")?.trim(),
-            role = UserRole.USER,
-            photoUrl = snap.getString("photoUrl")
+    /** Handles Google sign-in using a Google ID token. */
+    suspend fun signInWithGoogle(idToken: String): Result<UserProfile> = runCatching {
+        val credential = GoogleAuthProvider.getCredential(idToken, null)
+        val res = auth.signInWithCredential(credential).await()
+        val user = res.user ?: error("Google sign-in failed")
+        syncUserProfile(
+            user = user,
+            fallbackDisplayName = user.displayName?.trim()
         )
     }
 
@@ -82,23 +60,9 @@ class FirebaseAuthRepository @Inject constructor(
     suspend fun getCurrentUserProfile(): UserProfile? {
         val user = auth.currentUser ?: return null
 
-        val ref = db.collection("users").document(user.uid)
-        val snap = ref.get().await()
-
-        ref.set(
-            mapOf(
-                "lastSeen" to System.currentTimeMillis(),
-                "role" to UserRole.USER.name
-            ),
-            SetOptions.merge()
-        ).await()
-
-        return UserProfile(
-            uid = user.uid,
-            email = user.email,
-            displayName = snap.getString("displayName")?.trim(),
-            role = UserRole.USER,
-            photoUrl = snap.getString("photoUrl")
+        return syncUserProfile(
+            user = user,
+            fallbackDisplayName = user.displayName?.trim()
         )
     }
 
@@ -164,5 +128,49 @@ class FirebaseAuthRepository @Inject constructor(
     /** Handles sign out. */
     fun signOut() {
         auth.signOut()
+    }
+
+    /** Creates or refreshes the Firestore user record, then returns the normalized profile. */
+    private suspend fun syncUserProfile(
+        user: FirebaseUser,
+        fallbackEmail: String? = user.email,
+        fallbackDisplayName: String? = null,
+        fallbackPhotoUrl: String? = user.photoUrl?.toString()
+    ): UserProfile {
+        val trimmedDisplayName = fallbackDisplayName?.trim().takeUnless { it.isNullOrBlank() }
+        val resolvedPhotoUrl = fallbackPhotoUrl ?: user.photoUrl?.toString()
+        val userRef = db.collection("users").document(user.uid)
+
+        userRef.set(
+            mapOf(
+                "uid" to user.uid,
+                "email" to (user.email ?: fallbackEmail),
+                "role" to UserRole.USER.name,
+                "displayName" to trimmedDisplayName,
+                "photoUrl" to resolvedPhotoUrl,
+                "lastSeen" to System.currentTimeMillis()
+            ),
+            SetOptions.merge()
+        ).await()
+
+        val snap = userRef.get().await()
+        val displayName = snap.getString("displayName")?.trim()
+            .takeUnless { it.isNullOrBlank() }
+            ?: trimmedDisplayName
+        val photoUrl = snap.getString("photoUrl") ?: resolvedPhotoUrl
+
+        syncLeaderboardProfile(
+            uid = user.uid,
+            displayName = displayName,
+            photoUrl = photoUrl
+        )
+
+        return UserProfile(
+            uid = user.uid,
+            email = user.email ?: fallbackEmail,
+            displayName = displayName,
+            role = UserRole.USER,
+            photoUrl = photoUrl
+        )
     }
 }

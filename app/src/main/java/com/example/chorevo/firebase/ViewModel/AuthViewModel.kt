@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.firebase.AuthMode
+import com.example.chorevo.firebase.AuthProvider
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,6 +20,7 @@ import javax.inject.Inject
 
 sealed interface AuthEvent {
     data class Authed(val profile: UserProfile) : AuthEvent
+    data object LaunchGoogleSignIn : AuthEvent
 }
 
 data class AuthUiState(
@@ -28,7 +30,8 @@ data class AuthUiState(
     val displayName: String = "",
     val status: String? = null,
     val loading: Boolean = false,
-    val passwordVisible: Boolean = false
+    val passwordVisible: Boolean = false,
+    val activeProvider: AuthProvider? = null
 )
 
 @HiltViewModel
@@ -72,36 +75,85 @@ class AuthViewModel @Inject constructor(
         val s = _uiState.value
         if (s.loading) return
 
+        if (s.mode == AuthMode.SIGNUP && s.displayName.isBlank()) {
+            _uiState.update { it.copy(status = "Please enter a display name.") }
+            return
+        }
+
+        submitAuth(AuthProvider.EMAIL) {
+            if (s.mode == AuthMode.SIGNUP) {
+                repo.signUp(
+                    email = s.email.trim(),
+                    password = s.password,
+                    displayName = s.displayName.trim()
+                )
+            } else {
+                repo.signIn(s.email.trim(), s.password)
+            }
+        }
+    }
+
+    /** Starts the Google sign-in flow. */
+    fun requestGoogleSignIn() {
+        if (_uiState.value.loading) return
+        _uiState.update {
+            it.copy(
+                loading = true,
+                status = null,
+                activeProvider = AuthProvider.GOOGLE
+            )
+        }
+        _events.tryEmit(AuthEvent.LaunchGoogleSignIn)
+    }
+
+    /** Completes the Google sign-in flow after the UI fetches a Google ID token. */
+    fun completeGoogleSignIn(idToken: String) {
+        submitAuth(AuthProvider.GOOGLE) {
+            repo.signInWithGoogle(idToken)
+        }
+    }
+
+    /** Restores the auth screen after an external auth flow is cancelled or fails before Firebase runs. */
+    fun onExternalAuthCancelled(message: String? = null) {
+        _uiState.update {
+            it.copy(
+                loading = false,
+                activeProvider = null,
+                status = message
+            )
+        }
+    }
+
+    private fun submitAuth(
+        provider: AuthProvider,
+        block: suspend () -> Result<UserProfile>
+    ) {
+        if (_uiState.value.loading && provider != AuthProvider.GOOGLE) return
+
         viewModelScope.launch {
-            _uiState.update { it.copy(loading = true, status = null) }
+            _uiState.update {
+                it.copy(
+                    loading = true,
+                    status = null,
+                    activeProvider = provider
+                )
+            }
             try {
-                if (s.mode == AuthMode.SIGNUP) {
-                    if (s.displayName.isBlank()) {
-                        _uiState.update { it.copy(status = "Please enter a display name.") }
-                        return@launch
-                    }
-
-                    val res =repo.signUp(
-                        email = s.email.trim(),
-                        password = s.password,
-                        displayName = s.displayName.trim()
-                    )
-
-                    if (res.isSuccess) {
-                        _events.tryEmit(AuthEvent.Authed(res.getOrThrow()))
-                    } else {
-                        _uiState.update { it.copy(status = res.exceptionOrNull()?.message) }
-                    }
+                val res = block()
+                if (res.isSuccess) {
+                    _events.tryEmit(AuthEvent.Authed(res.getOrThrow()))
                 } else {
-                    val res =repo.signIn(s.email.trim(), s.password)
-                    if (res.isSuccess) {
-                        _events.tryEmit(AuthEvent.Authed(res.getOrThrow()))
-                    } else {
-                        _uiState.update { it.copy(status = res.exceptionOrNull()?.message) }
+                    _uiState.update { state ->
+                        state.copy(status = res.exceptionOrNull()?.message)
                     }
                 }
             } finally {
-                _uiState.update { it.copy(loading = false) }
+                _uiState.update {
+                    it.copy(
+                        loading = false,
+                        activeProvider = null
+                    )
+                }
             }
         }
     }
