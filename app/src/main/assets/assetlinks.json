@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.example.chorevo",
+    "sha256_cert_fingerprints": ["1C:C7:F1:2B:98:89:B3:E0:DF:26:CC:FF:F7:2F:A3:3C:39:B1:1C:AC:5F:8F:4D:6D:C0:6F:F6:03:B2:2D:33:39"]
+  }
+}]

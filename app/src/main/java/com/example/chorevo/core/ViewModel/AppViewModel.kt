@@ -2,6 +2,7 @@ package com.example.chorevo.core.ViewModel
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
@@ -26,7 +27,7 @@ class AppViewModel @Inject constructor(
     private val authRepository: FirebaseAuthRepository,
     private val retryUploader: AutoRetryUploaderService,
     private val settings: NotificationPreferencesDataStore,
-    private val danceLibraryRepository: DanceLibraryRepository   // ← added
+    private val danceLibraryRepository: DanceLibraryRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AppUiState())
@@ -85,16 +86,20 @@ class AppViewModel @Inject constructor(
 
     /**
      * Called by [MainActivity] when a https://chorevo.app/dance/<id> link is
-     * tapped.  If auth has already resolved we navigate immediately; otherwise
-     * we park the ID and consume it once login completes.
+     * tapped. If auth has already resolved we navigate immediately; otherwise
+     * we park the ID and send the user to the auth screen so that once they
+     * log in, onAuthed() will consume it.
      */
     fun openDanceById(danceId: String) {
+        Log.d("DeepLink", "openDanceById called with id=$danceId")
         val state = _uiState.value
         if (!state.didAuthCheck || state.profile == null) {
-            // Auth not ready yet — park and retry after init() finishes.
+            Log.d("DeepLink", "Auth not ready — parking danceId and showing AUTH screen")
             pendingDeepLinkDanceId = danceId
+            _uiState.update { it.copy(screen = Screen.AUTH) }
             return
         }
+        Log.d("DeepLink", "Auth ready — fetching dance immediately")
         viewModelScope.launch { fetchAndOpenDance(danceId) }
     }
 
@@ -103,12 +108,14 @@ class AppViewModel @Inject constructor(
      * navigates to it, or sets a user-visible error if the fetch fails.
      */
     private suspend fun fetchAndOpenDance(danceId: String) {
+        Log.d("DeepLink", "fetchAndOpenDance started for id=$danceId")
         _uiState.update { it.copy(deepLinkLoading = true, deepLinkError = null) }
 
         val result = danceLibraryRepository.getDanceById(danceId)
 
         result.fold(
             onSuccess = { dance ->
+                Log.d("DeepLink", "Dance fetched successfully: $dance")
                 _uiState.update {
                     it.copy(
                         selectedDanceItem = dance,
@@ -119,6 +126,7 @@ class AppViewModel @Inject constructor(
                 }
             },
             onFailure = { error ->
+                Log.e("DeepLink", "Failed to fetch dance: ${error.message}", error)
                 _uiState.update {
                     it.copy(
                         deepLinkLoading = false,
@@ -243,4 +251,7 @@ class AppViewModel @Inject constructor(
 
     /** Opens the leaderboard screen to compare ranking metrics with other users. */
     fun openLeaderboard() = _uiState.update { it.copy(screen = Screen.LEADERBOARD) }
+
+    /** Opens the personalized weekly challenges screen reached from the profile section. */
+    fun openWeeklyChallenges() = _uiState.update { it.copy(screen = Screen.WEEKLY_CHALLENGES) }
 }

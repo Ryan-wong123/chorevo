@@ -11,8 +11,10 @@ import com.example.chorevo.firebase.UserProfileScreen
 import com.example.chorevo.firebase.ViewModel.ProfileViewModel
 import com.example.chorevo.notification.SettingsScreen
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.weeklychallenge.WeeklyChallengesScreen
+import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 
-/** Renders the profile area and switches between profile and settings content. */
+/** Renders the profile area and switches between profile, settings, and weekly-challenges content. */
 @Composable
 fun ProfileSectionRoute(
     screen: Screen,
@@ -21,7 +23,8 @@ fun ProfileSectionRoute(
     videoUploadsVm: VideoUploadsViewModel,
     danceLibraryVm: DanceLibraryListViewModel,
     profileVm: ProfileViewModel = hiltViewModel(),
-    analyticsVm: AnalyticsDashboardViewModel = hiltViewModel()
+    analyticsVm: AnalyticsDashboardViewModel = hiltViewModel(),
+    weeklyChallengeVm: WeeklyChallengeViewModel = hiltViewModel()
 ) {
     when (screen) {
         Screen.PROFILE -> {
@@ -29,10 +32,12 @@ fun ProfileSectionRoute(
                 profile = profile,
                 onLogout = appViewModel::logout,
                 onOpenSettings = appViewModel::openSettings,
+                onOpenWeeklyChallenges = appViewModel::openWeeklyChallenges,
                 analyticsVm = analyticsVm,
                 videoUploadsVm = videoUploadsVm,
                 profileVm = profileVm,
-                danceLibraryVm = danceLibraryVm
+                danceLibraryVm = danceLibraryVm,
+                weeklyChallengeVm = weeklyChallengeVm
             )
         }
 
@@ -42,6 +47,14 @@ fun ProfileSectionRoute(
                 profile = profile,
                 onBack = appViewModel::openProfile,
                 onLogout = appViewModel::logout
+            )
+        }
+
+        Screen.WEEKLY_CHALLENGES -> {
+            WeeklyChallengesScreen(
+                uid = profile.uid,
+                vm = weeklyChallengeVm,
+                onBack = appViewModel::openProfile
             )
         }
 

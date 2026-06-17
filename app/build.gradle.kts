@@ -20,7 +20,7 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64", "x86")
         }
     }
 
@@ -39,8 +39,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
     kotlinOptions { jvmTarget = "11" }
-    buildFeatures { compose = true
-                   buildConfig = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     testOptions {
         animationsDisabled = true
@@ -60,6 +62,9 @@ android {
                 "META-INF/AL2.0",
                 "META-INF/LGPL2.1"
             )
+        }
+        jniLibs {
+            useLegacyPackaging = true
         }
     }
 }
