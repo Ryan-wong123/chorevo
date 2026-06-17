@@ -10,6 +10,7 @@ import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
+import com.example.chorevo.weeklychallenge.Repository.WeeklyChallengeRepository
 import com.google.android.datatransport.runtime.dagger.Provides
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -89,5 +90,18 @@ object RepositoryModule {
     ): VideoUploadsRepository = VideoUploadsRepository(
         db = firestore,
         storage = storage
+    )
+
+    /** Provides weekly challenge repository. */
+    @Provides
+    @Singleton
+    fun provideWeeklyChallengeRepository(
+        firestore: FirebaseFirestore,
+        danceLibraryRepository: DanceLibraryRepository,
+        pointsRepository: PointsRepository
+    ): WeeklyChallengeRepository = WeeklyChallengeRepository(
+        db = firestore,
+        danceLibraryRepository = danceLibraryRepository,
+        pointsRepository = pointsRepository
     )
 }
