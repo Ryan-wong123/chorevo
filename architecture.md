@@ -13,7 +13,7 @@ Chorevo is a single-module native Android application:
 - Cloud data: Firebase Auth, Firestore, Firebase Storage
 - Background work: WorkManager
 - Camera/video: CameraX and Media3
-- Pose analysis: MediaPipe Tasks Vision
+- Pose analysis: MediaPipe Tasks Vision, using Pose Landmarker for body-only fallback flows and Holistic Landmarker for pose + hand/finger live practice plus hand-enabled uploaded-video template generation
 
 The app starts in `Chorevo`, initializes Firebase/App Check, then `MainActivity` hosts the Compose tree and calls `AppRouter`.
 
@@ -193,8 +193,8 @@ Key fields:
 1. Learner chooses a dance from home.
 2. `DanceLibraryListViewModel.preparePracticeItem` loads or caches the pose template.
 3. `AppViewModel.pickDance` routes to practice.
-4. `DanceARPracticeScreen` uses CameraX and MediaPipe pose landmarks.
-5. `PoseSimilarityEvaluator` compares learner landmarks to the selected reference track.
+4. `DanceARPracticeScreen` uses CameraX and MediaPipe landmarks. The upgraded live path should use Holistic Landmarker to read pose + left/right hand landmarks while ignoring face output.
+5. `PoseSimilarityEvaluator` compares learner pose landmarks to the selected reference track, and an optional hand evaluator compares finger/hand landmarks only when the selected template contains hand data.
 6. On submit, a `DanceSessionEntity` and analysis payload are created.
 7. `DanceLibraryRepository.saveSessionAndUpload` inserts the session locally, uploads to Firestore, and marks it synced.
 8. On success, streak and leaderboard stats refresh.
@@ -231,8 +231,9 @@ Key fields:
 
 MediaPipe model assets live in `app/src/main/assets`:
 
-- `pose_landmarker_lite.task`: default fast model.
-- `pose_landmarker_full.task`: optional stronger model for high-recall upload analysis.
+- `pose_landmarker_lite.task`: default fast body-only model and fallback for live practice.
+- `pose_landmarker_full.task`: optional stronger body-only fallback for uploaded-video template generation when holistic hand extraction fails or hand mode is disabled.
+- `holistic_landmarker.task`: pose + hands model for live practice and hand-enabled uploaded-video template generation. The asset is expected at `app/src/main/assets/holistic_landmarker.task`. Face landmarks from this model must not be stored, scored, or rendered for this feature.
 
 ### Template Format
 
@@ -246,12 +247,49 @@ MediaPipe model assets live in `app/src/main/assets`:
 
 Each landmark frame is flattened as repeating `x, y, z, visibility` values.
 
+#### Optional Hand Landmark Extension
+
+New templates may include optional hand/finger landmarks without breaking older pose-only templates. The extension should be additive and nullable/default-empty in Kotlin and JSON:
+
+```kotlin
+data class HandLandmarkFrame(
+    val timestampMs: Long,
+    val leftHand: List<Float> = emptyList(),   // 21 landmarks * x,y,z,visibility
+    val rightHand: List<Float> = emptyList()   // 21 landmarks * x,y,z,visibility
+)
+
+data class HandTrack(
+    val trackId: String,
+    val frames: List<HandLandmarkFrame> = emptyList()
+)
+```
+
+Recommended `PoseTemplate` addition:
+
+```kotlin
+val handTracks: List<HandTrack> = emptyList()
+```
+
+Rules:
+
+- Keep existing `frames`, `tracks`, `defaultTrackId`, and `selectionPreview` unchanged.
+- Hand landmark arrays use the same flattened `x, y, z, visibility` format as pose arrays.
+- Left and right hands each contain 21 MediaPipe hand landmarks when detected.
+- Missing hands are represented by an empty list, not fabricated landmarks.
+- Do not add face fields to the template for this task.
+
 ### Template Generation
 
 `VideoPoseTemplateGenerator`:
 
 - reads frames with `MediaMetadataRetriever`,
 - runs MediaPipe in VIDEO mode,
+- for body-only templates, continues using Pose Landmarker,
+- when hand/finger templates are requested and `holistic_landmarker.task` is present, runs Holistic Landmarker and stores only pose + left/right hand landmarks,
+- ignores all face landmarks even if the Holistic result contains them,
+- for high-recall multi-dancer hand-enabled templates, runs YOLO person detection/tracking first, crops each dancer with padding, then runs Holistic Landmarker on each crop,
+- remaps both pose and hand landmarks from crop coordinates back to full-frame normalized coordinates,
+- falls back to `pose_landmarker_full.task` for body-only generation if crop Holistic inference fails,
 - optionally runs crop passes in high-recall mode,
 - merges duplicate detections,
 - tracks people across frames with `MultiPersonPoseTracker`,
@@ -265,10 +303,57 @@ Each landmark frame is flattened as repeating `x, y, z, visibility` values.
 - normalizes learner and reference poses around hips or shoulders,
 - optionally mirrors the reference X axis,
 - compares stable upper/lower body joints,
+- remains the source of truth for the main body alignment score,
 - maps error to score with a Gaussian curve,
 - computes timing consistency from score variance,
 - computes smoothness from error changes,
 - emits downsampled timeline points and labeled performance segments.
+
+#### Optional Hand/Finger Similarity Evaluation
+
+Add a separate `HandSimilarityEvaluator` instead of mixing hand math into `PoseSimilarityEvaluator`.
+
+Recommended behavior:
+
+- Use hand scoring only when both learner and reference frames have at least one matching hand.
+- Normalize each hand relative to its wrist landmark so scoring focuses on finger shape instead of absolute screen position.
+- Prefer scale-normalizing by palm size or average MCP distance when enough landmarks are present.
+- Score left and right hands independently, then average available hands.
+- If no reference hand data exists, keep the final score body-only and show no hand penalty.
+- If reference hand data exists but learner hands are missing for many frames, surface feedback such as `Try to keep your hands visible`.
+- Do not score face, facial expression, or face mesh data.
+
+Recommended final score composition:
+
+```text
+if hand reference is available:
+    finalScore = bodyScore * 0.85 + handScore * 0.15
+else:
+    finalScore = bodyScore
+```
+
+#### Live Practice Pose + Hands Flow
+
+```text
+Camera frame
+↓
+HolisticLandmarkerHelper using app/src/main/assets/holistic_landmarker.task
+↓
+HolisticFrameLandmarks(pose, leftHand, rightHand)
+↓
+PoseSimilarityEvaluator for existing body score
+↓
+Optional HandSimilarityEvaluator for finger/hand score
+↓
+Combined score + feedback
+```
+
+Implementation constraints:
+
+- Keep `PoseLandmarkerHelper` available as a fallback if holistic initialization fails or the asset is missing.
+- Keep the existing pose overlay and scoring behavior working with old pose-only templates.
+- Add hand overlay/feedback only after the data path is stable.
+- Do not persist or render face landmarks.
 
 ## 8. Security Architecture
 
@@ -327,7 +412,7 @@ GitHub Actions runs:
 
 ### 11.1 High-Level Design
 
-The current MediaPipe-only path remains valid for simple videos. The upgraded high-recall upload path adds person detection and tracking before per-dancer landmark extraction.
+The current MediaPipe-only path remains valid for simple videos and as a body-only fallback. The preferred high-recall upload path for multi-dancer + hands/fingers adds person detection and tracking before per-dancer Holistic landmark extraction.
 
 ```text
 Uploaded video
@@ -336,26 +421,44 @@ Frame extraction at 5–8 fps
 ↓
 Optional low-light preprocessing
 ↓
-YOLO person detection
+YOLO person detection using person_detector_yolo.tflite
 ↓
 Same-frame duplicate person-box removal
 ↓
 ByteTrack dancer ID assignment
 ↓
-Per-dancer crop generation
+Per-dancer crop generation with padding for hands/fingers
 ↓
-MediaPipe Pose Landmarker full/heavy on each crop
+Holistic Landmarker on each crop using holistic_landmarker.task
 ↓
-Landmark remapping to original frame coordinates
+Extract pose + leftHand + rightHand only
+↓
+Discard face landmarks and face-related outputs
+↓
+Remap pose and hand landmarks to original full-frame coordinates
 ↓
 Track merge and cleanup
 ↓
 Optional short-gap interpolation
 ↓
-PoseTemplateJson serialization
+PoseTemplateJson serialization with optional handTracks
 ↓
 Firebase Storage upload to danceTemplates/{danceId}.json
 ```
+
+Fallback path:
+
+```text
+person_detector_yolo.tflite
+↓
+tracked dancer crop
+↓
+pose_landmarker_full.task
+↓
+body-only pose template
+```
+
+Use the fallback only when Holistic initialization fails, crop Holistic inference fails, or hand-enabled generation is disabled.
 
 ### 11.2 Component Responsibilities
 
@@ -370,7 +473,8 @@ Add or extend focused classes here:
 - `ByteTrackDancerTracker`: default tracker implementation or adapter.
 - `TrackedDancerBox`: tracker output containing `trackId`, frame index, timestamp, bbox, confidence, and state.
 - `FramePreprocessor`: brightness, contrast, gamma, optional denoise/sharpen pipeline.
-- `CropPoseEstimator`: crops tracked dancers, calls `PoseLandmarkerHelper`, and remaps landmarks.
+- `CropPoseEstimator`: crops tracked dancers, calls `PoseLandmarkerHelper` for body-only fallback, and remaps pose landmarks.
+- `CropHolisticEstimator` or equivalent mode in `CropPoseEstimator`: crops tracked dancers with extra padding, calls `HolisticLandmarkerHelper`, extracts pose + left/right hand landmarks, discards face data, and remaps pose/hand landmarks.
 - `PoseDetectionMerger`: removes same-frame duplicates from full-frame/crop/person detections.
 - `TrackFragmentMerger`: merges split tracks after the video has been processed.
 - `MissingLandmarkInterpolator`: fills short gaps only when confidence and timing make it safe.
@@ -449,20 +553,25 @@ Start with only one real backend. Do not build all three at once unless required
 - Avoid creating a new track until recent lost tracks have been considered.
 - After processing, merge fragmented tracks when their time ranges, positions, body sizes, and movement direction are compatible.
 
-### 11.6 Crop Pose Estimation Rules
+### 11.6 Crop Landmark Estimation Rules
 
-- Expand each tracked person box with padding before cropping so hands/feet are not cut off.
+- Expand each tracked person box with padding before cropping so hands, fingers, and feet are not cut off.
 - Clamp crops to the source frame.
-- Run MediaPipe on the crop using `pose_landmarker_full.task` when available.
-- Remap crop landmarks back to full-frame normalized coordinates:
+- For hand-enabled multi-dancer templates, run `holistic_landmarker.task` on each padded crop.
+- Extract only pose, leftHand, and rightHand landmarks from the Holistic result. Discard face landmarks and face-related outputs.
+- Remap crop pose and hand landmarks back to full-frame normalized coordinates:
 
 ```text
 fullX = cropLeft + cropX * cropWidth
 fullY = cropTop + cropY * cropHeight
+
+fullHandX = cropLeft + handX * cropWidth
+fullHandY = cropTop + handY * cropHeight
 ```
 
 - Preserve `z` and visibility values from MediaPipe.
-- Mark landmarks as missing/low-confidence when the crop is invalid or the pose model fails.
+- Mark landmarks as missing/low-confidence when the crop is invalid or Holistic fails.
+- If Holistic initialization or crop Holistic inference fails, fall back to `pose_landmarker_full.task` for body-only crop pose estimation.
 
 ### 11.7 Low-Light Preprocessing Rules
 
@@ -503,13 +612,13 @@ Fragmented tracks can be merged when:
 If YOLO model assets are missing, unsupported, or fail at runtime:
 
 1. Log a safe warning without exposing private paths or media URLs.
-2. Fall back to current MediaPipe full-frame/crop high-recall logic.
+2. Fall back to the current body-only MediaPipe full-frame/crop high-recall logic using `pose_landmarker_full.task` when available.
 3. Surface an analysis warning such as `personDetectorUnavailable`.
 4. Do not fail the entire upload unless no pose template can be generated.
 
 ### 11.10 Performance Boundaries
 
-- Keep high-recall YOLO + MediaPipe crop analysis in WorkManager or an injected IO/default dispatcher.
+- Keep high-recall YOLO + Holistic crop analysis, and its body-only fallback, in WorkManager or an injected IO/default dispatcher.
 - Do not run high-recall upload processing on the main thread.
 - Use frame sampling around 5 fps by default and 8 fps for high-recall analysis.
 - Limit max tracked dancers to a configurable value, for example 8.
