@@ -10,7 +10,8 @@ data class PoseTemplate(
     val tracks: List<PoseTrack> = emptyList(),
     val defaultTrackId: String? = null,
     val selectionPreview: PoseSelectionPreview? = null,
-    val qualityWarnings: List<PoseAnalysisWarning> = emptyList()
+    val qualityWarnings: List<PoseAnalysisWarning> = emptyList(),
+    val handTracks: List<HandTrack> = emptyList()
 ) {
     /** Returns all usable tracks, including a synthetic legacy track for old templates. */
     fun availableTracks(): List<PoseTrack> {
@@ -50,6 +51,19 @@ data class PoseTrack(
     val label: String = "",
     val frames: List<PoseFrame> = emptyList(),
     val avgVisibility: Float = 0f
+)
+
+data class HandLandmarkFrame(
+    @get:PropertyName("tms")
+    @set:PropertyName("tms")
+    var tMs: Long = 0L,
+    val leftHand: List<Float> = emptyList(),
+    val rightHand: List<Float> = emptyList()
+)
+
+data class HandTrack(
+    val trackId: String = "",
+    val frames: List<HandLandmarkFrame> = emptyList()
 )
 
 data class PoseSelectionPreview(

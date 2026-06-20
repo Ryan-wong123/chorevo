@@ -33,13 +33,13 @@ Goal: add hand/finger awareness to live dance practice using `app/src/main/asset
 
 ### Phase C: Add Hand Landmark Data Models
 
-- [ ] Add `HolisticFrameLandmarks` with `pose`, `leftHand`, and `rightHand` flattened landmark arrays.
-- [ ] Add conversion helpers that flatten landmarks as repeating `x, y, z, visibility` values.
-- [ ] Ensure hand arrays contain `21 * 4` values when detected and are empty when missing.
-- [ ] Add optional template models such as `HandLandmarkFrame` and `HandTrack`.
-- [ ] Add an optional/default-empty `handTracks` field to `PoseTemplate` without breaking existing JSON.
-- [ ] Update `PoseTemplateJson` serialization/deserialization to read old templates and new hand-enabled templates.
-- [ ] Do not add face fields to template models or JSON.
+- [x] Add `HolisticFrameLandmarks` with `pose`, `leftHand`, and `rightHand` flattened landmark arrays.
+- [x] Add conversion helpers that flatten landmarks as repeating `x, y, z, visibility` values.
+- [x] Ensure hand arrays contain `21 * 4` values when detected and are empty when missing.
+- [x] Add optional template models such as `HandLandmarkFrame` and `HandTrack`.
+- [x] Add an optional/default-empty `handTracks` field to `PoseTemplate` without breaking existing JSON.
+- [x] Update `PoseTemplateJson` serialization/deserialization to read old templates and new hand-enabled templates.
+- [x] Do not add face fields to template models or JSON.
 
 ### Phase D: Update Live Practice Pipeline
 

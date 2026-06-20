@@ -1,6 +1,7 @@
 package com.example.chorevo.posedetection
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -78,6 +79,7 @@ class PoseTemplateJsonTest {
         assertNull(restored.defaultTrackId)
         assertNull(restored.selectionPreview)
         assertEquals(emptyList<PoseAnalysisWarning>(), restored.qualityWarnings)
+        assertEquals(emptyList<HandTrack>(), restored.handTracks)
         assertEquals(1, restored.availableTracks().size)
         assertEquals(PoseTemplate.LEGACY_TRACK_ID, restored.availableTracks().first().trackId)
         assertFloatListEquals(
@@ -112,6 +114,7 @@ class PoseTemplateJsonTest {
         assertEquals("track_1", restored.defaultTrackId)
         assertEquals(1, restored.tracks.size)
         assertEquals(emptyList<PoseAnalysisWarning>(), restored.qualityWarnings)
+        assertEquals(emptyList<HandTrack>(), restored.handTracks)
     }
 
     @Test
@@ -141,6 +144,117 @@ class PoseTemplateJsonTest {
         assertNull(restored.defaultTrackId)
         assertNull(restored.selectionPreview)
         assertEquals(listOf(PoseAnalysisWarning("lowLight", "Low light")), restored.qualityWarnings)
+        assertEquals(emptyList<HandTrack>(), restored.handTracks)
+    }
+
+    @Test
+    fun fromJson_missingHandTracksDefaultsToEmptyList() {
+        val json = """
+            {
+              "fps": 8,
+              "frames": [{"tms": 0, "landmarks": [0.1, 0.2, 0.3, 0.4]}],
+              "tracks": []
+            }
+        """.trimIndent()
+
+        val restored = PoseTemplateJson.fromJson(json)
+
+        assertEquals(emptyList<HandTrack>(), restored.handTracks)
+    }
+
+    @Test
+    fun fromJson_readsHandEnabledTemplateWithOptionalHandTracks() {
+        val leftHand = handLandmarks(seed = 0.01f)
+        val rightHand = handLandmarks(seed = 0.02f)
+        val json = """
+            {
+              "fps": 8,
+              "frames": [
+                {"tms": 0, "landmarks": [0.1, 0.2, 0.3, 0.9]}
+              ],
+              "tracks": [
+                {
+                  "trackId": "track_1",
+                  "label": "Dancer 1",
+                  "frames": [{"tms": 0, "landmarks": [0.1, 0.2, 0.3, 0.9]}],
+                  "avgVisibility": 0.9
+                }
+              ],
+              "defaultTrackId": "track_1",
+              "handTracks": [
+                {
+                  "trackId": "track_1",
+                  "frames": [
+                    {
+                      "tms": 0,
+                      "leftHand": ${leftHand.toJsonArray()},
+                      "rightHand": ${rightHand.toJsonArray()}
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val restored = PoseTemplateJson.fromJson(json)
+
+        assertEquals(1, restored.handTracks.size)
+        assertEquals("track_1", restored.handTracks.first().trackId)
+        val handFrame = restored.handTracks.first().frames.first()
+        assertEquals(HAND_LANDMARK_COUNT * LANDMARK_VALUE_COUNT, handFrame.leftHand.size)
+        assertEquals(HAND_LANDMARK_COUNT * LANDMARK_VALUE_COUNT, handFrame.rightHand.size)
+        assertFloatListEquals(leftHand, handFrame.leftHand)
+        assertFloatListEquals(rightHand, handFrame.rightHand)
+    }
+
+    @Test
+    fun roundTrip_preservesEmptyLeftAndRightHandArrays() {
+        val template = PoseTemplate(
+            fps = 8,
+            frames = listOf(PoseFrame(tMs = 0L, landmarks = listOf(0.1f, 0.2f, 0.3f, 0.9f))),
+            handTracks = listOf(
+                HandTrack(
+                    trackId = "track_1",
+                    frames = listOf(
+                        HandLandmarkFrame(
+                            tMs = 0L,
+                            leftHand = emptyList(),
+                            rightHand = emptyList()
+                        )
+                    )
+                )
+            )
+        )
+
+        val restored = PoseTemplateJson.fromJson(PoseTemplateJson.toJson(template))
+        val handFrame = restored.handTracks.first().frames.first()
+
+        assertTrue(handFrame.leftHand.isEmpty())
+        assertTrue(handFrame.rightHand.isEmpty())
+    }
+
+    @Test
+    fun toJson_doesNotSerializeFaceFields() {
+        val template = PoseTemplate(
+            fps = 8,
+            frames = listOf(PoseFrame(tMs = 0L, landmarks = listOf(0.1f, 0.2f, 0.3f, 0.9f))),
+            handTracks = listOf(
+                HandTrack(
+                    trackId = "track_1",
+                    frames = listOf(
+                        HandLandmarkFrame(
+                            tMs = 0L,
+                            leftHand = handLandmarks(seed = 0.01f),
+                            rightHand = emptyList()
+                        )
+                    )
+                )
+            )
+        )
+
+        val json = PoseTemplateJson.toJson(template)
+
+        assertFalse(json.contains("face", ignoreCase = true))
     }
 
     @Test
@@ -212,5 +326,20 @@ class PoseTemplateJsonTest {
         expected.zip(actual).forEach { (expectedValue, actualValue) ->
             assertEquals(expectedValue, actualValue, 0.000001f)
         }
+    }
+
+    private fun handLandmarks(seed: Float): List<Float> {
+        return List(HAND_LANDMARK_COUNT) { index ->
+            listOf(
+                seed + index * 0.001f,
+                seed + index * 0.002f,
+                -seed,
+                0.75f
+            )
+        }.flatten()
+    }
+
+    private fun List<Float>.toJsonArray(): String {
+        return joinToString(prefix = "[", postfix = "]")
     }
 }

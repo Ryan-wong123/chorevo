@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
-import com.google.mediapipe.tasks.components.containers.NormalizedLandmark
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.holisticlandmarker.HolisticLandmarker
@@ -59,21 +58,8 @@ class HolisticLandmarkerHelper(
 
 private fun HolisticLandmarkerResult.toAppLandmarks(): HolisticFrameLandmarks {
     return HolisticFrameLandmarks(
-        pose = poseLandmarks().toFlatLandmarks(),
-        leftHand = leftHandLandmarks().toFlatLandmarks(),
-        rightHand = rightHandLandmarks().toFlatLandmarks()
+        pose = poseLandmarks().flattenPoseLandmarks(),
+        leftHand = leftHandLandmarks().flattenHandLandmarks(),
+        rightHand = rightHandLandmarks().flattenHandLandmarks()
     )
-}
-
-private fun List<NormalizedLandmark>.toFlatLandmarks(): List<Float> {
-    if (isEmpty()) return emptyList()
-
-    val flat = ArrayList<Float>(size * 4)
-    for (landmark in this) {
-        flat.add(landmark.x())
-        flat.add(landmark.y())
-        flat.add(landmark.z())
-        flat.add(landmark.visibility().orElse(1.0f))
-    }
-    return flat
 }
