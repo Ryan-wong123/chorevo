@@ -6,6 +6,7 @@ import com.example.chorevo.danceactivity.DanceARPracticeScreen
 import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 
 /** Renders the dance practice screen for the selected routine. */
 @Composable
@@ -15,7 +16,8 @@ fun DancePracticeRoute(
     onBack: () -> Unit,
     onNavigateToProfile: () -> Unit,
     danceLibraryVm: DanceLibraryListViewModel,
-    achievementVm: AchievementViewModel = hiltViewModel()
+    achievementVm: AchievementViewModel = hiltViewModel(),
+    weeklyChallengeVm: WeeklyChallengeViewModel = hiltViewModel()
 ) {
     DanceARPracticeScreen(
         item = item,
@@ -23,6 +25,7 @@ fun DancePracticeRoute(
         onNavigateToProfile = onNavigateToProfile,
         vm = danceLibraryVm,
         uid = uid,
-        achievementVm = achievementVm
+        achievementVm = achievementVm,
+        weeklyChallengeVm = weeklyChallengeVm
     )
 }

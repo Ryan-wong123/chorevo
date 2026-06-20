@@ -12,6 +12,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
 import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
+import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
@@ -39,6 +40,7 @@ class DanceARPracticeScreenTest {
 
     // New dependency now required by the screen
     private lateinit var achievementVm: AchievementViewModel
+    private lateinit var weeklyChallengeVm: WeeklyChallengeViewModel
 
     // Shared test data
     private lateinit var item: DanceLibraryModel
@@ -72,6 +74,10 @@ class DanceARPracticeScreenTest {
              streakRepository = mockk(relaxed = true)
         )
 
+        weeklyChallengeVm = WeeklyChallengeViewModel(
+            repository = mockk(relaxed = true)
+        )
+
         item = DanceLibraryModel(
             danceId = "d1",
             title = "Salsa Basics",
@@ -102,6 +108,7 @@ class DanceARPracticeScreenTest {
                 onNavigateToProfile = {},
                 vm = vm,
                 achievementVm = achievementVm,
+                weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
                 testMode = true
                 
@@ -129,6 +136,7 @@ class DanceARPracticeScreenTest {
                 onNavigateToProfile = {},
                 vm = vm,
                 achievementVm = achievementVm,
+                weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
                 testMode = true
             )
@@ -186,6 +194,7 @@ class DanceARPracticeScreenTest {
                 onNavigateToProfile = {},
                 vm = vm,
                 achievementVm = achievementVm,
+                weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
                 testMode = true
             )
@@ -220,6 +229,7 @@ class DanceARPracticeScreenTest {
                 onNavigateToProfile = {},
                 vm = vm,
                 achievementVm = achievementVm,
+                weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
                 testMode = true
             )
