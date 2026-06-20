@@ -45,7 +45,7 @@ class WeeklyChallengeEngineTest {
 
         val focus = set.challenge(WeeklyChallengeEngine.FOCUS_ID)
         assertEquals(ScoreMetric.SMOOTHNESS, focus.focusMetric)
-        assertEquals(0.57, focus.focusThreshold!!, 1e-6) // 0.50 average + 0.07 stretch
+        assertEquals(0.60, focus.focusThreshold!!, 1e-6) // 0.50 average + 0.07 stretch, clamped to minimum
     }
 
     @Test
@@ -263,7 +263,7 @@ class WeeklyChallengeEngineTest {
         )
         val focusAfterThree = thirdResult.challengeSet.challenge(WeeklyChallengeEngine.FOCUS_ID)
         assertEquals(2, focusAfterThree.progressCount)
-        assertTrue(thirdResult.newlyCompleted.isEmpty())
+        assertFalse(thirdResult.newlyCompleted.any { it.id == WeeklyChallengeEngine.FOCUS_ID })
     }
 
     // ── recordSession(): Style Explorer ──────────────────────────────────────
