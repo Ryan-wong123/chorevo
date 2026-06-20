@@ -86,14 +86,14 @@ Goal: add hand/finger awareness to live dance practice using `app/src/main/asset
 
 ### Phase F2: Upgrade High-Recall Multi-Dancer Templates to YOLO + Holistic
 
-- [ ] Update the high-recall crop estimator so hand-enabled multi-dancer generation uses `person_detector_yolo.tflite` + `holistic_landmarker.task`, not `pose_landmarker_full.task` as the primary path.
-- [ ] Keep YOLO responsible only for locating/tracking dancers; keep Holistic responsible for extracting pose + left/right hand landmarks from each dancer crop.
-- [ ] Expand each dancer crop enough to avoid cutting off hands and fingers before running Holistic.
-- [ ] Remap both pose and hand landmarks from crop coordinates back to full-frame normalized coordinates.
-- [ ] Save pose + optional hand references per dancer track in backward-compatible `PoseTemplateJson`.
-- [ ] Discard all face landmarks and face-related outputs.
-- [ ] Fall back to `pose_landmarker_full.task` for body-only templates if Holistic setup or crop inference fails.
-- [ ] Add tests for crop-to-full remapping of both pose and hand landmarks.
+- [x] Update the high-recall crop estimator so hand-enabled multi-dancer generation uses `person_detector_yolo.tflite` + `holistic_landmarker.task`, not `pose_landmarker_full.task` as the primary path.
+- [x] Keep YOLO responsible only for locating/tracking dancers; keep Holistic responsible for extracting pose + left/right hand landmarks from each dancer crop.
+- [x] Expand each dancer crop enough to avoid cutting off hands and fingers before running Holistic.
+- [x] Remap both pose and hand landmarks from crop coordinates back to full-frame normalized coordinates.
+- [x] Save pose + optional hand references per dancer track in backward-compatible `PoseTemplateJson`.
+- [x] Discard all face landmarks and face-related outputs.
+- [x] Fall back to `pose_landmarker_full.task` for body-only templates if Holistic setup or crop inference fails.
+- [x] Add tests for crop-to-full remapping of both pose and hand landmarks.
 
 ---
 

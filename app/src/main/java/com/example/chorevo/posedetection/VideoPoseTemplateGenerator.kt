@@ -47,6 +47,7 @@ object VideoPoseTemplateGenerator {
         return withContext(Dispatchers.Default) {
             val retriever = MediaMetadataRetriever()
             val highRecall = profile == GenerationProfile.HIGH_RECALL
+            val handEnabledHighRecall = highRecall && collectHandLandmarks
             val modelAssetPath = preferredModelAsset(context = context, highRecall = highRecall)
             val framePreprocessor = if (highRecall && framePreprocessorConfig.enabled) {
                 ConservativeFramePreprocessor(framePreprocessorConfig)
@@ -54,14 +55,15 @@ object VideoPoseTemplateGenerator {
                 NoOpFramePreprocessor
             }
             val analysisWarnings = linkedMapOf<String, PoseAnalysisWarning>()
+            val effectivePersonDetectorConfig = if (collectHandLandmarks && !personDetectorConfig.enabled) {
+                personDetectorConfig.copy(enabled = true)
+            } else {
+                personDetectorConfig
+            }
             val personDetectorInitialization = if (highRecall) {
                 PersonDetectorFactory.create(
                     context = context,
-                    config = if (collectHandLandmarks && !personDetectorConfig.enabled) {
-                        personDetectorConfig.copy(enabled = true)
-                    } else {
-                        personDetectorConfig
-                    }
+                    config = effectivePersonDetectorConfig
                 )
             } else {
                 PersonDetectorInitialization(detector = NoOpPersonDetector())
@@ -103,7 +105,7 @@ object VideoPoseTemplateGenerator {
             } else {
                 null
             }
-            val cropHelper = if (highRecall) {
+            val cropHelper = if (highRecall && !handEnabledHighRecall) {
                 PoseLandmarkerHelper(
                     context = context,
                     modelAssetPath = modelAssetPath,
@@ -213,6 +215,9 @@ object VideoPoseTemplateGenerator {
                         val personDetections = runCatching {
                             PoseDetectionMerger.mergeDuplicateDetections(
                                 personDetector.detect(processedBmp, tMs)
+                                    .filter { detection ->
+                                        detection.classId == effectivePersonDetectorConfig.personClassId
+                                    }
                             )
                         }.getOrElse {
                             analysisWarnings.putIfAbsent(
@@ -290,18 +295,18 @@ object VideoPoseTemplateGenerator {
                                 )
                             }
                         }
-                        val fullFrameDetections = holisticFrame
-                            ?.pose
-                            ?.takeIf { it.isNotEmpty() }
-                            ?.let { listOf(it) }
-                            ?: helper.detectForVideo(processedBmp, tMs).toFlatDetections()
-                        val cropDetections = cropHelper
-                            ?.detectCropPasses(processedBmp)
-                            .orEmpty()
                         val trackedPoseDetections = trackedCropResult.poses.map { it.frame.landmarks }
-                        val detections = if (highRecall && collectHandLandmarks && trackedPoseDetections.isNotEmpty()) {
+                        val detections = if (handEnabledHighRecall && trackedPoseDetections.isNotEmpty()) {
                             trackedPoseDetections
                         } else {
+                            val fullFrameDetections = holisticFrame
+                                ?.pose
+                                ?.takeIf { it.isNotEmpty() }
+                                ?.let { listOf(it) }
+                                ?: helper.detectForVideo(processedBmp, tMs).toFlatDetections()
+                            val cropDetections = cropHelper
+                                ?.detectCropPasses(processedBmp)
+                                .orEmpty()
                             PoseDetectionMerger.mergeDuplicateLandmarkDetections(
                                 fullFrameDetections +
                                     cropDetections +
