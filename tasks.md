@@ -74,14 +74,14 @@ Goal: add hand/finger awareness to live dance practice using `app/src/main/asset
 
 ### Phase G: Tests and Verification
 
-- [ ] Add unit tests for holistic result conversion and face-data discard behavior.
-- [ ] Add unit tests for empty/missing hand handling.
-- [ ] Add JSON tests for old pose-only templates and new optional hand-enabled templates.
-- [ ] Add scoring tests for body-only fallback and body+hand weighted scoring.
-- [ ] Run `gradlew.bat testDebugUnitTest` or `./gradlew testDebugUnitTest`.
-- [ ] Run `gradlew.bat assembleDebug` or `./gradlew assembleDebug`.
+- [x] Add unit tests for holistic result conversion and face-data discard behavior.
+- [x] Add unit tests for empty/missing hand handling.
+- [x] Add JSON tests for old pose-only templates and new optional hand-enabled templates.
+- [x] Add scoring tests for body-only fallback and body+hand weighted scoring.
+- [x] Run `gradlew.bat testDebugUnitTest` or `./gradlew testDebugUnitTest`.
+- [x] Run `gradlew.bat assembleDebug` or `./gradlew assembleDebug`.
 - [ ] Run instrumentation tests if CameraX, Compose UI, or Android model runtime behavior changed and an emulator/device is available.
-- [ ] Report files changed, behavior changed, tests run, tests not run, and remaining risks.
+- [x] Report files changed, behavior changed, tests run, tests not run, and remaining risks.
 
 
 ### Phase F2: Upgrade High-Recall Multi-Dancer Templates to YOLO + Holistic
