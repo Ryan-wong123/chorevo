@@ -175,13 +175,20 @@ data class EstimatedPoseFrame(
     val confidence: Float
 )
 
+data class EstimatedHandFrame(
+    val trackId: String,
+    val frame: HandLandmarkFrame
+)
+
 data class CropPoseEstimatorConfig(
     val paddingFraction: Float = DEFAULT_PADDING_FRACTION,
+    val handPaddingFraction: Float = DEFAULT_HAND_PADDING_FRACTION,
     val minBoxWidth: Float = DEFAULT_MIN_BOX_WIDTH,
     val minBoxHeight: Float = DEFAULT_MIN_BOX_HEIGHT
 ) {
     companion object {
         const val DEFAULT_PADDING_FRACTION = 0.18f
+        const val DEFAULT_HAND_PADDING_FRACTION = 0.32f
         const val DEFAULT_MIN_BOX_WIDTH = 0.025f
         const val DEFAULT_MIN_BOX_HEIGHT = 0.025f
     }
@@ -205,6 +212,7 @@ data class PixelCropRect(
 
 data class CropPoseEstimationResult(
     val poses: List<EstimatedPoseFrame> = emptyList(),
+    val handFrames: List<EstimatedHandFrame> = emptyList(),
     val warnings: List<PoseAnalysisWarning> = emptyList()
 )
 

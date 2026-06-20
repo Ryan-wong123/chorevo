@@ -23,6 +23,9 @@ object PoseTemplateJson {
             append(',')
             appendKey("qualityWarnings")
             appendQualityWarnings(template.qualityWarnings)
+            append(',')
+            appendKey("handTracks")
+            appendHandTracks(template.handTracks)
             append('}')
         }
     }
@@ -37,7 +40,8 @@ object PoseTemplateJson {
             tracks = root.listValue("tracks").mapNotNull { it.toPoseTrack() },
             defaultTrackId = root.stringValue("defaultTrackId"),
             selectionPreview = root.mapValue("selectionPreview")?.toPoseSelectionPreview(),
-            qualityWarnings = root.listValue("qualityWarnings").mapNotNull { it.toPoseAnalysisWarning() }
+            qualityWarnings = root.listValue("qualityWarnings").mapNotNull { it.toPoseAnalysisWarning() },
+            handTracks = root.listValue("handTracks").mapNotNull { it.toHandTrack() }
         )
     }
 
@@ -72,6 +76,39 @@ object PoseTemplateJson {
             append(',')
             appendKey("avgVisibility")
             append(track.avgVisibility)
+            append('}')
+        }
+        append(']')
+    }
+
+    private fun StringBuilder.appendHandTracks(tracks: List<HandTrack>) {
+        append('[')
+        tracks.forEachIndexed { index, track ->
+            if (index > 0) append(',')
+            append('{')
+            appendKey("trackId")
+            appendQuoted(track.trackId)
+            append(',')
+            appendKey("frames")
+            appendHandFrames(track.frames)
+            append('}')
+        }
+        append(']')
+    }
+
+    private fun StringBuilder.appendHandFrames(frames: List<HandLandmarkFrame>) {
+        append('[')
+        frames.forEachIndexed { index, frame ->
+            if (index > 0) append(',')
+            append('{')
+            appendKey("tms")
+            append(frame.tMs)
+            append(',')
+            appendKey("leftHand")
+            appendFloatList(frame.leftHand)
+            append(',')
+            appendKey("rightHand")
+            appendFloatList(frame.rightHand)
             append('}')
         }
         append(']')
@@ -203,6 +240,23 @@ object PoseTemplateJson {
             label = map.stringValue("label").orEmpty(),
             frames = map.listValue("frames").mapNotNull { it.toPoseFrame() },
             avgVisibility = map.floatValue("avgVisibility", 0f)
+        )
+    }
+
+    private fun Any?.toHandTrack(): HandTrack? {
+        val map = this as? Map<*, *> ?: return null
+        return HandTrack(
+            trackId = map.stringValue("trackId").orEmpty(),
+            frames = map.listValue("frames").mapNotNull { it.toHandLandmarkFrame() }
+        )
+    }
+
+    private fun Any?.toHandLandmarkFrame(): HandLandmarkFrame? {
+        val map = this as? Map<*, *> ?: return null
+        return HandLandmarkFrame(
+            tMs = map.longValue("tms", 0L),
+            leftHand = map.floatListValue("leftHand"),
+            rightHand = map.floatListValue("rightHand")
         )
     }
 

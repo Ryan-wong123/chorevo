@@ -64,6 +64,7 @@ class VideoUploadsRepository @Inject constructor(
         generateTemplate: Boolean = true,
         confirmedTemplate: PoseTemplate? = null,
         fps: Int = 2,
+        collectHandLandmarks: Boolean = true,
         onProgress: ((Float) -> Unit)? = null,
         onStageChanged: ((String) -> Unit)? = null,
         onTemplateFailure: ((Throwable) -> Unit)? = null,
@@ -211,7 +212,8 @@ class VideoUploadsRepository @Inject constructor(
                     context = ctx,
                     danceId = danceId,
                     storagePath = storagePath,
-                    fps = fps
+                    fps = fps,
+                    collectHandLandmarks = collectHandLandmarks
                 )
             }
 
@@ -232,7 +234,8 @@ class VideoUploadsRepository @Inject constructor(
         context: Context,
         danceId: String,
         storagePath: String,
-        fps: Int
+        fps: Int,
+        collectHandLandmarks: Boolean
     ) {
         val workRequest = OneTimeWorkRequestBuilder<VideoTemplateGenerationWorker>()
             .setInputData(
@@ -240,6 +243,10 @@ class VideoUploadsRepository @Inject constructor(
                     .putString(VideoTemplateGenerationWorker.KEY_DANCE_ID, danceId)
                     .putString(VideoTemplateGenerationWorker.KEY_STORAGE_PATH, storagePath)
                     .putInt(VideoTemplateGenerationWorker.KEY_FPS, fps)
+                    .putBoolean(
+                        VideoTemplateGenerationWorker.KEY_COLLECT_HAND_LANDMARKS,
+                        collectHandLandmarks
+                    )
                     .build()
             )
             .setConstraints(

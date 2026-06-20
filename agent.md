@@ -15,7 +15,7 @@ Chorevo is a single-module native Android app for AI-assisted dance learning.
 - Local data: Room + DataStore
 - Background work: WorkManager
 - Camera/video: CameraX + Media3
-- Pose analysis: MediaPipe Tasks Vision
+- Pose analysis: MediaPipe Tasks Vision, including the active pose + hands Holistic Landmarker upgrade
 
 Read these docs before making substantial changes:
 
@@ -107,11 +107,14 @@ When writing Firebase code:
 ## Pose and Media Rules
 
 - MediaPipe model assets live in `app/src/main/assets`.
-- `pose_landmarker_lite.task` is the default fast model.
-- `pose_landmarker_full.task` may be used for high-recall upload analysis when present.
-- Pose landmark arrays are flattened as repeating `x, y, z, visibility` values.
-- Use `PoseTemplateJson` for template serialization.
-- Close `PoseLandmarkerHelper` instances after processing.
+- `pose_landmarker_lite.task` is the default fast body-only fallback model.
+- `holistic_landmarker.task` is expected at `app/src/main/assets/holistic_landmarker.task` for the active pose + hands live practice upgrade and hand-enabled uploaded-video template generation.
+- `pose_landmarker_full.task` is the body-only fallback for high-recall upload analysis when Holistic fails or hand-enabled generation is disabled.
+- Pose and hand landmark arrays are flattened as repeating `x, y, z, visibility` values.
+- Hand landmarks are 21 points per hand; each detected hand should flatten to `21 * 4` values.
+- Use `PoseTemplateJson` for template serialization and keep old pose-only templates readable.
+- Close `PoseLandmarkerHelper` and `HolisticLandmarkerHelper` instances after processing.
+- Do not store, render, score, or upload face landmarks for this task.
 - Be careful changing `PoseSimilarityEvaluator`; scoring changes affect analytics, achievements, and leaderboards.
 
 ## Local Persistence Rules
@@ -163,6 +166,48 @@ Before finishing a coding task, report:
 
 For documentation-only tasks, a build is usually unnecessary.
 
+## Active Codex Task: Pose + Hands Holistic Upgrade
+
+Implement this before doing unrelated AI refactors.
+
+Goal: use `app/src/main/assets/holistic_landmarker.task` to add hand/finger awareness to live AR practice while keeping the existing body pose scoring path working.
+
+### Required Behavior
+
+- Prefer Holistic Landmarker for live practice when the model asset exists.
+- Consume only body pose, left hand, and right hand landmarks.
+- Ignore all face landmarks and face-related outputs.
+- Pass body pose landmarks into the existing `PoseSimilarityEvaluator` unchanged.
+- Add hand scoring as a separate optional evaluator, not as a rewrite of body scoring.
+- Keep final score body-only when the selected reference template has no hand data.
+- Keep old pose-only templates readable and practice-ready.
+- Add optional hand template data in a backward-compatible way.
+
+### Files to Inspect First
+
+```bash
+rg "DanceARPracticeScreen|PoseLandmarkerHelper|PoseSimilarityEvaluator|PoseTemplate|PoseTemplateJson" app/src/main/java
+rg "VideoPoseTemplateGenerator|MultiPersonPoseTracker|templateStatus" app/src/main/java
+rg "tasks-vision|mediapipe" app/build.gradle.kts gradle/libs.versions.toml
+```
+
+### Suggested Implementation Order
+
+1. Add `HolisticFrameLandmarks`, hand template models, and flattening helpers.
+2. Add `HolisticLandmarkerHelper` that returns only pose + left/right hand data.
+3. Update `DanceARPracticeScreen` to use holistic pose output for the existing body score.
+4. Update `PoseTemplateJson` for optional hand tracks while preserving old JSON compatibility.
+5. Add `HandSimilarityEvaluator` and combine scores only when hand reference data exists.
+6. Add tests for conversion, JSON compatibility, missing hands, and body-only fallback.
+
+### Done Criteria
+
+- The app builds with `holistic_landmarker.task` in assets.
+- Existing pose-only dances still work.
+- Body score behavior remains available even if hands are missing.
+- Hand feedback appears only when reference hand data exists.
+- No face data appears in app models, template JSON, Room, Firestore, analytics payloads, logs, or UI.
+
 ## Multi-Dancer AI Upgrade Instructions
 
 When implementing the multi-dancer upgrade, use the current project as the base. Do not replace the existing MediaPipe pipeline unless a task explicitly asks for it.
@@ -174,7 +219,7 @@ When implementing the multi-dancer upgrade, use the current project as the base.
 3. Add low-light preprocessing as an optional high-recall setting.
 4. Add the YOLO detector behind a `PersonDetector` interface.
 5. Add ByteTrack-style tracking or an adapter behind a `DancerTracker` interface.
-6. Add per-dancer crop MediaPipe landmark extraction and remapping.
+6. Add per-dancer crop MediaPipe landmark extraction and remapping. For hand-enabled multi-dancer generation, this means YOLO detection/tracking followed by `holistic_landmarker.task` on each padded dancer crop.
 7. Update upload UI/ViewModel state to expose dancer count and warnings.
 8. Add unit tests for duplicate removal, fragment merging, remapping, and interpolation.
 
@@ -182,6 +227,8 @@ When implementing the multi-dancer upgrade, use the current project as the base.
 
 - Preserve existing Firebase paths and template JSON compatibility.
 - Keep live practice fast; do not force YOLO onto the live camera path in the first pass.
+- For high-recall uploaded-video templates that need hands/fingers, use `person_detector_yolo.tflite` to locate/track dancers and `holistic_landmarker.task` to extract pose + left/right hands from each padded crop.
+- Keep `pose_landmarker_full.task` as the fallback body-only crop estimator when Holistic fails or hand mode is disabled.
 - Keep heavy uploaded-video analysis off the main thread.
 - If model files are missing, provide fallback behavior instead of crashing.
 - Treat occluded landmarks honestly: missing or inferred landmarks must not become high-confidence ground truth.
@@ -199,6 +246,7 @@ rg "VideoUploadsViewModel|VideoUploadsRepository|WorkManager|templateStatus"
 ### Definition of Done
 
 - Multi-dancer high-recall mode can run without breaking the existing MediaPipe-only path.
+- Hand-enabled multi-dancer high-recall mode uses YOLO + Holistic as the preferred path and Pose Landmarker Full only as body-only fallback.
 - Duplicate same-frame detections are reduced before tracking.
 - Fragmented tracks can be merged after processing.
 - Low-light preprocessing can be enabled/disabled.
