@@ -14,11 +14,11 @@ Goal: add hand/finger awareness to live dance practice using `app/src/main/asset
 
 ### Phase A: Baseline Review
 
-- [ ] Run `git status --short` and avoid overwriting unrelated user changes.
-- [ ] Confirm the model exists at `app/src/main/assets/holistic_landmarker.task`.
-- [ ] Inspect current live practice code with `rg "DanceARPracticeScreen|PoseLandmarkerHelper|PoseSimilarityEvaluator|PoseTemplate|PoseTemplateJson" app/src/main/java`.
-- [ ] Inspect current template generation code with `rg "VideoPoseTemplateGenerator|PoseTemplate|PoseTemplateJson|MultiPersonPoseTracker" app/src/main/java`.
-- [ ] Confirm the existing MediaPipe Tasks Vision dependency already supports `HolisticLandmarker`; only change Gradle if the current version does not compile.
+- [x] Run `git status --short` and avoid overwriting unrelated user changes.
+- [x] Confirm the model exists at `app/src/main/assets/holistic_landmarker.task`.
+- [x] Inspect current live practice code with `rg "DanceARPracticeScreen|PoseLandmarkerHelper|PoseSimilarityEvaluator|PoseTemplate|PoseTemplateJson" app/src/main/java`.
+- [x] Inspect current template generation code with `rg "VideoPoseTemplateGenerator|PoseTemplate|PoseTemplateJson|MultiPersonPoseTracker" app/src/main/java`.
+- [x] Confirm the existing MediaPipe Tasks Vision dependency already supports `HolisticLandmarker`; only change Gradle if the current version does not compile.
 
 ### Phase B: Add Holistic Pose + Hands Helper
 
