@@ -1,6 +1,7 @@
 package com.example.chorevo.posedetection
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CropPoseGeometryTest {
@@ -22,6 +23,38 @@ class CropPoseGeometryTest {
         assertEquals(0.00f, expanded.top, EPSILON)
         assertEquals(0.35f, expanded.right, EPSILON)
         assertEquals(0.85f, expanded.bottom, EPSILON)
+    }
+
+    @Test
+    fun holisticHandPadding_expandsCropMoreThanBodyOnlyPadding() {
+        val box = DetectionBox.normalized(
+            left = 0.30f,
+            top = 0.20f,
+            right = 0.60f,
+            bottom = 0.70f,
+            confidence = 0.80f,
+            source = DetectionSource.Yolo
+        )
+        val bodyCrop = CropPoseGeometry.expandBox(
+            box = box,
+            paddingFraction = CropPoseEstimatorConfig.DEFAULT_PADDING_FRACTION
+        )
+        val handCrop = CropPoseGeometry.expandBox(
+            box = box,
+            paddingFraction = CropPoseEstimatorConfig.DEFAULT_HAND_PADDING_FRACTION
+        )
+
+        assertEquals(0.246f, bodyCrop.left, EPSILON)
+        assertEquals(0.110f, bodyCrop.top, EPSILON)
+        assertEquals(0.654f, bodyCrop.right, EPSILON)
+        assertEquals(0.790f, bodyCrop.bottom, EPSILON)
+
+        assertEquals(0.204f, handCrop.left, EPSILON)
+        assertEquals(0.040f, handCrop.top, EPSILON)
+        assertEquals(0.696f, handCrop.right, EPSILON)
+        assertEquals(0.860f, handCrop.bottom, EPSILON)
+        assertTrue(handCrop.width > bodyCrop.width)
+        assertTrue(handCrop.height > bodyCrop.height)
     }
 
     @Test

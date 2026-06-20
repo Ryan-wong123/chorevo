@@ -176,7 +176,7 @@ class MediaPipeCropHolisticEstimator(
 
         for (trackedDancer in trackedDancers.filter(::shouldEstimateCrop)) {
             val expandedBox = CropPoseGeometry
-                .expandBox(trackedDancer.box, config.paddingFraction)
+                .expandBox(trackedDancer.box, config.handPaddingFraction)
                 .let(CropPoseGeometry::clampBox)
 
             if (
