@@ -52,14 +52,14 @@ Goal: add hand/finger awareness to live dance practice using `app/src/main/asset
 
 ### Phase E: Optional Hand/Finger Scoring
 
-- [ ] Add a separate `HandSimilarityEvaluator`.
-- [ ] Normalize each hand relative to the wrist landmark before comparing finger shape.
-- [ ] Compare only hands that exist in both learner and reference frames.
-- [ ] Score left and right hands independently, then average available hand scores.
-- [ ] Keep final score body-only when the selected template has no hand data.
-- [ ] Use a combined score only when hand reference data exists, for example `finalScore = bodyScore * 0.85 + handScore * 0.15`.
-- [ ] Add user-facing hand feedback such as keeping hands visible or matching hand shape.
-- [ ] Avoid making hand score affect achievements/leaderboards until tests confirm the new scoring behavior is stable, or clearly document the intended change.
+- [x] Add a separate `HandSimilarityEvaluator`.
+- [x] Normalize each hand relative to the wrist landmark before comparing finger shape.
+- [x] Compare only hands that exist in both learner and reference frames.
+- [x] Score left and right hands independently, then average available hand scores.
+- [x] Keep final score body-only when the selected template has no hand data.
+- [x] Use a combined score only when hand reference data exists, for example `finalScore = bodyScore * 0.85 + handScore * 0.15`.
+- [x] Add user-facing hand feedback such as keeping hands visible or matching hand shape.
+- [x] Avoid making hand score affect achievements/leaderboards until tests confirm the new scoring behavior is stable, or clearly document the intended change.
 
 ### Phase F: Template Generation for Hand References
 

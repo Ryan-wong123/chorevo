@@ -86,6 +86,7 @@ import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 import com.example.chorevo.weeklychallenge.WeeklyChallengeCelebrationDialog
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.posedetection.HandSimilarityEvaluator
 import com.example.chorevo.posedetection.HolisticFrameLandmarks
 import com.example.chorevo.posedetection.HolisticFrameSelector
 import com.example.chorevo.posedetection.HolisticLandmarkerHelper
@@ -154,9 +155,12 @@ fun DanceARPracticeScreen(
     var alignmentScore by remember { mutableDoubleStateOf(if (testMode) 0.82 else 0.0) }
     var timingConsistencyScore by remember { mutableDoubleStateOf(if (testMode) 0.91 else 1.0) }
     var smoothnessScore by remember { mutableDoubleStateOf(if (testMode) 0.88 else 1.0) }
+    var handScore by remember { mutableStateOf<Double?>(null) }
+    var combinedPracticeScore by remember { mutableDoubleStateOf(if (testMode) 0.82 else 0.0) }
     var avgPoseError by remember { mutableDoubleStateOf(if (testMode) 0.1234 else 0.0) }
     var frameCount by remember { mutableIntStateOf(if (testMode) 42 else 0) }
     var wordFeedback by remember { mutableStateOf(if (testMode) "Nice match. Keep the timing steady." else null) }
+    var handFeedback by remember { mutableStateOf<String?>(null) }
 
     var latestTimelinePoints by remember { mutableStateOf<List<TimelinePoint>>(emptyList()) }
     var latestSegments by remember { mutableStateOf<List<PerformanceSegment>>(emptyList()) }
@@ -192,7 +196,11 @@ fun DanceARPracticeScreen(
             template.copy(
                 frames = frames,
                 tracks = selectedReferenceTrack?.let(::listOf).orEmpty(),
-                defaultTrackId = selectedReferenceTrack?.trackId ?: template.defaultTrackId
+                defaultTrackId = selectedReferenceTrack?.trackId ?: template.defaultTrackId,
+                handTracks = template.handTracks.filter { handTrack ->
+                    handTrack.trackId == selectedReferenceTrack?.trackId ||
+                        (selectedReferenceTrack == null && handTrack.trackId == template.defaultTrackId)
+                }
             )
         }
     }
@@ -364,6 +372,21 @@ fun DanceARPracticeScreen(
         }
     }
 
+    val handSimilarityEval = remember(activeTemplate, selectedReferenceTrackId, testMode) {
+        if (testMode) {
+            null
+        } else {
+            activeTemplate
+                ?.takeIf { it.handTracks.any { handTrack -> handTrack.frames.isNotEmpty() } }
+                ?.let {
+                    HandSimilarityEvaluator(
+                        template = it,
+                        referenceTrackId = selectedReferenceTrackId
+                    )
+                }
+        }
+    }
+
     fun mirrorX(flat: List<Float>): List<Float> {
         if (flat.isEmpty()) return flat
         val out = flat.toMutableList()
@@ -403,12 +426,15 @@ fun DanceARPracticeScreen(
         alignmentScore = if (testMode) 0.82 else 0.0
         timingConsistencyScore = if (testMode) 0.91 else 1.0
         smoothnessScore = if (testMode) 0.88 else 1.0
+        handScore = null
+        combinedPracticeScore = if (testMode) 0.82 else 0.0
         avgPoseError = if (testMode) 0.1234 else 0.0
         frameCount = if (testMode) 42 else 0
         latestTimelinePoints = emptyList()
         latestSegments = emptyList()
         latestFeedbackMessages = emptyList()
         wordFeedback = if (testMode) "Nice match. Keep the timing steady." else null
+        handFeedback = null
 
         status = message
     }
@@ -426,10 +452,13 @@ fun DanceARPracticeScreen(
         alignmentScore = if (testMode) 0.82 else 0.0
         timingConsistencyScore = if (testMode) 0.91 else 1.0
         smoothnessScore = if (testMode) 0.88 else 1.0
+        handScore = null
+        combinedPracticeScore = if (testMode) 0.82 else 0.0
         avgPoseError = if (testMode) 0.1234 else 0.0
         frameCount = if (testMode) 42 else 0
         latestFeedbackMessages = emptyList()
         wordFeedback = if (testMode) "Nice match. Keep the timing steady." else null
+        handFeedback = null
         practiceTimeMs = 0L
         status = if (practiceMode == PracticeMode.STEP_BY_STEP && currentPracticeSegment != null) {
             "Starting ${currentPracticeSegment.title.lowercase()} in 3..."
@@ -451,7 +480,15 @@ fun DanceARPracticeScreen(
             wordFeedback = snap.latestFeedback?.message
             latestTimelinePoints = snap.timelinePoints
             latestSegments = snap.performanceSegments
-            latestFeedbackMessages = snap.feedbackMessages
+            val handSnap = handSimilarityEval?.snapshot()
+            latestFeedbackMessages = snap.feedbackMessages + handSnap?.feedbackMessages.orEmpty()
+            handScore = handSnap?.handScore
+            combinedPracticeScore = HandSimilarityEvaluator.combineWithBodyScore(
+                bodyScore = alignmentScore,
+                handScore = handSnap?.handScore,
+                hasReferenceHands = handSnap?.hasReferenceHands == true
+            )
+            handFeedback = handSnap?.latestFeedback
         }
 
         status = when {
@@ -493,7 +530,7 @@ fun DanceARPracticeScreen(
 
     val currentPracticeTimeMs by rememberUpdatedState(practiceTimeMs)
 
-    val analyzer = remember(similarityEval, liveLandmarkDetector, hasCamPermission, testMode) {
+    val analyzer = remember(similarityEval, handSimilarityEval, liveLandmarkDetector, hasCamPermission, testMode) {
         ImageAnalysis.Analyzer { imageProxy ->
             if (testMode || !hasCamPermission) {
                 imageProxy.close()
@@ -532,12 +569,20 @@ fun DanceARPracticeScreen(
                     } else {
                         null
                     }
+                    val handEv = handSimilarityEval
+                    val handSnap = if (handEv != null) {
+                        handEv.onFrame(leftHand, rightHand, currentPracticeTimeMs)
+                        handEv.snapshot()
+                    } else {
+                        null
+                    }
 
                     uiScope.launch {
                         learnerLandmarks = primaryPose
                         learnerLeftHandLandmarks = leftHand
                         learnerRightHandLandmarks = rightHand
 
+                        val bodyScoreForCombined = snap?.alignmentScore ?: alignmentScore
                         if (snap != null) {
                             alignmentScore = snap.alignmentScore
                             timingConsistencyScore = snap.timingConsistencyScore
@@ -545,10 +590,17 @@ fun DanceARPracticeScreen(
                             avgPoseError = snap.avgPoseError
                             frameCount = snap.frameCount
                             wordFeedback = snap.latestFeedback?.message
-                            latestFeedbackMessages = snap.feedbackMessages
+                            latestFeedbackMessages = snap.feedbackMessages + handSnap?.feedbackMessages.orEmpty()
                         } else {
                             frameCount += 1
                         }
+                        handScore = handSnap?.handScore
+                        combinedPracticeScore = HandSimilarityEvaluator.combineWithBodyScore(
+                            bodyScore = bodyScoreForCombined,
+                            handScore = handSnap?.handScore,
+                            hasReferenceHands = handSnap?.hasReferenceHands == true
+                        )
+                        handFeedback = handSnap?.latestFeedback
                     }
                 }
             } catch (_: Exception) {
@@ -578,17 +630,27 @@ fun DanceARPracticeScreen(
         val tsEnd = System.currentTimeMillis()
         val durationMs = tsEnd - tsStart
         val ev = similarityEval
+        val handEv = handSimilarityEval
 
         isPracticeActive = false
 
         val snapshot = ev?.snapshot(includeSeries = true)
+        val handSnapshot = handEv?.snapshot()
         val payloadTimeline = snapshot?.timelinePoints ?: latestTimelinePoints
         val payloadSegments = snapshot?.performanceSegments ?: latestSegments
-        val payloadFeedbackMessages = snapshot?.feedbackMessages ?: latestFeedbackMessages
+        val payloadFeedbackMessages =
+            (snapshot?.feedbackMessages ?: latestFeedbackMessages) + handSnapshot?.feedbackMessages.orEmpty()
 
         latestTimelinePoints = payloadTimeline
         latestSegments = payloadSegments
         latestFeedbackMessages = payloadFeedbackMessages
+        handScore = handSnapshot?.handScore
+        combinedPracticeScore = HandSimilarityEvaluator.combineWithBodyScore(
+            bodyScore = alignmentScore,
+            handScore = handSnapshot?.handScore,
+            hasReferenceHands = handSnapshot?.hasReferenceHands == true
+        )
+        handFeedback = handSnapshot?.latestFeedback
 
         val analysisPayload = SessionAnalysisPayload(
             danceId = item.danceId,
@@ -926,6 +988,14 @@ fun DanceARPracticeScreen(
                             )
                         }
 
+                        handScore?.let { score ->
+                            Text(
+                                text = "Overall ${(combinedPracticeScore * 100).toInt()} - Hands ${(score * 100).toInt()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = brandTeal
+                            )
+                        }
+
                         Text(
                             text = "Err ${"%.4f".format(avgPoseError)} • Frames $frameCount • ${practiceTimeMs}ms",
                             style = MaterialTheme.typography.bodySmall,
@@ -939,6 +1009,16 @@ fun DanceARPracticeScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 color = brandTeal,
                                 modifier = Modifier.testTag("wordFeedback")
+                            )
+                        }
+
+                        handFeedback?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = brandTeal,
+                                modifier = Modifier.testTag("handFeedback")
                             )
                         }
 
@@ -1228,9 +1308,17 @@ private fun sliceTemplateForStep(
         if (rebased.isEmpty()) null else track.copy(frames = rebased)
     }
 
+    val segmentHandTracks = source.handTracks.mapNotNull { track ->
+        val rebased = track.frames
+            .filter { it.tMs in segment.startMs..segment.endMs }
+            .map { it.copy(tMs = (it.tMs - normalizedStart).coerceAtLeast(0L)) }
+        if (rebased.isEmpty()) null else track.copy(frames = rebased)
+    }
+
     return source.copy(
         frames = segmentFrames,
-        tracks = segmentTracks
+        tracks = segmentTracks,
+        handTracks = segmentHandTracks
     )
 }
 
