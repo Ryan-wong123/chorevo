@@ -101,6 +101,8 @@ class AnalyticsRepository @Inject constructor(
      */
     private fun observeMySessionDetail(uid: String, sessionId: String): Flow<DanceSessionDetail?> =
         callbackFlow {
+            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
             val reg = db.collection("users")
                 .document(uid)
                 .collection("danceLearningSessions")
@@ -116,11 +118,16 @@ class AnalyticsRepository @Inject constructor(
                         return@addSnapshotListener
                     }
 
-                    val analysis = doc.toAnalysisOrNull()
-                    trySend(DanceSessionDetail(summary = summary, analysis = analysis))
+                    scope.launch {
+                        val analysis = doc.toAnalysisOrNull()
+                        trySend(DanceSessionDetail(summary = summary, analysis = analysis))
+                    }
                 }
 
-            awaitClose { reg.remove() }
+            awaitClose {
+                reg.remove()
+                scope.cancel()
+            }
         }
     /**
      * Observes learner sessions linked to an educator's uploaded dance.
@@ -383,7 +390,7 @@ class AnalyticsRepository @Inject constructor(
      * Converts the nested analysis map into an AnalysisData object.
      * Parses scores, timeline points, and performance segments.
      */
-    private fun DocumentSnapshot.toAnalysisOrNull(): AnalysisData? {
+    private suspend fun DocumentSnapshot.toAnalysisOrNull(): AnalysisData? {
         val analysis = get("analysis") as? Map<*, *> ?: return null
 
         /** Returns the value as a number. */
@@ -439,10 +446,16 @@ class AnalyticsRepository @Inject constructor(
             }
             .orEmpty()
 
+        val danceId = str("danceId")
+        val storedVideoUrl = str("videoUrl")
+        val videoAvailability = resolveVideoAvailability(danceId, storedVideoUrl)
+
         return AnalysisData(
-            danceId = str("danceId"),
+            danceId = danceId,
             educatorUid = str("educatorUid"),
-            videoUrl = str("videoUrl"),
+            videoUrl = videoAvailability.videoUrl,
+            videoAvailable = videoAvailability.available,
+            videoUnavailableReason = videoAvailability.reason,
             videoPositionMs = long("videoPositionMs"),
             referenceTrackId = str("referenceTrackId"),
             referenceTrackLabel = str("referenceTrackLabel"),
@@ -456,4 +469,54 @@ class AnalyticsRepository @Inject constructor(
             performanceSegments = segments.sortedBy { it.startMs }
         )
     }
+
+    private suspend fun resolveVideoAvailability(
+        danceId: String?,
+        storedVideoUrl: String?
+    ): VideoAvailability {
+        if (storedVideoUrl.isNullOrBlank()) {
+            return VideoAvailability(
+                available = false,
+                videoUrl = null,
+                reason = "Video unavailable"
+            )
+        }
+
+        if (danceId.isNullOrBlank()) {
+            return VideoAvailability(available = true, videoUrl = storedVideoUrl)
+        }
+
+        return try {
+            val danceDoc = db.collection("danceLibrary")
+                .document(danceId)
+                .get()
+                .await()
+
+            val enabled = danceDoc.getBoolean("enabled") ?: true
+            val currentVideoUrl = danceDoc.getString("videoUrl")?.takeIf { it.isNotBlank() }
+
+            if (danceDoc.exists() && enabled && currentVideoUrl != null) {
+                VideoAvailability(available = true, videoUrl = currentVideoUrl)
+            } else {
+                VideoAvailability(
+                    available = false,
+                    videoUrl = null,
+                    reason = "This video has been deleted or removed."
+                )
+            }
+        } catch (e: Exception) {
+            Log.w("AnalyticsRepository", "Failed to resolve video availability for danceId=$danceId", e)
+            VideoAvailability(
+                available = false,
+                videoUrl = null,
+                reason = "This video is currently unavailable."
+            )
+        }
+    }
+
+    private data class VideoAvailability(
+        val available: Boolean,
+        val videoUrl: String?,
+        val reason: String? = null
+    )
 }

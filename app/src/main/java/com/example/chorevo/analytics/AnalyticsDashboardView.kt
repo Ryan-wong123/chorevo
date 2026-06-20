@@ -356,11 +356,16 @@ fun SessionDetailPanel(
     }
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
 
-    LaunchedEffect(analysis?.videoUrl) {
+    val videoAvailable = analysis?.videoAvailable == true && !analysis.videoUrl.isNullOrBlank()
+
+    LaunchedEffect(videoAvailable, analysis?.videoUrl) {
         val url = analysis?.videoUrl
-        if (!url.isNullOrBlank()) {
+        if (videoAvailable && !url.isNullOrBlank()) {
             exoPlayer.setMediaItem(MediaItem.fromUri(url))
             exoPlayer.prepare()
+        } else {
+            exoPlayer.stop()
+            exoPlayer.clearMediaItems()
         }
     }
 
@@ -412,13 +417,23 @@ fun SessionDetailPanel(
             Column(Modifier.padding(12.dp)) {
                 Text("Template Video", style = MaterialTheme.typography.titleSmall)
                 Spacer(Modifier.height(8.dp))
-                SharedPlayerView(
-                    exoPlayer = exoPlayer,
-                    useController = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp)
-                )
+                if (videoAvailable) {
+                    SharedPlayerView(
+                        exoPlayer = exoPlayer,
+                        useController = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                    )
+                } else {
+                    VideoUnavailablePanel(
+                        message = analysis?.videoUnavailableReason
+                            ?: "This video has been deleted or removed.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                    )
+                }
             }
         }
 
@@ -472,7 +487,7 @@ fun SessionDetailPanel(
                         feedbackMessages = analysis.feedbackMessages,
                         totalMs = durationT,
                         currentMs = playheadMs,
-                        onSeek = { exoPlayer.seekTo(it) }
+                        onSeek = { if (videoAvailable) exoPlayer.seekTo(it) }
                     )
                 }
             }
@@ -502,10 +517,42 @@ fun SessionDetailPanel(
                     TimelineChart(
                         points = analysis.timelinePoints,
                         currentMs = playheadMs,
-                        onSeek = { exoPlayer.seekTo(it) }
+                        onSeek = { if (videoAvailable) exoPlayer.seekTo(it) }
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun VideoUnavailablePanel(
+    message: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                shape = RoundedCornerShape(8.dp)
+            )
+            .padding(20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "Video unavailable",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+            )
         }
     }
 }
