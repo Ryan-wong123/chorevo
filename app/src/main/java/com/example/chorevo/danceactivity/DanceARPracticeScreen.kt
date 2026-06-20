@@ -1,6 +1,7 @@
 package com.example.chorevo.danceactivity
 
 import android.Manifest
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.media.MediaMetadataRetriever
@@ -84,6 +85,9 @@ import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 import com.example.chorevo.weeklychallenge.WeeklyChallengeCelebrationDialog
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.posedetection.HolisticFrameLandmarks
+import com.example.chorevo.posedetection.HolisticFrameSelector
+import com.example.chorevo.posedetection.HolisticLandmarkerHelper
 import com.example.chorevo.posedetection.ImageProxyUtils
 import com.example.chorevo.posedetection.InstructorAvatarOverlay
 import com.example.chorevo.posedetection.PoseDrawSpec
@@ -101,7 +105,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
-import kotlin.math.max
 
 private enum class PracticeMode {
     FULL_ROUTINE,
@@ -336,12 +339,12 @@ fun DanceARPracticeScreen(
         }
     }
 
-    val poseHelper = remember(hasCamPermission, testMode) {
-        if (hasCamPermission && !testMode) PoseLandmarkerHelper(context) else null
+    val liveLandmarkDetector = remember(hasCamPermission, testMode) {
+        if (hasCamPermission && !testMode) LiveLandmarkDetector(context) else null
     }
 
-    DisposableEffect(poseHelper) {
-        onDispose { poseHelper?.close() }
+    DisposableEffect(liveLandmarkDetector) {
+        onDispose { liveLandmarkDetector?.close() }
     }
 
     DisposableEffect(Unit) {
@@ -483,38 +486,23 @@ fun DanceARPracticeScreen(
 
     val currentPracticeTimeMs by rememberUpdatedState(practiceTimeMs)
 
-    val analyzer = remember(similarityEval, poseHelper, hasCamPermission, testMode) {
+    val analyzer = remember(similarityEval, liveLandmarkDetector, hasCamPermission, testMode) {
         ImageAnalysis.Analyzer { imageProxy ->
             if (testMode || !hasCamPermission) {
                 imageProxy.close()
                 return@Analyzer
             }
 
-            val helper = poseHelper
-            if (helper == null) {
+            val detector = liveLandmarkDetector
+            if (detector == null) {
                 imageProxy.close()
                 return@Analyzer
             }
 
             try {
                 val bmp = imageProxy.toBitmapFrontCamera()
-                val res = helper.detect(bmp)
-                val detections = res.landmarks().mapNotNull { pose ->
-                    if (pose.isEmpty()) return@mapNotNull null
-                    val flat = ArrayList<Float>(pose.size * 4)
-                    for (lm in pose) {
-                        flat.add(lm.x())
-                        flat.add(lm.y())
-                        flat.add(lm.z())
-                        flat.add(lm.visibility().orElse(1.0f))
-                    }
-                    flat
-                }
-
-                val primaryPose = detections.maxByOrNull { detection ->
-                    val prominence = detection.poseBounds()?.area ?: 0f
-                    prominence * max(detection.averageVisibility(), 0.1f)
-                }
+                val primaryFrame = HolisticFrameSelector.primaryPose(detector.detect(bmp))
+                val primaryPose = primaryFrame?.pose
 
                 if (!primaryPose.isNullOrEmpty()) {
                     if (!isPracticeActive) {
@@ -1378,6 +1366,42 @@ private fun cropReferenceThumbnail(
     val targetWidth = 160
     val targetHeight = 220
     return Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
+}
+
+private class LiveLandmarkDetector(context: Context) : AutoCloseable {
+    private val holisticHelper = runCatching {
+        HolisticLandmarkerHelper(context)
+    }.getOrNull()
+    private val fallbackPoseHelper = if (holisticHelper == null) {
+        PoseLandmarkerHelper(context)
+    } else {
+        null
+    }
+
+    fun detect(bitmap: Bitmap): List<HolisticFrameLandmarks> {
+        val holistic = holisticHelper
+        if (holistic != null) {
+            return listOf(holistic.detect(bitmap))
+        }
+
+        val poseHelper = fallbackPoseHelper ?: return emptyList()
+        return poseHelper.detect(bitmap).landmarks().mapNotNull { pose ->
+            if (pose.isEmpty()) return@mapNotNull null
+            val flat = ArrayList<Float>(pose.size * 4)
+            for (landmark in pose) {
+                flat.add(landmark.x())
+                flat.add(landmark.y())
+                flat.add(landmark.z())
+                flat.add(landmark.visibility().orElse(1.0f))
+            }
+            HolisticFrameLandmarks(pose = flat)
+        }
+    }
+
+    override fun close() {
+        runCatching { holisticHelper?.close() }
+        runCatching { fallbackPoseHelper?.close() }
+    }
 }
 
 @Composable

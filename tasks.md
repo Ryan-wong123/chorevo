@@ -22,14 +22,14 @@ Goal: add hand/finger awareness to live dance practice using `app/src/main/asset
 
 ### Phase B: Add Holistic Pose + Hands Helper
 
-- [ ] Add `HolisticLandmarkerHelper` under `posedetection`.
-- [ ] Configure it to load `holistic_landmarker.task` from assets.
-- [ ] Support the same running modes needed by the app, at minimum `IMAGE` for current analyzer usage and `VIDEO` if used for template generation.
-- [ ] Disable optional face blendshape/transformation outputs when available.
-- [ ] Convert MediaPipe output into an app-owned `HolisticFrameLandmarks` model containing only `pose`, `leftHand`, and `rightHand`.
-- [ ] Do not expose face landmarks from the helper.
-- [ ] Add a safe fallback to the existing `PoseLandmarkerHelper` path if holistic setup fails.
-- [ ] Ensure helper resources are closed through `close()` and Compose `DisposableEffect` or equivalent lifecycle cleanup.
+- [x] Add `HolisticLandmarkerHelper` under `posedetection`.
+- [x] Configure it to load `holistic_landmarker.task` from assets.
+- [x] Support the same running modes needed by the app, at minimum `IMAGE` for current analyzer usage and `VIDEO` if used for template generation.
+- [x] Disable optional face blendshape/transformation outputs when available.
+- [x] Convert MediaPipe output into an app-owned `HolisticFrameLandmarks` model containing only `pose`, `leftHand`, and `rightHand`.
+- [x] Do not expose face landmarks from the helper.
+- [x] Add a safe fallback to the existing `PoseLandmarkerHelper` path if holistic setup fails.
+- [x] Ensure helper resources are closed through `close()` and Compose `DisposableEffect` or equivalent lifecycle cleanup.
 
 ### Phase C: Add Hand Landmark Data Models
 
