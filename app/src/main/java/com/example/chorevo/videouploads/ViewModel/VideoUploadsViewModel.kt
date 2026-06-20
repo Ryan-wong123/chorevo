@@ -132,6 +132,7 @@ class VideoUploadsViewModel @Inject constructor(
                 fps = fps,
                 profile = VideoPoseTemplateGenerator.GenerationProfile.HIGH_RECALL,
                 personDetectorConfig = PersonDetectorConfig(enabled = true),
+                collectHandLandmarks = true,
                 onProgress = { progress ->
                     mutate { state ->
                         state.copy(
@@ -453,6 +454,7 @@ class VideoUploadsViewModel @Inject constructor(
                     generateTemplate = generateTemplate,
                     confirmedTemplate = confirmedTemplate,
                     fps = fps,
+                    collectHandLandmarks = true,
                     onProgress = { progress ->
                         mutate { s -> s.copy(uploadProgress = progress) }
                     },
@@ -506,12 +508,14 @@ internal fun PoseTemplate.confirmedTemplate(
     val filteredPreview = selectionPreview?.copy(
         candidates = selectionPreview.candidates.filter { it.trackId in selectedIds }
     )
+    val selectedHandTracks = handTracks.filter { it.trackId in selectedIds }
 
     return copy(
         frames = defaultTrack?.frames.orEmpty(),
         tracks = selectedTracks,
         defaultTrackId = defaultTrack?.trackId,
-        selectionPreview = filteredPreview
+        selectionPreview = filteredPreview,
+        handTracks = selectedHandTracks
     )
 }
 

@@ -157,6 +157,144 @@ class MediaPipeCropPoseEstimator(
     }
 }
 
+class MediaPipeCropHolisticEstimator(
+    private val holisticLandmarkerHelper: HolisticLandmarkerHelper,
+    private val fallbackPoseEstimator: CropPoseEstimator,
+    private val config: CropPoseEstimatorConfig = CropPoseEstimatorConfig()
+) : CropPoseEstimator {
+
+    override fun estimate(
+        frame: Bitmap,
+        trackedDancers: List<TrackedDancerBox>
+    ): CropPoseEstimationResult {
+        if (trackedDancers.isEmpty()) return CropPoseEstimationResult()
+
+        val poses = mutableListOf<EstimatedPoseFrame>()
+        val handFrames = mutableListOf<EstimatedHandFrame>()
+        val warnings = linkedMapOf<String, PoseAnalysisWarning>()
+        val fallbackDancers = mutableListOf<TrackedDancerBox>()
+
+        for (trackedDancer in trackedDancers.filter(::shouldEstimateCrop)) {
+            val expandedBox = CropPoseGeometry
+                .expandBox(trackedDancer.box, config.paddingFraction)
+                .let(CropPoseGeometry::clampBox)
+
+            if (
+                expandedBox.width < config.minBoxWidth ||
+                expandedBox.height < config.minBoxHeight
+            ) {
+                warnings.putHandWarning("Some tracked dancer crops were too small for reliable hand extraction.")
+                fallbackDancers += trackedDancer
+                continue
+            }
+
+            val cropRect = CropPoseGeometry.toPixelCropRect(
+                box = expandedBox,
+                frameWidth = frame.width,
+                frameHeight = frame.height
+            )
+            if (!cropRect.isValid) {
+                warnings.putHandWarning("Some tracked dancer crops were invalid for hand extraction.")
+                fallbackDancers += trackedDancer
+                continue
+            }
+
+            val cropBitmap = try {
+                Bitmap.createBitmap(
+                    frame,
+                    cropRect.left,
+                    cropRect.top,
+                    cropRect.width,
+                    cropRect.height
+                )
+            } catch (_: Exception) {
+                warnings.putHandWarning("Some tracked dancer crops failed before hand extraction.")
+                null
+            }
+            if (cropBitmap == null) {
+                fallbackDancers += trackedDancer
+                continue
+            }
+
+            try {
+                val landmarks = holisticLandmarkerHelper.detect(cropBitmap)
+                if (landmarks.pose.isEmpty()) {
+                    warnings.putHandWarning("Some tracked dancer crops produced no Holistic body pose and used body-only fallback.")
+                    fallbackDancers += trackedDancer
+                    continue
+                }
+
+                val remapped = CropPoseGeometry.remapHolisticLandmarksToFullFrame(
+                    landmarks = landmarks,
+                    cropBox = expandedBox
+                )
+                poses += EstimatedPoseFrame(
+                    trackId = trackedDancer.trackId,
+                    frame = PoseFrame(
+                        tMs = trackedDancer.timestampMs,
+                        landmarks = remapped.pose
+                    ),
+                    bounds = expandedBox.bounds,
+                    confidence = minOf(
+                        trackedDancer.confidence,
+                        remapped.pose.averageVisibility()
+                    )
+                )
+                if (remapped.leftHand.isNotEmpty() || remapped.rightHand.isNotEmpty()) {
+                    handFrames += EstimatedHandFrame(
+                        trackId = trackedDancer.trackId,
+                        frame = HandLandmarkFrame(
+                            tMs = trackedDancer.timestampMs,
+                            leftHand = remapped.leftHand,
+                            rightHand = remapped.rightHand
+                        )
+                    )
+                } else {
+                    warnings.putHandWarning("Some tracked dancer crops had body pose but no hand landmarks.")
+                }
+            } catch (_: Exception) {
+                warnings.putHandWarning("Some Holistic crop estimations failed and used body-only fallback.")
+                fallbackDancers += trackedDancer
+            } finally {
+                cropBitmap.recycle()
+            }
+        }
+
+        val fallbackResult = fallbackPoseEstimator.estimate(frame, fallbackDancers)
+        fallbackResult.warnings.forEach { warnings.putIfAbsent(it.code, it) }
+
+        return CropPoseEstimationResult(
+            poses = poses + fallbackResult.poses,
+            handFrames = handFrames,
+            warnings = warnings.values.toList()
+        )
+    }
+
+    override fun close() {
+        runCatching { holisticLandmarkerHelper.close() }
+        runCatching { fallbackPoseEstimator.close() }
+    }
+
+    private fun shouldEstimateCrop(trackedDancer: TrackedDancerBox): Boolean {
+        return trackedDancer.state == TrackState.Visible ||
+            trackedDancer.state == TrackState.Recovered
+    }
+
+    private fun MutableMap<String, PoseAnalysisWarning>.putHandWarning(message: String) {
+        putIfAbsent(
+            WARNING_CROP_HAND_MISSING,
+            PoseAnalysisWarning(
+                code = WARNING_CROP_HAND_MISSING,
+                message = message
+            )
+        )
+    }
+
+    companion object {
+        const val WARNING_CROP_HAND_MISSING = "cropHandExtractionPartial"
+    }
+}
+
 object CropPoseGeometry {
     fun expandBox(box: DetectionBox, paddingFraction: Float): DetectionBox {
         val safePadding = paddingFraction.coerceAtLeast(0f)
@@ -230,5 +368,16 @@ object CropPoseGeometry {
         }
 
         return remapped
+    }
+
+    fun remapHolisticLandmarksToFullFrame(
+        landmarks: HolisticFrameLandmarks,
+        cropBox: DetectionBox
+    ): HolisticFrameLandmarks {
+        return HolisticFrameLandmarks(
+            pose = remapCropLandmarksToFullFrame(landmarks.pose, cropBox),
+            leftHand = remapCropLandmarksToFullFrame(landmarks.leftHand, cropBox),
+            rightHand = remapCropLandmarksToFullFrame(landmarks.rightHand, cropBox)
+        )
     }
 }

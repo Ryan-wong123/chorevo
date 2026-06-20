@@ -175,6 +175,11 @@ data class EstimatedPoseFrame(
     val confidence: Float
 )
 
+data class EstimatedHandFrame(
+    val trackId: String,
+    val frame: HandLandmarkFrame
+)
+
 data class CropPoseEstimatorConfig(
     val paddingFraction: Float = DEFAULT_PADDING_FRACTION,
     val minBoxWidth: Float = DEFAULT_MIN_BOX_WIDTH,
@@ -205,6 +210,7 @@ data class PixelCropRect(
 
 data class CropPoseEstimationResult(
     val poses: List<EstimatedPoseFrame> = emptyList(),
+    val handFrames: List<EstimatedHandFrame> = emptyList(),
     val warnings: List<PoseAnalysisWarning> = emptyList()
 )
 
