@@ -24,12 +24,14 @@ class VideoTemplateGenerationWorker(
         const val KEY_DANCE_ID = "dance_id"
         const val KEY_STORAGE_PATH = "storage_path"
         const val KEY_FPS = "template_fps"
+        const val KEY_COLLECT_HAND_LANDMARKS = "collect_hand_landmarks"
     }
 
     override suspend fun doWork(): Result {
         val danceId = inputData.getString(KEY_DANCE_ID) ?: return Result.failure()
         val storagePath = inputData.getString(KEY_STORAGE_PATH) ?: return Result.failure()
         val fps = inputData.getInt(KEY_FPS, 5).coerceAtLeast(1)
+        val collectHandLandmarks = inputData.getBoolean(KEY_COLLECT_HAND_LANDMARKS, true)
 
         val firestore = FirebaseFirestore.getInstance()
         val storage = FirebaseStorage.getInstance()
@@ -62,7 +64,8 @@ class VideoTemplateGenerationWorker(
             val templateResult = VideoPoseTemplateGenerator.generate(
                 context = applicationContext,
                 videoUriString = Uri.fromFile(tempFile).toString(),
-                fps = fps
+                fps = fps,
+                collectHandLandmarks = collectHandLandmarks
             )
 
             templateResult.fold(

@@ -63,14 +63,14 @@ Goal: add hand/finger awareness to live dance practice using `app/src/main/asset
 
 ### Phase F: Template Generation for Hand References
 
-- [ ] Add an option for new or regenerated templates to collect hands with Holistic Landmarker.
-- [ ] Store only pose + left/right hand landmarks from Holistic results.
-- [ ] For normal single-dancer hand-enabled generation, run `holistic_landmarker.task` and save pose + optional left/right hand references.
-- [ ] For high-recall multi-dancer hand-enabled generation, run `person_detector_yolo.tflite` first to detect dancer boxes, track dancer IDs, crop each dancer with padding, then run `holistic_landmarker.task` on each crop.
-- [ ] Remap both pose landmarks and left/right hand landmarks from crop coordinates back to full-frame normalized coordinates.
-- [ ] Discard all face landmarks and face-related outputs from Holistic results.
-- [ ] Keep `pose_landmarker_full.task` as the fallback body-only crop estimator when Holistic initialization or crop Holistic inference fails, or when hand mode is disabled.
-- [ ] Mark hand extraction failures as warnings; do not fail the entire template if body pose generation succeeds.
+- [x] Add an option for new or regenerated templates to collect hands with Holistic Landmarker.
+- [x] Store only pose + left/right hand landmarks from Holistic results.
+- [x] For normal single-dancer hand-enabled generation, run `holistic_landmarker.task` and save pose + optional left/right hand references.
+- [x] For high-recall multi-dancer hand-enabled generation, run `person_detector_yolo.tflite` first to detect dancer boxes, track dancer IDs, crop each dancer with padding, then run `holistic_landmarker.task` on each crop.
+- [x] Remap both pose landmarks and left/right hand landmarks from crop coordinates back to full-frame normalized coordinates.
+- [x] Discard all face landmarks and face-related outputs from Holistic results.
+- [x] Keep `pose_landmarker_full.task` as the fallback body-only crop estimator when Holistic initialization or crop Holistic inference fails, or when hand mode is disabled.
+- [x] Mark hand extraction failures as warnings; do not fail the entire template if body pose generation succeeds.
 
 ### Phase G: Tests and Verification
 

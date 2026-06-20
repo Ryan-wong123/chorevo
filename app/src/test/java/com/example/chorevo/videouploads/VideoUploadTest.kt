@@ -8,6 +8,8 @@ import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.posedetection.PoseAnalysisWarning
 import com.example.chorevo.posedetection.PoseBounds
 import com.example.chorevo.posedetection.PoseFrame
+import com.example.chorevo.posedetection.HandLandmarkFrame
+import com.example.chorevo.posedetection.HandTrack
 import com.example.chorevo.posedetection.PoseSelectionCandidate
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTemplate
@@ -167,6 +169,7 @@ class VideoUploadsViewModelTest {
                 generateTemplate = true,
                 confirmedTemplate = null,
                 fps = 15,
+                collectHandLandmarks = true,
                 onProgress = any(),
                 onStageChanged = any(),
                 onTemplateFailure = any(),
@@ -197,6 +200,7 @@ class VideoUploadsViewModelTest {
                 generateTemplate = true,
                 confirmedTemplate = null,
                 fps = 15,
+                collectHandLandmarks = true,
                 onProgress = any(),
                 onStageChanged = any(),
                 onTemplateFailure = any(),
@@ -266,6 +270,16 @@ class VideoUploadsViewModelTest {
                     sampleCandidate("track_1"),
                     sampleCandidate("track_2")
                 )
+            ),
+            handTracks = listOf(
+                HandTrack(
+                    trackId = "track_1",
+                    frames = listOf(HandLandmarkFrame(tMs = 0, leftHand = listOf(0.1f, 0.2f, 0f, 1f)))
+                ),
+                HandTrack(
+                    trackId = "track_2",
+                    frames = listOf(HandLandmarkFrame(tMs = 0, rightHand = listOf(0.3f, 0.4f, 0f, 1f)))
+                )
             )
         )
 
@@ -278,6 +292,35 @@ class VideoUploadsViewModelTest {
         assertEquals(sampleFrames("track_2"), confirmed.frames)
         assertEquals(2, confirmed.availableTracks().size)
         assertEquals(2, confirmed.selectionPreview?.candidates?.size)
+        assertEquals(listOf("track_1", "track_2"), confirmed.handTracks.map { it.trackId })
+    }
+
+    @Test
+    fun confirmedTemplate_filtersHandTracksToSelectedDancers() {
+        val template = PoseTemplate(
+            fps = 8,
+            tracks = listOf(sampleTrack("track_1"), sampleTrack("track_2")),
+            defaultTrackId = "track_1",
+            handTracks = listOf(
+                HandTrack(
+                    trackId = "track_1",
+                    frames = listOf(HandLandmarkFrame(tMs = 0, leftHand = listOf(0.1f, 0.2f, 0f, 1f)))
+                ),
+                HandTrack(
+                    trackId = "track_2",
+                    frames = listOf(HandLandmarkFrame(tMs = 0, rightHand = listOf(0.3f, 0.4f, 0f, 1f)))
+                )
+            )
+        )
+
+        val confirmed = template.confirmedTemplate(
+            selectedTrackIds = setOf("track_2"),
+            defaultTrackId = "track_2"
+        )
+
+        assertEquals(listOf("track_2"), confirmed.handTracks.map { it.trackId })
+        assertEquals("track_2", confirmed.defaultTrackId)
+        assertEquals(sampleFrames("track_2"), confirmed.frames)
     }
 
     @Test
