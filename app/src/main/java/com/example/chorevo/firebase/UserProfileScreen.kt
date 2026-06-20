@@ -63,6 +63,8 @@ import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.firebase.ViewModel.ProfileViewModel
 import com.example.chorevo.videouploads.VideoUploadsTab
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.weeklychallenge.WeeklyChallengeSummaryCard
+import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -82,10 +84,12 @@ fun UserProfileScreen(
     profile: UserProfile,
     onLogout: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenWeeklyChallenges: () -> Unit,
     analyticsVm: AnalyticsDashboardViewModel,
     videoUploadsVm: VideoUploadsViewModel,
     profileVm: ProfileViewModel,
-    danceLibraryVm: DanceLibraryListViewModel
+    danceLibraryVm: DanceLibraryListViewModel,
+    weeklyChallengeVm: WeeklyChallengeViewModel
 ) {
     val brandTeal = Color(0xFF00B8C8)
     val surfaceColor = MaterialTheme.colorScheme.surface
@@ -103,16 +107,22 @@ fun UserProfileScreen(
 
     val lifecycleOwner = LocalLifecycleOwner.current
     val uiState by profileVm.uiState.collectAsStateWithLifecycle()
+    val weeklyChallengeState by weeklyChallengeVm.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(profile.uid) {
         profileVm.refresh(profile.uid)
         refreshTick++
     }
 
+    LaunchedEffect(profile.uid) {
+        weeklyChallengeVm.loadForWeek(profile.uid)
+    }
+
     DisposableEffect(lifecycleOwner, profile.uid) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 profileVm.refresh(profile.uid)
+                weeklyChallengeVm.loadForWeek(profile.uid)
                 refreshTick++
             }
         }
@@ -234,6 +244,15 @@ fun UserProfileScreen(
                 nextLevel = nextLevel,
                 totalPoints = uiState.points.totalPoints,
                 modifier = Modifier.padding(horizontal = 16.dp).offset(y = (-10).dp)
+            )
+        }
+
+        item {
+            WeeklyChallengeSummaryCard(
+                challenges = weeklyChallengeState.challenges,
+                completedCount = weeklyChallengeState.completedCount,
+                onViewAll = onOpenWeeklyChallenges,
+                modifier = Modifier.padding(horizontal = 16.dp).offset(y = (-6).dp)
             )
         }
 

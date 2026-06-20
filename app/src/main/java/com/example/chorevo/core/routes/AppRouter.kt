@@ -175,7 +175,7 @@ private fun AppRouteContent(
                 )
             }
 
-            Screen.PROFILE, Screen.SETTINGS -> {
+            Screen.PROFILE, Screen.SETTINGS, Screen.WEEKLY_CHALLENGES -> {
                 ProfileSectionRoute(
                     screen = screen,
                     profile = profile,

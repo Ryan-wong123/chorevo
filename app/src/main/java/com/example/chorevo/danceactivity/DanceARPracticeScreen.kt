@@ -80,6 +80,8 @@ import com.example.chorevo.core.CameraPreview
 import com.example.chorevo.core.Ids
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
+import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
+import com.example.chorevo.weeklychallenge.WeeklyChallengeCelebrationDialog
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.posedetection.ImageProxyUtils
@@ -128,6 +130,7 @@ fun DanceARPracticeScreen(
     onNavigateToProfile: () -> Unit,
     vm: DanceLibraryListViewModel,
     achievementVm: AchievementViewModel,
+    weeklyChallengeVm: WeeklyChallengeViewModel,
     uid: String,
     testMode: Boolean = false
 ) {
@@ -277,6 +280,7 @@ fun DanceARPracticeScreen(
     val uploadState by vm.uploadState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val achievementState by achievementVm.uiState.collectAsStateWithLifecycle()
+    val weeklyChallengeState by weeklyChallengeVm.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(achievementState.errorMessage) {
         val msg = achievementState.errorMessage ?: return@LaunchedEffect
@@ -633,6 +637,14 @@ fun DanceARPracticeScreen(
                     smoothnessScore = smoothnessScore
                 )
 
+                weeklyChallengeVm.recordCompletedSession(
+                    uid = uid,
+                    danceType = item.danceType,
+                    alignmentScore = alignmentScore,
+                    timingConsistencyScore = timingConsistencyScore,
+                    smoothnessScore = smoothnessScore
+                )
+
                 status = null
             } catch (e: Exception) {
                 status = "Error: ${e.message ?: "Something went wrong"}"
@@ -651,7 +663,14 @@ fun DanceARPracticeScreen(
         contentColor = brandTeal
     )
 
-    if (achievementState.showAchievementDialog) {
+    if (weeklyChallengeState.showCelebrationDialog) {
+        WeeklyChallengeCelebrationDialog(
+            newlyCompleted = weeklyChallengeState.newlyCompleted,
+            bonusNewlyUnlocked = weeklyChallengeState.bonusNewlyUnlocked,
+            bonusRewardPoints = weeklyChallengeState.challengeSet.bonusRewardPoints,
+            onDismiss = { weeklyChallengeVm.dismissCelebrationDialog() }
+        )
+    } else if (achievementState.showAchievementDialog) {
         AchievementSummaryDialog(
             sessionPoints = achievementState.sessionPoints,
             totalPoints = achievementState.totalPoints,
@@ -864,65 +883,65 @@ fun DanceARPracticeScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (!isPracticeFocused) {
-                    Text(
-                        if (practiceMode == PracticeMode.STEP_BY_STEP) "Step Analytics" else "Live Analytics",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    selectedReferenceTrack?.takeIf { availableReferenceTracks.size > 1 }?.let { track ->
                         Text(
-                            text = "Reference: ${track.label}",
+                            if (practiceMode == PracticeMode.STEP_BY_STEP) "Step Analytics" else "Live Analytics",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+
+                        selectedReferenceTrack?.takeIf { availableReferenceTracks.size > 1 }?.let { track ->
+                            Text(
+                                text = "Reference: ${track.label}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = brandTeal
+                            )
+                        }
+
+                        currentPracticeSegment?.let { segment ->
+                            Text(
+                                text = "${segment.title} • ${formatPracticeTime(segment.startMs)} to ${formatPracticeTime(segment.endMs)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = brandTeal
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                "Align ${(alignmentScore * 100).toInt()}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "Timing ${(timingConsistencyScore * 100).toInt()}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                "Smooth ${(smoothnessScore * 100).toInt()}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+
+                        Text(
+                            text = "Err ${"%.4f".format(avgPoseError)} • Frames $frameCount • ${practiceTimeMs}ms",
                             style = MaterialTheme.typography.bodySmall,
-                            color = brandTeal
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
                         )
-                    }
 
-                    currentPracticeSegment?.let { segment ->
-                        Text(
-                            text = "${segment.title} • ${formatPracticeTime(segment.startMs)} to ${formatPracticeTime(segment.endMs)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = brandTeal
-                        )
-                    }
+                        wordFeedback?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = brandTeal,
+                                modifier = Modifier.testTag("wordFeedback")
+                            )
+                        }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            "Align ${(alignmentScore * 100).toInt()}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            "Timing ${(timingConsistencyScore * 100).toInt()}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        Text(
-                            "Smooth ${(smoothnessScore * 100).toInt()}",
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    }
-
-                    Text(
-                        text = "Err ${"%.4f".format(avgPoseError)} • Frames $frameCount • ${practiceTimeMs}ms",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                    )
-
-                    wordFeedback?.takeIf { it.isNotBlank() }?.let {
-                        Text(
-                            text = it,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = brandTeal,
-                            modifier = Modifier.testTag("wordFeedback")
-                        )
-                    }
-
-                    status?.let {
-                        Text(it, style = MaterialTheme.typography.bodySmall)
-                    }
+                        status?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
 
                     Row(

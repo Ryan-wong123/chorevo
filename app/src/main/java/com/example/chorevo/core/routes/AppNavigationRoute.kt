@@ -50,5 +50,5 @@ private fun Screen.toBottomNavItem(): BottomNavItem = when (this) {
     Screen.UPLOAD -> BottomNavItem.UPLOAD
     Screen.COMMUNITY -> BottomNavItem.COMMUNITY
     Screen.LEADERBOARD -> BottomNavItem.LEADERBOARD
-    Screen.PROFILE, Screen.SETTINGS -> BottomNavItem.PROFILE
+    Screen.PROFILE, Screen.SETTINGS, Screen.WEEKLY_CHALLENGES -> BottomNavItem.PROFILE
 }

@@ -84,32 +84,4 @@
             android:authorities="${applicationId}.androidx-startup"
             tools:node="remove" />
     </application>
-
-    <!--
-    ═══════════════════════════════════════════════════════════════════
-    App Links verification (autoVerify="true" above)
-    ═══════════════════════════════════════════════════════════════════
-    For Android to verify this app owns chorevo.app/dance/* you must host:
-      https://chorevo.app/.well-known/assetlinks.json
-
-    Contents of that file (replace SHA256 with your release keystore fingerprint):
-    [
-      {
-        "relation": ["delegate_permission/common.handle_all_urls"],
-        "target": {
-          "namespace": "android_app",
-          "package_name": "com.example.chorevo",
-          "sha256_cert_fingerprints": ["YOUR_RELEASE_KEYSTORE_SHA256_HERE"]
-        }
-      }
-    ]
-
-    Get your SHA256 fingerprint with:
-      keytool -list -v -keystore your-release-key.jks
-
-    Until assetlinks.json is live, links will still open the app via the
-    disambiguation dialog — they just won't skip it automatically.
-    ═══════════════════════════════════════════════════════════════════
-    -->
-
 </manifest>

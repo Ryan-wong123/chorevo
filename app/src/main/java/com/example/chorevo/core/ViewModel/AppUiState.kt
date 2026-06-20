@@ -4,7 +4,7 @@ import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.UserProfile
 
 enum class Screen {
-    AUTH, HOME, DANCE_PRACTICE, UPLOAD, COMMUNITY, PROFILE, LEADERBOARD, SETTINGS
+    AUTH, HOME, DANCE_PRACTICE, UPLOAD, COMMUNITY, PROFILE, LEADERBOARD, SETTINGS, WEEKLY_CHALLENGES
 }
 
 /**
