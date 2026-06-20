@@ -99,10 +99,13 @@ val uiState: StateFlow<MyUiState> = _uiState.asStateFlow()
 
 ## 10. Pose and Video Guidelines
 
-- Use `PoseLandmarkerHelper` as the boundary around MediaPipe setup and cleanup.
-- Close MediaPipe helpers when processing is complete.
+- Use `PoseLandmarkerHelper` as the boundary around body-only MediaPipe setup and cleanup.
+- Use `HolisticLandmarkerHelper` as the boundary around pose + hands MediaPipe setup and cleanup.
+- Close all MediaPipe helpers when processing is complete.
 - Keep pose templates serializable through `PoseTemplateJson`.
-- Treat landmark arrays as `x, y, z, visibility` groups.
+- Treat all landmark arrays as `x, y, z, visibility` groups.
+- For hands, expect 21 landmarks per hand, flattened as `21 * 4` values.
+- Do not store, render, score, or upload face landmarks for the pose + hands upgrade.
 - Keep scoring changes covered by tests because small math changes can affect analytics, achievements, and leaderboards.
 - Avoid storing raw learner practice video unless a future privacy review explicitly requires it.
 
@@ -192,12 +195,14 @@ interface CropPoseEstimator
 - Prefer matching recent lost tracks before creating a new dancer ID.
 - Merge track fragments after full-video processing, not during UI rendering.
 
-### Pose Crop Rules
+### Crop Landmark Rules
 
-- Expand dancer boxes with padding to avoid cutting off hands and feet.
-- Use `pose_landmarker_full.task` for uploaded video high-recall analysis when available.
-- Keep `pose_landmarker_lite.task` for live camera practice by default.
-- Always close `PoseLandmarkerHelper` and detector resources.
+- Expand dancer boxes with padding to avoid cutting off hands, fingers, and feet.
+- For hand-enabled uploaded-video high-recall analysis, use `person_detector_yolo.tflite` to locate/track dancers and `holistic_landmarker.task` on each padded dancer crop to extract pose + left/right hands.
+- Use `pose_landmarker_full.task` only as the body-only fallback when Holistic initialization/crop inference fails or hand mode is disabled.
+- Keep `pose_landmarker_lite.task` as the live camera body-only fallback.
+- Remap both pose and hand landmarks from crop coordinates back to full-frame normalized coordinates.
+- Always close `PoseLandmarkerHelper`, `HolisticLandmarkerHelper`, and detector resources.
 
 ### Low-Light Rules
 
@@ -217,3 +222,75 @@ Add JVM tests for:
 
 Use instrumentation tests only where Android bitmap/model runtime behavior is required.
 
+
+
+## 15. Pose + Hands Holistic Coding Guidelines
+
+This section is the active guidance for adding hand/finger awareness to live AR practice and hand-enabled uploaded-video template generation.
+
+### Model and Helper Rules
+
+- The holistic model asset path is `app/src/main/assets/holistic_landmarker.task`.
+- Add `HolisticLandmarkerHelper` in `posedetection` rather than configuring MediaPipe directly inside Compose.
+- The helper should expose app-owned result models instead of leaking MediaPipe result types deep into scoring/UI code.
+- Set face-related optional outputs such as blendshapes or transformation matrices to disabled when the API supports it.
+- Even if the Holistic result contains face landmarks, do not pass them outside the helper.
+- Fall back to the existing pose-only path if holistic initialization fails.
+
+### App-Owned Result Model
+
+Recommended model:
+
+```kotlin
+data class HolisticFrameLandmarks(
+    val pose: List<Float> = emptyList(),
+    val leftHand: List<Float> = emptyList(),
+    val rightHand: List<Float> = emptyList()
+)
+```
+
+Rules:
+
+- `pose` should remain compatible with existing `PoseSimilarityEvaluator` input.
+- `leftHand` and `rightHand` should be empty when the hand is not detected.
+- Do not include a `face` property in this model for this feature.
+
+### Template Compatibility Rules
+
+- Keep existing pose-only templates valid.
+- Add hand template fields as optional/default-empty fields only.
+- Do not change the existing flattened pose frame format.
+- Do not make practice fail if `handTracks` is absent.
+- Do not add face fields to `PoseTemplate` or `PoseTemplateJson`.
+
+### Hand Scoring Rules
+
+- Create a separate `HandSimilarityEvaluator`; do not overload `PoseSimilarityEvaluator` with hand-specific normalization.
+- Normalize hand landmarks relative to the wrist before comparing finger shape.
+- Score left and right hands independently when possible.
+- Skip hand scoring when the reference hand is missing.
+- Surface visibility feedback when the reference expects a hand but the learner hand is missing.
+- Keep final score body-only unless reliable hand reference data exists.
+
+
+### Hand-Enabled Upload Generation Rules
+
+- Normal single-dancer hand-enabled generation may run `holistic_landmarker.task` directly on sampled frames.
+- High-recall multi-dancer hand-enabled generation must use YOLO for dancer boxes/tracks and Holistic for landmarks on each padded crop.
+- YOLO should answer only "where is each dancer/person?"; Holistic should answer "where are this crop's body joints and finger joints?"
+- Discard all face landmarks from Holistic results.
+- Remap both pose and hand landmarks from crop coordinates back to full-frame normalized coordinates before storing template data.
+- If Holistic fails, fall back to `pose_landmarker_full.task` and generate a body-only template with a clear warning.
+
+### Test Rules
+
+Add tests for:
+
+- Holistic result conversion discards face data.
+- Missing hand landmarks return empty lists rather than crashing.
+- Old pose-only template JSON still parses successfully.
+- New template JSON with optional `handTracks` parses successfully.
+- High-recall crop remapping works for both pose landmarks and left/right hand landmarks.
+- Holistic upload generation falls back to body-only `pose_landmarker_full.task` when Holistic fails.
+- Final score uses body-only scoring when no hand reference exists.
+- Final score combines body and hand scores only when hand reference exists.

@@ -15,6 +15,7 @@ object VideoPoseTemplateGenerator {
     private const val MAX_TRACKED_DANCERS = 8
     private const val LITE_MODEL_ASSET = "pose_landmarker_lite.task"
     private const val FULL_MODEL_ASSET = "pose_landmarker_full.task"
+    const val WARNING_HAND_EXTRACTION_PARTIAL = "handExtractionPartial"
 
     enum class GenerationProfile {
         STANDARD,
@@ -40,11 +41,13 @@ object VideoPoseTemplateGenerator {
         profile: GenerationProfile = GenerationProfile.STANDARD,
         framePreprocessorConfig: FramePreprocessorConfig = FramePreprocessorConfig(),
         personDetectorConfig: PersonDetectorConfig = PersonDetectorConfig.disabled(),
+        collectHandLandmarks: Boolean = false,
         onProgress: ((Float) -> Unit)? = null
     ): Result<PoseTemplate> {
         return withContext(Dispatchers.Default) {
             val retriever = MediaMetadataRetriever()
             val highRecall = profile == GenerationProfile.HIGH_RECALL
+            val handEnabledHighRecall = highRecall && collectHandLandmarks
             val modelAssetPath = preferredModelAsset(context = context, highRecall = highRecall)
             val framePreprocessor = if (highRecall && framePreprocessorConfig.enabled) {
                 ConservativeFramePreprocessor(framePreprocessorConfig)
@@ -52,10 +55,15 @@ object VideoPoseTemplateGenerator {
                 NoOpFramePreprocessor
             }
             val analysisWarnings = linkedMapOf<String, PoseAnalysisWarning>()
+            val effectivePersonDetectorConfig = if (collectHandLandmarks && !personDetectorConfig.enabled) {
+                personDetectorConfig.copy(enabled = true)
+            } else {
+                personDetectorConfig
+            }
             val personDetectorInitialization = if (highRecall) {
                 PersonDetectorFactory.create(
                     context = context,
-                    config = personDetectorConfig
+                    config = effectivePersonDetectorConfig
                 )
             } else {
                 PersonDetectorInitialization(detector = NoOpPersonDetector())
@@ -75,7 +83,29 @@ object VideoPoseTemplateGenerator {
                 minPosePresenceConfidence = if (highRecall) 0.20f else 0.35f,
                 minTrackingConfidence = if (highRecall) 0.20f else 0.35f
             )
-            val cropHelper = if (highRecall) {
+            val holisticVideoHelper = if (!highRecall && collectHandLandmarks) {
+                runCatching {
+                    HolisticLandmarkerHelper(
+                        context = context,
+                        runningMode = RunningMode.VIDEO,
+                        minPoseDetectionConfidence = 0.30f,
+                        minPosePresenceConfidence = 0.30f,
+                        minHandLandmarksConfidence = 0.30f
+                    )
+                }.getOrElse {
+                    analysisWarnings.putIfAbsent(
+                        WARNING_HAND_EXTRACTION_PARTIAL,
+                        PoseAnalysisWarning(
+                            code = WARNING_HAND_EXTRACTION_PARTIAL,
+                            message = "Hand extraction was unavailable; template generation used body-only pose landmarks."
+                        )
+                    )
+                    null
+                }
+            } else {
+                null
+            }
+            val cropHelper = if (highRecall && !handEnabledHighRecall) {
                 PoseLandmarkerHelper(
                     context = context,
                     modelAssetPath = modelAssetPath,
@@ -89,18 +119,8 @@ object VideoPoseTemplateGenerator {
                 null
             }
             val cropPoseEstimator: CropPoseEstimator = if (highRecall) {
-                runCatching {
-                    MediaPipeCropPoseEstimator(
-                        poseLandmarkerHelper = PoseLandmarkerHelper(
-                            context = context,
-                            modelAssetPath = modelAssetPath,
-                            runningMode = RunningMode.IMAGE,
-                            maxPoses = 1,
-                            minPoseDetectionConfidence = 0.20f,
-                            minPosePresenceConfidence = 0.20f,
-                            minTrackingConfidence = 0.20f
-                        )
-                    )
+                val fallbackCropEstimator = runCatching {
+                    createBodyOnlyCropEstimator(context, modelAssetPath)
                 }.getOrElse {
                     analysisWarnings.putIfAbsent(
                         MediaPipeCropPoseEstimator.WARNING_CROP_POSE_MISSING,
@@ -111,8 +131,40 @@ object VideoPoseTemplateGenerator {
                     )
                     NoOpCropPoseEstimator()
                 }
+                if (collectHandLandmarks) {
+                    runCatching {
+                        MediaPipeCropHolisticEstimator(
+                            holisticLandmarkerHelper = HolisticLandmarkerHelper(
+                                context = context,
+                                runningMode = RunningMode.IMAGE,
+                                minPoseDetectionConfidence = 0.20f,
+                                minPosePresenceConfidence = 0.20f,
+                                minHandLandmarksConfidence = 0.20f
+                            ),
+                            fallbackPoseEstimator = fallbackCropEstimator
+                        )
+                    }.getOrElse {
+                        analysisWarnings.putIfAbsent(
+                            WARNING_HAND_EXTRACTION_PARTIAL,
+                            PoseAnalysisWarning(
+                                code = WARNING_HAND_EXTRACTION_PARTIAL,
+                                message = "Holistic crop extraction was unavailable; high-recall analysis used body-only crop pose estimation."
+                            )
+                        )
+                        fallbackCropEstimator
+                    }
+                } else {
+                    fallbackCropEstimator
+                }
             } else {
                 NoOpCropPoseEstimator()
+            }
+
+            val handFramesByTrackId = linkedMapOf<String, MutableList<HandLandmarkFrame>>()
+
+            fun recordHandFrame(trackId: String, frame: HandLandmarkFrame) {
+                if (frame.leftHand.isEmpty() && frame.rightHand.isEmpty()) return
+                handFramesByTrackId.getOrPut(trackId) { mutableListOf() } += frame
             }
 
             try {
@@ -163,6 +215,9 @@ object VideoPoseTemplateGenerator {
                         val personDetections = runCatching {
                             PoseDetectionMerger.mergeDuplicateDetections(
                                 personDetector.detect(processedBmp, tMs)
+                                    .filter { detection ->
+                                        detection.classId == effectivePersonDetectorConfig.personClassId
+                                    }
                             )
                         }.getOrElse {
                             analysisWarnings.putIfAbsent(
@@ -186,18 +241,78 @@ object VideoPoseTemplateGenerator {
                         trackedCropResult.warnings.forEach { warning ->
                             analysisWarnings.putIfAbsent(warning.code, warning)
                         }
+                        trackedCropResult.handFrames.forEach { handFrame ->
+                            recordHandFrame(handFrame.trackId, handFrame.frame)
+                        }
 
                         // VIDEO running mode requires timestamped detect
-                        val fullFrameDetections = helper.detectForVideo(processedBmp, tMs)
-                            .toFlatDetections()
-                        val cropDetections = cropHelper
-                            ?.detectCropPasses(processedBmp)
-                            .orEmpty()
-                        val detections = PoseDetectionMerger.mergeDuplicateLandmarkDetections(
-                            fullFrameDetections +
-                                cropDetections +
-                                trackedCropResult.poses.map { it.frame.landmarks }
-                        )
+                        val holisticFrame = if (!highRecall) {
+                            holisticVideoHelper?.let { holisticHelper ->
+                                runCatching {
+                                    holisticHelper.detectForVideo(processedBmp, tMs)
+                                }.getOrElse {
+                                    analysisWarnings.putIfAbsent(
+                                        WARNING_HAND_EXTRACTION_PARTIAL,
+                                        PoseAnalysisWarning(
+                                            code = WARNING_HAND_EXTRACTION_PARTIAL,
+                                            message = "Some hand-enabled frame estimations failed and used body-only pose fallback."
+                                        )
+                                    )
+                                    null
+                                }
+                            }
+                        } else {
+                            null
+                        }
+                        if (!highRecall && holisticFrame != null) {
+                            recordHandFrame(
+                                trackId = "track_1",
+                                frame = HandLandmarkFrame(
+                                    tMs = tMs,
+                                    leftHand = holisticFrame.leftHand,
+                                    rightHand = holisticFrame.rightHand
+                                )
+                            )
+                            if (holisticFrame.pose.isEmpty()) {
+                                analysisWarnings.putIfAbsent(
+                                    WARNING_HAND_EXTRACTION_PARTIAL,
+                                    PoseAnalysisWarning(
+                                        code = WARNING_HAND_EXTRACTION_PARTIAL,
+                                        message = "Some Holistic frames had missing body pose and used body-only pose fallback."
+                                    )
+                                )
+                            }
+                            if (holisticFrame.pose.isNotEmpty() &&
+                                holisticFrame.leftHand.isEmpty() &&
+                                holisticFrame.rightHand.isEmpty()
+                            ) {
+                                analysisWarnings.putIfAbsent(
+                                    WARNING_HAND_EXTRACTION_PARTIAL,
+                                    PoseAnalysisWarning(
+                                        code = WARNING_HAND_EXTRACTION_PARTIAL,
+                                        message = "Some hand-enabled frames had body pose but no hand landmarks."
+                                    )
+                                )
+                            }
+                        }
+                        val trackedPoseDetections = trackedCropResult.poses.map { it.frame.landmarks }
+                        val detections = if (handEnabledHighRecall && trackedPoseDetections.isNotEmpty()) {
+                            trackedPoseDetections
+                        } else {
+                            val fullFrameDetections = holisticFrame
+                                ?.pose
+                                ?.takeIf { it.isNotEmpty() }
+                                ?.let { listOf(it) }
+                                ?: helper.detectForVideo(processedBmp, tMs).toFlatDetections()
+                            val cropDetections = cropHelper
+                                ?.detectCropPasses(processedBmp)
+                                .orEmpty()
+                            PoseDetectionMerger.mergeDuplicateLandmarkDetections(
+                                fullFrameDetections +
+                                    cropDetections +
+                                    trackedPoseDetections
+                            )
+                        }
 
                         tracker.addFrame(
                             tMs = tMs,
@@ -221,8 +336,9 @@ object VideoPoseTemplateGenerator {
                     ?: return@withContext Result.failure(
                         IllegalStateException("No dancers were detected in the uploaded video")
                     )
+                val templateWithHands = template.withHandTracks(handFramesByTrackId)
                 val processedTemplate = postProcessUploadedTemplate(
-                    template = template,
+                    template = templateWithHands,
                     highRecall = highRecall,
                     fps = safeFps,
                     trackingConfig = trackingConfig,
@@ -250,11 +366,32 @@ object VideoPoseTemplateGenerator {
                 } catch (_: Exception) {
                 }
                 try {
+                    holisticVideoHelper?.close()
+                } catch (_: Exception) {
+                }
+                try {
                     personDetector.close()
                 } catch (_: Exception) {
                 }
             }
         }
+    }
+
+    private fun createBodyOnlyCropEstimator(
+        context: Context,
+        modelAssetPath: String
+    ): CropPoseEstimator {
+        return MediaPipeCropPoseEstimator(
+            poseLandmarkerHelper = PoseLandmarkerHelper(
+                context = context,
+                modelAssetPath = modelAssetPath,
+                runningMode = RunningMode.IMAGE,
+                maxPoses = 1,
+                minPoseDetectionConfidence = 0.20f,
+                minPosePresenceConfidence = 0.20f,
+                minTrackingConfidence = 0.20f
+            )
+        )
     }
 
     private fun preferredModelAsset(context: Context, highRecall: Boolean): String {
@@ -268,6 +405,30 @@ object VideoPoseTemplateGenerator {
         } catch (_: Exception) {
             false
         }
+    }
+
+    private fun PoseTemplate.withHandTracks(
+        handFramesByTrackId: Map<String, List<HandLandmarkFrame>>
+    ): PoseTemplate {
+        if (handFramesByTrackId.isEmpty()) return this
+        val availableTrackIds = availableTracks().map { it.trackId }.toSet()
+        val tracks = handFramesByTrackId
+            .filterKeys { trackId -> trackId in availableTrackIds }
+            .mapNotNull { (trackId, frames) ->
+                val sortedFrames = frames
+                    .groupBy { it.tMs }
+                    .map { (_, sameTimeFrames) ->
+                        sameTimeFrames.maxByOrNull { frame ->
+                            frame.leftHand.size + frame.rightHand.size
+                        } ?: sameTimeFrames.first()
+                    }
+                    .sortedBy { it.tMs }
+                if (sortedFrames.isEmpty()) null else HandTrack(
+                    trackId = trackId,
+                    frames = sortedFrames
+                )
+            }
+        return copy(handTracks = tracks)
     }
 
     private fun com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult.toFlatDetections(): List<List<Float>> {
@@ -413,7 +574,11 @@ object VideoPoseTemplateGenerator {
                 tracks = tracks,
                 defaultTrackId = defaultTrackId,
                 selectionPreview = template.selectionPreview
-                    ?.withTrackReplacements(mergeResult.replacedTrackIds, trackIds)
+                    ?.withTrackReplacements(mergeResult.replacedTrackIds, trackIds),
+                handTracks = template.handTracks.withTrackReplacements(
+                    replacements = mergeResult.replacedTrackIds,
+                    availableTrackIds = trackIds
+                )
             )
         }.getOrElse {
             analysisWarnings.putIfAbsent(
@@ -444,5 +609,30 @@ object VideoPoseTemplateGenerator {
             }
 
         return copy(candidates = candidatesByTrack)
+    }
+
+    private fun List<HandTrack>.withTrackReplacements(
+        replacements: Map<String, String>,
+        availableTrackIds: Set<String>
+    ): List<HandTrack> {
+        return mapNotNull { handTrack ->
+            val trackId = replacements[handTrack.trackId] ?: handTrack.trackId
+            if (trackId !in availableTrackIds) return@mapNotNull null
+            handTrack.copy(trackId = trackId)
+        }.groupBy { it.trackId }
+            .map { (trackId, tracksForId) ->
+                HandTrack(
+                    trackId = trackId,
+                    frames = tracksForId
+                        .flatMap { it.frames }
+                        .groupBy { it.tMs }
+                        .map { (_, sameTimeFrames) ->
+                            sameTimeFrames.maxByOrNull { frame ->
+                                frame.leftHand.size + frame.rightHand.size
+                            } ?: sameTimeFrames.first()
+                        }
+                        .sortedBy { it.tMs }
+                )
+            }
     }
 }

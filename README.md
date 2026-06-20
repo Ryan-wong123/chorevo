@@ -38,6 +38,7 @@ Chorevo supports two main user journeys:
 
 - CameraX live camera preview
 - MediaPipe Pose Landmarker inference on camera frames
+- Optional MediaPipe Holistic Landmarker inference for body pose + left/right hand/finger landmarks
 - Overlay of learner pose and reference/template pose
 - Live metrics for:
   - alignment
@@ -99,7 +100,9 @@ Chorevo supports two main user journeys:
 │       ├── main/
 │       │   ├── AndroidManifest.xml
 │       │   ├── assets/
-│       │   │   └── pose_landmarker_lite.task
+│       │   │   ├── pose_landmarker_lite.task
+│       │   │   ├── pose_landmarker_full.task
+│       │   │   └── holistic_landmarker.task
 │       │   ├── java/com/example/chorevo/
 │       │   └── res/
 │       ├── test/
@@ -177,7 +180,9 @@ The main source package is `app/src/main/java/com/example/chorevo/`.
 - `app/src/main/assets/pose_landmarker_lite.task`
   - MediaPipe model used by real-time pose detection
 - `app/src/main/assets/pose_landmarker_full.task`
-  - Optional higher-accuracy MediaPipe model for uploaded video template generation. If this file is present, high-recall upload analysis uses it automatically; otherwise the app safely falls back to `pose_landmarker_lite.task`.
+  - Optional higher-accuracy body-only MediaPipe fallback for uploaded video template generation when holistic hand extraction is unavailable or disabled.
+- `app/src/main/assets/holistic_landmarker.task`
+  - MediaPipe Holistic model for pose + hands. Live practice uses this for body pose plus left/right hand/finger landmarks. Hand-enabled upload generation also uses it after dancer crops are produced by the high-recall YOLO pipeline. Face output is intentionally ignored.
 - `app/google-services.json`
   - Firebase configuration required at runtime
 
@@ -670,15 +675,59 @@ firebase deploy --only storage --project YOUR_FIREBASE_PROJECT_ID
 
 ## Pose Landmark Models
 
-Real-time AR practice uses `pose_landmarker_lite.task` to keep camera inference fast.
-
-Uploaded dance video analysis uses a high-recall pipeline. For best multi-dancer detection, add the stronger MediaPipe model file here:
+The app may use three MediaPipe model assets:
 
 ```text
+app/src/main/assets/pose_landmarker_lite.task
 app/src/main/assets/pose_landmarker_full.task
+app/src/main/assets/holistic_landmarker.task
 ```
 
-When `pose_landmarker_full.task` exists, uploaded-video template generation uses it automatically. If it is missing, the app still works and falls back to `pose_landmarker_lite.task`, but crowded or low-light group videos may detect fewer dancers.
+Recommended usage:
+
+- `pose_landmarker_lite.task`: fast body-only fallback for real-time AR practice.
+- `pose_landmarker_full.task`: higher-accuracy body-only fallback for uploaded video template generation when holistic hand extraction is unavailable, disabled, or fails.
+- `holistic_landmarker.task`: primary model for pose + hands in live practice and hand-enabled uploaded-video template generation.
+
+The `holistic_landmarker.task` asset is already expected to exist at:
+
+```text
+app/src/main/assets/holistic_landmarker.task
+```
+
+Implementation rules for this model:
+
+- Use pose output for the existing body score.
+- Use left/right hand output for optional finger/hand feedback.
+- Ignore all face output. Do not store, score, render, or upload face landmarks.
+- Keep old pose-only templates working. If a template has no hand data, the final score must remain body-only.
+
+Uploaded dance video analysis uses two paths:
+
+```text
+Normal single-dancer hand-enabled generation:
+holistic_landmarker.task
+→ extract pose + leftHand + rightHand
+→ discard face
+→ save optional handTracks with the pose template
+
+High-recall multi-dancer hand-enabled generation:
+person_detector_yolo.tflite
+→ detect dancer boxes
+→ track dancer IDs
+→ crop each dancer with padding
+→ holistic_landmarker.task on each crop
+→ extract pose + leftHand + rightHand
+→ discard face
+→ remap pose and hand landmarks back to full-frame coordinates
+→ save pose + optional hand template per dancer track
+
+Fallback upload generation:
+person_detector_yolo.tflite + pose_landmarker_full.task
+→ body-only templates when Holistic fails or hand mode is disabled
+```
+
+`pose_landmarker_full.task` should no longer be treated as the preferred high-recall model when the goal is multi-dancer + hands/fingers. It is the fallback body-only path.
 
 ## Permissions Used
 

@@ -1,4 +1,103 @@
-# Chorevo Multi-Dancer AI Upgrade Tasks
+# Chorevo AI Upgrade Tasks
+
+This task list should be used together with `prd.md`, `agent.md`, `architecture.md`, and `coding_guidelines.md`.
+
+Legend:
+
+- `[ ]` not started
+- `[!]` in progress / needs attention
+- `[x]` completed
+
+## Active Task: Pose + Hands Holistic Live Practice Upgrade
+
+Goal: add hand/finger awareness to live dance practice using `app/src/main/assets/holistic_landmarker.task`, while keeping existing body-pose scoring and all old pose-only templates working. Face landmarks are not needed and must not be stored, rendered, scored, or uploaded.
+
+### Phase A: Baseline Review
+
+- [x] Run `git status --short` and avoid overwriting unrelated user changes.
+- [x] Confirm the model exists at `app/src/main/assets/holistic_landmarker.task`.
+- [x] Inspect current live practice code with `rg "DanceARPracticeScreen|PoseLandmarkerHelper|PoseSimilarityEvaluator|PoseTemplate|PoseTemplateJson" app/src/main/java`.
+- [x] Inspect current template generation code with `rg "VideoPoseTemplateGenerator|PoseTemplate|PoseTemplateJson|MultiPersonPoseTracker" app/src/main/java`.
+- [x] Confirm the existing MediaPipe Tasks Vision dependency already supports `HolisticLandmarker`; only change Gradle if the current version does not compile.
+
+### Phase B: Add Holistic Pose + Hands Helper
+
+- [x] Add `HolisticLandmarkerHelper` under `posedetection`.
+- [x] Configure it to load `holistic_landmarker.task` from assets.
+- [x] Support the same running modes needed by the app, at minimum `IMAGE` for current analyzer usage and `VIDEO` if used for template generation.
+- [x] Disable optional face blendshape/transformation outputs when available.
+- [x] Convert MediaPipe output into an app-owned `HolisticFrameLandmarks` model containing only `pose`, `leftHand`, and `rightHand`.
+- [x] Do not expose face landmarks from the helper.
+- [x] Add a safe fallback to the existing `PoseLandmarkerHelper` path if holistic setup fails.
+- [x] Ensure helper resources are closed through `close()` and Compose `DisposableEffect` or equivalent lifecycle cleanup.
+
+### Phase C: Add Hand Landmark Data Models
+
+- [x] Add `HolisticFrameLandmarks` with `pose`, `leftHand`, and `rightHand` flattened landmark arrays.
+- [x] Add conversion helpers that flatten landmarks as repeating `x, y, z, visibility` values.
+- [x] Ensure hand arrays contain `21 * 4` values when detected and are empty when missing.
+- [x] Add optional template models such as `HandLandmarkFrame` and `HandTrack`.
+- [x] Add an optional/default-empty `handTracks` field to `PoseTemplate` without breaking existing JSON.
+- [x] Update `PoseTemplateJson` serialization/deserialization to read old templates and new hand-enabled templates.
+- [x] Do not add face fields to template models or JSON.
+
+### Phase D: Update Live Practice Pipeline
+
+- [x] Update `DanceARPracticeScreen` to prefer `HolisticLandmarkerHelper` for live camera practice when the model exists.
+- [x] Pass `HolisticFrameLandmarks.pose` into the existing `PoseSimilarityEvaluator` unchanged.
+- [x] Store the latest learner left/right hand landmarks in UI state only where needed for optional overlay or feedback.
+- [x] Keep existing body overlay and reference pose overlay working.
+- [x] Do not block camera analysis if hands are missing from a frame.
+- [x] Do not display face tracking or face feedback.
+
+### Phase E: Optional Hand/Finger Scoring
+
+- [x] Add a separate `HandSimilarityEvaluator`.
+- [x] Normalize each hand relative to the wrist landmark before comparing finger shape.
+- [x] Compare only hands that exist in both learner and reference frames.
+- [x] Score left and right hands independently, then average available hand scores.
+- [x] Keep final score body-only when the selected template has no hand data.
+- [x] Use a combined score only when hand reference data exists, for example `finalScore = bodyScore * 0.85 + handScore * 0.15`.
+- [x] Add user-facing hand feedback such as keeping hands visible or matching hand shape.
+- [x] Avoid making hand score affect achievements/leaderboards until tests confirm the new scoring behavior is stable, or clearly document the intended change.
+
+### Phase F: Template Generation for Hand References
+
+- [x] Add an option for new or regenerated templates to collect hands with Holistic Landmarker.
+- [x] Store only pose + left/right hand landmarks from Holistic results.
+- [x] For normal single-dancer hand-enabled generation, run `holistic_landmarker.task` and save pose + optional left/right hand references.
+- [x] For high-recall multi-dancer hand-enabled generation, run `person_detector_yolo.tflite` first to detect dancer boxes, track dancer IDs, crop each dancer with padding, then run `holistic_landmarker.task` on each crop.
+- [x] Remap both pose landmarks and left/right hand landmarks from crop coordinates back to full-frame normalized coordinates.
+- [x] Discard all face landmarks and face-related outputs from Holistic results.
+- [x] Keep `pose_landmarker_full.task` as the fallback body-only crop estimator when Holistic initialization or crop Holistic inference fails, or when hand mode is disabled.
+- [x] Mark hand extraction failures as warnings; do not fail the entire template if body pose generation succeeds.
+
+### Phase G: Tests and Verification
+
+- [x] Add unit tests for holistic result conversion and face-data discard behavior.
+- [x] Add unit tests for empty/missing hand handling.
+- [x] Add JSON tests for old pose-only templates and new optional hand-enabled templates.
+- [x] Add scoring tests for body-only fallback and body+hand weighted scoring.
+- [x] Run `gradlew.bat testDebugUnitTest` or `./gradlew testDebugUnitTest`.
+- [x] Run `gradlew.bat assembleDebug` or `./gradlew assembleDebug`.
+- [ ] Run instrumentation tests if CameraX, Compose UI, or Android model runtime behavior changed and an emulator/device is available.
+- [x] Report files changed, behavior changed, tests run, tests not run, and remaining risks.
+
+
+### Phase F2: Upgrade High-Recall Multi-Dancer Templates to YOLO + Holistic
+
+- [x] Update the high-recall crop estimator so hand-enabled multi-dancer generation uses `person_detector_yolo.tflite` + `holistic_landmarker.task`, not `pose_landmarker_full.task` as the primary path.
+- [x] Keep YOLO responsible only for locating/tracking dancers; keep Holistic responsible for extracting pose + left/right hand landmarks from each dancer crop.
+- [x] Expand each dancer crop enough to avoid cutting off hands and fingers before running Holistic.
+- [x] Remap both pose and hand landmarks from crop coordinates back to full-frame normalized coordinates.
+- [x] Save pose + optional hand references per dancer track in backward-compatible `PoseTemplateJson`.
+- [x] Discard all face landmarks and face-related outputs.
+- [x] Fall back to `pose_landmarker_full.task` for body-only templates if Holistic setup or crop inference fails.
+- [x] Add tests for crop-to-full remapping of both pose and hand landmarks.
+
+---
+
+## Existing Completed Multi-Dancer AI Upgrade Tasks
 
 This task list extends the current Chorevo Android/Kotlin codebase. It should be used together with `prd.md`, `agent.md`, `architecture.md`, and `coding_guidelines.md`.
 
@@ -75,8 +174,8 @@ Legend:
 - [x] Add `CropPoseEstimator` that receives original frame + tracked boxes.
 - [x] Expand boxes with padding before cropping.
 - [x] Clamp crops to frame boundaries.
-- [x] Run MediaPipe Pose Landmarker on each crop.
-- [x] Remap crop landmarks back to original normalized frame coordinates.
+- [x] Run MediaPipe Pose Landmarker on each crop for the original body-only high-recall path.
+- [x] Remap crop pose landmarks back to original normalized frame coordinates.
 - [x] Mark failed crop estimations as missing/low-confidence rather than crashing.
 - [x] Add unit tests for crop-to-full coordinate remapping.
 - [x] Ensure all MediaPipe helpers and bitmaps/resources are closed or recycled where applicable.

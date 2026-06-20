@@ -1,6 +1,7 @@
 package com.example.chorevo.weeklychallenge
 
 import kotlin.random.Random
+import kotlin.math.roundToInt
 
 /**
  * Generates and updates this week's [WeeklyChallengeSet].
@@ -161,8 +162,9 @@ object WeeklyChallengeEngine {
             currentAvg = weakestEntry.value
         }
 
-        val threshold = (currentAvg + FOCUS_STRETCH_MARGIN)
-            .coerceIn(MIN_FOCUS_THRESHOLD, MAX_FOCUS_THRESHOLD)
+        val threshold = ((currentAvg + FOCUS_STRETCH_MARGIN)
+            .coerceIn(MIN_FOCUS_THRESHOLD, MAX_FOCUS_THRESHOLD) * 100.0)
+            .roundToInt() / 100.0
         val percentLabel = (threshold * 100).toInt()
 
         return WeeklyChallenge(
