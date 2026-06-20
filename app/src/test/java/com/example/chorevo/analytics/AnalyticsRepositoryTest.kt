@@ -24,8 +24,10 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -179,6 +181,9 @@ class AnalyticsRepositoryTest {
         val detailRef = mockk<DocumentReference>()
         val users = mockk<CollectionReference>()
         val userRef = mockk<DocumentReference>()
+        val danceLibrary = mockk<CollectionReference>()
+        val danceRef = mockk<DocumentReference>()
+        val danceDoc = mockk<DocumentSnapshot>()
         val registration = mockk<ListenerRegistration>(relaxed = true)
 
         val detailDoc = mockDetailDoc(
@@ -200,6 +205,12 @@ class AnalyticsRepositoryTest {
         every { users.document("learner42") } returns userRef
         every { userRef.get() } returns Tasks.forResult(userProfileDoc)
         every { userProfileDoc.getString("displayName") } returns "Jamie"
+        every { db.collection("danceLibrary") } returns danceLibrary
+        every { danceLibrary.document("danceA") } returns danceRef
+        every { danceRef.get() } returns Tasks.forResult(danceDoc)
+        every { danceDoc.exists() } returns true
+        every { danceDoc.getBoolean("enabled") } returns true
+        every { danceDoc.getString("videoUrl") } returns "https://example/current-video.mp4"
 
         val deferred = async {
             repo.observeDetail(
@@ -225,6 +236,8 @@ class AnalyticsRepositoryTest {
         assertEquals("Footwork • Jamie", detail.summary.activityName)
         assertEquals("danceA", detail.analysis?.danceId)
         assertEquals("educator1", detail.analysis?.educatorUid)
+        assertTrue(detail.analysis?.videoAvailable == true)
+        assertEquals("https://example/current-video.mp4", detail.analysis?.videoUrl)
         assertEquals(listOf(150L), detail.analysis?.feedbackMessages?.map { it.tMs })
         assertEquals(listOf("Lift your left arm."), detail.analysis?.feedbackMessages?.map { it.message })
         assertEquals(listOf(100L, 200L), detail.analysis?.timelinePoints?.map { it.tMs })
@@ -235,6 +248,72 @@ class AnalyticsRepositoryTest {
         verify(exactly = 1) { db.collection("users") }
         verify(exactly = 1) { users.document("learner42") }
         verify(exactly = 1) { userRef.get() }
+        verify(exactly = 1) { danceRef.get() }
+        verify(exactly = 1) { registration.remove() }
+    }
+
+    @Test
+    fun observeDetail_otherAnalytics_deletedLinkedDance_keepsAnalyticsButHidesVideo() = runTest {
+        val detailRef = mockk<DocumentReference>()
+        val users = mockk<CollectionReference>()
+        val userRef = mockk<DocumentReference>()
+        val danceLibrary = mockk<CollectionReference>()
+        val danceRef = mockk<DocumentReference>()
+        val danceDoc = mockk<DocumentSnapshot>()
+        val registration = mockk<ListenerRegistration>(relaxed = true)
+
+        val detailDoc = mockDetailDoc(
+            id = "s7",
+            path = "users/learner42/danceLearningSessions/s7",
+            sessionId = "s7",
+            activityName = "Footwork",
+            tsStart = 500L,
+            learnerDisplayName = "Jamie"
+        )
+
+        every { db.document("users/learner42/danceLearningSessions/s7") } returns detailRef
+
+        val listenerSlot = slot<EventListener<DocumentSnapshot>>()
+        every { detailRef.addSnapshotListener(capture(listenerSlot)) } returns registration
+
+        every { db.collection("users") } returns users
+        every { users.document("learner42") } returns userRef
+        every { db.collection("danceLibrary") } returns danceLibrary
+        every { danceLibrary.document("danceA") } returns danceRef
+        every { danceRef.get() } returns Tasks.forResult(danceDoc)
+        every { danceDoc.exists() } returns false
+        every { danceDoc.getBoolean("enabled") } returns true
+        every { danceDoc.getString("videoUrl") } returns null
+
+        val deferred = async {
+            repo.observeDetail(
+                args = DanceDashboardArgs(
+                    mode = DanceDashboardMode.OTHER_ANALYTICS,
+                    myUid = "educator1",
+                    uploadedDanceId = "danceA"
+                ),
+                sessionKey = "s7||users/learner42/danceLearningSessions/s7"
+            ).first()
+        }
+
+        advanceUntilIdle()
+        listenerSlot.captured.onEvent(detailDoc, null)
+        advanceUntilIdle()
+
+        val detail = deferred.await()
+
+        assertNotNull(detail)
+        detail!!
+
+        assertEquals("danceA", detail.analysis?.danceId)
+        assertFalse(detail.analysis?.videoAvailable == true)
+        assertNull(detail.analysis?.videoUrl)
+        assertEquals("This video has been deleted or removed.", detail.analysis?.videoUnavailableReason)
+        assertEquals(listOf(100L, 200L), detail.analysis?.timelinePoints?.map { it.tMs })
+        assertEquals(listOf(0L, 100L), detail.analysis?.performanceSegments?.map { it.startMs })
+
+        verify(exactly = 0) { userRef.get() }
+        verify(exactly = 1) { danceRef.get() }
         verify(exactly = 1) { registration.remove() }
     }
 

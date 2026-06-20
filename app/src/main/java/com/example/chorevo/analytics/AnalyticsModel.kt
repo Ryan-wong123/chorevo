@@ -19,6 +19,8 @@ data class AnalysisData(
     val danceId: String?,
     val educatorUid: String?,
     val videoUrl: String?,
+    val videoAvailable: Boolean = true,
+    val videoUnavailableReason: String? = null,
     val videoPositionMs: Long?,
     val referenceTrackId: String? = null,
     val referenceTrackLabel: String? = null,
