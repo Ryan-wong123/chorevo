@@ -43,12 +43,12 @@ Goal: add hand/finger awareness to live dance practice using `app/src/main/asset
 
 ### Phase D: Update Live Practice Pipeline
 
-- [ ] Update `DanceARPracticeScreen` to prefer `HolisticLandmarkerHelper` for live camera practice when the model exists.
-- [ ] Pass `HolisticFrameLandmarks.pose` into the existing `PoseSimilarityEvaluator` unchanged.
-- [ ] Store the latest learner left/right hand landmarks in UI state only where needed for optional overlay or feedback.
-- [ ] Keep existing body overlay and reference pose overlay working.
-- [ ] Do not block camera analysis if hands are missing from a frame.
-- [ ] Do not display face tracking or face feedback.
+- [x] Update `DanceARPracticeScreen` to prefer `HolisticLandmarkerHelper` for live camera practice when the model exists.
+- [x] Pass `HolisticFrameLandmarks.pose` into the existing `PoseSimilarityEvaluator` unchanged.
+- [x] Store the latest learner left/right hand landmarks in UI state only where needed for optional overlay or feedback.
+- [x] Keep existing body overlay and reference pose overlay working.
+- [x] Do not block camera analysis if hands are missing from a frame.
+- [x] Do not display face tracking or face feedback.
 
 ### Phase E: Optional Hand/Finger Scoring
 

@@ -2,6 +2,7 @@ package com.example.chorevo.danceactivity
 
 import android.Manifest
 import android.content.Context
+import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.media.MediaMetadataRetriever
@@ -146,6 +147,8 @@ fun DanceARPracticeScreen(
     var practiceTimeMs by remember { mutableLongStateOf(0L) }
     var hasCamPermission by remember { mutableStateOf(testMode) }
     var learnerLandmarks by remember { mutableStateOf<List<Float>?>(null) }
+    var learnerLeftHandLandmarks by remember { mutableStateOf<List<Float>>(emptyList()) }
+    var learnerRightHandLandmarks by remember { mutableStateOf<List<Float>>(emptyList()) }
     var refLandmarksForCamera by remember { mutableStateOf<List<Float>?>(null) }
 
     var alignmentScore by remember { mutableDoubleStateOf(if (testMode) 0.82 else 0.0) }
@@ -393,6 +396,8 @@ fun DanceARPracticeScreen(
         tsStart = System.currentTimeMillis()
         practiceTimeMs = 0L
         learnerLandmarks = null
+        learnerLeftHandLandmarks = emptyList()
+        learnerRightHandLandmarks = emptyList()
         refLandmarksForCamera = null
 
         alignmentScore = if (testMode) 0.82 else 0.0
@@ -415,6 +420,8 @@ fun DanceARPracticeScreen(
         latestTimelinePoints = emptyList()
         latestSegments = emptyList()
         learnerLandmarks = null
+        learnerLeftHandLandmarks = emptyList()
+        learnerRightHandLandmarks = emptyList()
         refLandmarksForCamera = null
         alignmentScore = if (testMode) 0.82 else 0.0
         timingConsistencyScore = if (testMode) 0.91 else 1.0
@@ -505,15 +512,21 @@ fun DanceARPracticeScreen(
                 val primaryPose = primaryFrame?.pose
 
                 if (!primaryPose.isNullOrEmpty()) {
+                    val leftHand = primaryFrame.leftHand
+                    val rightHand = primaryFrame.rightHand
+
                     if (!isPracticeActive) {
                         uiScope.launch {
                             learnerLandmarks = primaryPose
+                            learnerLeftHandLandmarks = leftHand
+                            learnerRightHandLandmarks = rightHand
                         }
                         return@Analyzer
                     }
 
                     val ev = similarityEval
                     val snap = if (ev != null) {
+                        // Body scoring remains pose-only. Hand landmarks are retained separately.
                         ev.onFrame(primaryPose, currentPracticeTimeMs)
                         ev.snapshot(includeSeries = false)
                     } else {
@@ -522,6 +535,8 @@ fun DanceARPracticeScreen(
 
                     uiScope.launch {
                         learnerLandmarks = primaryPose
+                        learnerLeftHandLandmarks = leftHand
+                        learnerRightHandLandmarks = rightHand
 
                         if (snap != null) {
                             alignmentScore = snap.alignmentScore
@@ -1369,23 +1384,32 @@ private fun cropReferenceThumbnail(
 }
 
 private class LiveLandmarkDetector(context: Context) : AutoCloseable {
-    private val holisticHelper = runCatching {
-        HolisticLandmarkerHelper(context)
-    }.getOrNull()
-    private val fallbackPoseHelper = if (holisticHelper == null) {
-        PoseLandmarkerHelper(context)
+    private val appContext = context.applicationContext
+    private val holisticHelper = if (appContext.assets.assetExists(HolisticLandmarkerHelper.MODEL_ASSET)) {
+        runCatching { HolisticLandmarkerHelper(appContext) }.getOrNull()
     } else {
         null
     }
+    private var fallbackPoseHelper: PoseLandmarkerHelper? = null
 
     fun detect(bitmap: Bitmap): List<HolisticFrameLandmarks> {
         val holistic = holisticHelper
         if (holistic != null) {
-            return listOf(holistic.detect(bitmap))
+            val result = runCatching { holistic.detect(bitmap) }.getOrNull()
+            if (result != null) {
+                return listOf(result)
+            }
         }
 
-        val poseHelper = fallbackPoseHelper ?: return emptyList()
-        return poseHelper.detect(bitmap).landmarks().mapNotNull { pose ->
+        val poseHelper = fallbackPoseHelper ?: runCatching { PoseLandmarkerHelper(appContext) }
+            .getOrNull()
+            ?.also { fallbackPoseHelper = it }
+            ?: return emptyList()
+
+        return runCatching { poseHelper.detect(bitmap) }.getOrNull()
+            ?.landmarks()
+            .orEmpty()
+            .mapNotNull { pose ->
             if (pose.isEmpty()) return@mapNotNull null
             val flat = ArrayList<Float>(pose.size * 4)
             for (landmark in pose) {
@@ -1402,6 +1426,12 @@ private class LiveLandmarkDetector(context: Context) : AutoCloseable {
         runCatching { holisticHelper?.close() }
         runCatching { fallbackPoseHelper?.close() }
     }
+}
+
+private fun AssetManager.assetExists(assetPath: String): Boolean {
+    return runCatching {
+        open(assetPath).use { true }
+    }.getOrDefault(false)
 }
 
 @Composable
