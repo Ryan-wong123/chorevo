@@ -23,14 +23,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.outlined.EmojiEvents
 
 enum class BottomNavItem(val label: String) {
     HOME("Home"),
     UPLOAD("Upload"),
-    COMMUNITY("Community"),
+    COMMUNITY("Forum"),
     LEADERBOARD("Score"),
     PROFILE("Profile")
 }
@@ -68,7 +70,7 @@ fun AppBottomNavBar(
                         contentDescription = "Home"
                     )
                 },
-                label = { Text(BottomNavItem.HOME.label) },
+                label = { BottomNavLabel(BottomNavItem.HOME.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onSurface,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -87,7 +89,7 @@ fun AppBottomNavBar(
                         contentDescription = "Upload"
                     )
                 },
-                label = { Text(BottomNavItem.UPLOAD.label) },
+                label = { BottomNavLabel(BottomNavItem.UPLOAD.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onSurface,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -108,7 +110,7 @@ fun AppBottomNavBar(
                         contentDescription = "Leaderboard"
                     )
                 },
-                label = { Text(BottomNavItem.LEADERBOARD.label) },
+                label = { BottomNavLabel(BottomNavItem.LEADERBOARD.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onSurface,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -126,7 +128,7 @@ fun AppBottomNavBar(
                         contentDescription = "Community"
                     )
                 },
-                label = { Text(BottomNavItem.COMMUNITY.label) },
+                label = { BottomNavLabel(BottomNavItem.COMMUNITY.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onSurface,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -144,7 +146,7 @@ fun AppBottomNavBar(
                         contentDescription = "Profile"
                     )
                 },
-                label = { Text(BottomNavItem.PROFILE.label) },
+                label = { BottomNavLabel(BottomNavItem.PROFILE.label) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.onSurface,
                     selectedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -155,4 +157,14 @@ fun AppBottomNavBar(
             )
         }
     }
+}
+
+@Composable
+private fun BottomNavLabel(text: String) {
+    Text(
+        text = text,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        fontSize = 11.sp
+    )
 }
