@@ -1,7 +1,7 @@
 package com.example.chorevo.core.routes
 
+import android.util.Log
 import androidx.compose.runtime.Composable
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryListView
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
@@ -15,6 +15,8 @@ fun HomeRoute(
     onBack: () -> Unit,
     vm: DanceLibraryListViewModel
 ) {
+    Log.d("HomeRoute", "HomeRoute composable called")
+
     DanceLibraryListView(
         onPickDance = onPickDance,
         onBack = onBack,
