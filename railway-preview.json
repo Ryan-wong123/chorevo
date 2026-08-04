@@ -1,0 +1,9 @@
+{
+  "artifact": {
+    "source": "github-actions",
+    "workflow": "android-ci.yml",
+    "artifact_name": "chorevo-debug-apk",
+    "name": "app-debug.apk",
+    "content_type": "application/vnd.android.package-archive"
+  }
+}
