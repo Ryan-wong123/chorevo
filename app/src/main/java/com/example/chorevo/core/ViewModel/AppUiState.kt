@@ -29,6 +29,11 @@ data class AppUiState(
      * snackbar / toast and then call [AppViewModel.clearDeepLinkError].
      */
     val deepLinkError: String? = null,
+    /**
+     * Dance opened from a share link. The home feed shows its video first,
+     * the way TikTok/Instagram open a shared post.
+     */
+    val sharedDance: DanceLibraryModel? = null,
 ) {
     val displayName: String =
         profile?.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User"

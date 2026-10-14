@@ -2,6 +2,7 @@ package com.example.chorevo.core
 
 import android.app.AlarmManager
 import android.content.Context
+import android.util.Log
 import com.example.chorevo.core.ViewModel.AppViewModel
 import com.example.chorevo.core.ViewModel.Screen
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
@@ -13,6 +14,7 @@ import com.example.chorevo.notification.NotificationPreferencesDataStore
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -285,5 +287,42 @@ class AppViewModelTest {
 
         assertEquals(profile, vm.uiState.value.profile)
         assertEquals(Screen.HOME, vm.uiState.value.screen)
+    }
+
+    // ── Share links ───────────────────────────────────────────────────────────
+
+    @Test
+    fun openDanceById_whenSignedIn_showsSharedVideoInHomeFeed() = runTest {
+        mockkStatic(Log::class)
+        every { Log.d(any(), any()) } returns 0
+        val dance = makeDanceItem(danceId = "shared1")
+        coEvery { authRepository.getCurrentUserProfile() } returns makeProfile()
+        coEvery { danceLibraryRepository.getDanceById("shared1") } returns Result.success(dance)
+        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        advanceUntilIdle()
+
+        vm.openDanceById("shared1")
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(Screen.HOME, state.screen)
+        assertEquals(dance, state.sharedDance)
+        assertNull(state.selectedDanceItem)
+    }
+
+    @Test
+    fun backToHome_clearsSharedDance() = runTest {
+        mockkStatic(Log::class)
+        every { Log.d(any(), any()) } returns 0
+        coEvery { authRepository.getCurrentUserProfile() } returns makeProfile()
+        coEvery { danceLibraryRepository.getDanceById(any()) } returns Result.success(makeDanceItem())
+        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        advanceUntilIdle()
+        vm.openDanceById("d1")
+        advanceUntilIdle()
+
+        vm.backToHome()
+
+        assertNull(vm.uiState.value.sharedDance)
     }
 }

@@ -9,6 +9,7 @@ import androidx.activity.viewModels
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.example.chorevo.core.ViewModel.AppViewModel
+import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.ui.theme.ChorevoTheme
 import com.routes.AppRouter
 import dagger.hilt.android.AndroidEntryPoint
@@ -53,24 +54,14 @@ class MainActivity : ComponentActivity() {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Parses https://chorevo.app/dance/<danceId> out of the incoming intent
-     * and forwards the ID to [AppViewModel] so it can load and display the
-     * correct dance once auth is confirmed.
+     * Parses a dance share link (see [ShareLinks.parseDanceId]) out of the
+     * incoming intent and forwards the ID to [AppViewModel] so it can load and
+     * display the correct dance once auth is confirmed.
      */
     private fun handleDeepLinkIntent(intent: Intent?) {
         val uri = intent?.data ?: return
         if (intent.action != Intent.ACTION_VIEW) return
 
-        // Expect exactly:  https://chorevo.app/dance/<danceId>
-        val segments = uri.pathSegments          // ["dance", "<id>"]
-        if (uri.host == "chorevo.app"
-            && segments.size == 2
-            && segments[0] == "dance"
-        ) {
-            val danceId = segments[1]
-            if (danceId.isNotBlank()) {
-                appViewModel.openDanceById(danceId)
-            }
-        }
+        ShareLinks.parseDanceId(uri)?.let(appViewModel::openDanceById)
     }
 }
