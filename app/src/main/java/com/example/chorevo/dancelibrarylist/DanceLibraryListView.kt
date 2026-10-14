@@ -1,6 +1,5 @@
 package com.example.chorevo.dancelibrarylist
 
-import android.content.Intent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -44,6 +43,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.share.ShareBottomSheet
+import com.example.chorevo.core.share.ShareContent
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceSocialState
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import kotlinx.coroutines.delay
@@ -224,7 +225,6 @@ private fun TikTokVideoPage(
     vm: DanceLibraryListViewModel,
     onStartPractice: () -> Unit
 ) {
-    val context = LocalContext.current
     val accentColor = Color(0xFF00B8C8)
     val scope = rememberCoroutineScope()
 
@@ -236,6 +236,7 @@ private fun TikTokVideoPage(
 
     var showComments by rememberSaveable { mutableStateOf(false) }
     var commentText  by remember { mutableStateOf("") }
+    var showShareSheet by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(item.danceId) {
         if (uid != null) {
@@ -355,19 +356,15 @@ private fun TikTokVideoPage(
                 }
             },
             onComment = { showComments = true },
-            onShare = {
-                val deepLink = "https://chorevo.app/dance/${item.danceId}"
-                val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_SUBJECT, item.title)
-                    putExtra(
-                        Intent.EXTRA_TEXT,
-                        "Check out \"${item.title}\" by ${item.educatorName} on Chorevo!\n$deepLink"
-                    )
-                }
-                context.startActivity(Intent.createChooser(shareIntent, "Share via"))
-            },
+            onShare = { showShareSheet = true },
             onStartPractice = onStartPractice
+        )
+    }
+
+    if (showShareSheet) {
+        ShareBottomSheet(
+            content = ShareContent(item.danceId, item.title, item.educatorName),
+            onDismiss = { showShareSheet = false }
         )
     }
 
