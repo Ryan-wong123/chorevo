@@ -52,12 +52,18 @@ function renderDancePage(dance, url) {
         `    <meta property="og:video:type" content="video/mp4">\n`
       : "";
 
+  const videoPlayer =
+    available && dance.videoUrl
+      ? `      <video class="video" src="${escapeHtml(dance.videoUrl)}" controls autoplay muted loop playsinline></video>\n`
+      : "";
+
   const values = {
     PAGE_TITLE: escapeHtml(available ? `${title} | Chorevo` : "Chorevo"),
     TITLE: escapeHtml(title),
     DESCRIPTION: escapeHtml(description),
     URL: escapeHtml(url),
     VIDEO_TAGS: videoTags,
+    VIDEO_PLAYER: videoPlayer,
   };
   return TEMPLATE.replace(/\{\{(\w+)\}\}/g, (whole, key) =>
     key in values ? values[key] : whole

@@ -85,10 +85,10 @@ class AppViewModel @Inject constructor(
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Called by [MainActivity] when a https://chorevo.app/dance/<id> link is
-     * tapped. If auth has already resolved we navigate immediately; otherwise
-     * we park the ID and send the user to the auth screen so that once they
-     * log in, onAuthed() will consume it.
+     * Called by [MainActivity] when a dance share link is tapped. If auth has
+     * already resolved we navigate immediately; otherwise we park the ID and
+     * send the user to the auth screen so that once they log in, onAuthed()
+     * will consume it.
      */
     fun openDanceById(danceId: String) {
         Log.d("DeepLink", "openDanceById called with id=$danceId")
@@ -104,8 +104,9 @@ class AppViewModel @Inject constructor(
     }
 
     /**
-     * Fetches the [DanceLibraryModel] for [danceId] from Firestore and
-     * navigates to it, or sets a user-visible error if the fetch fails.
+     * Fetches the [DanceLibraryModel] for [danceId] from Firestore and shows its
+     * video at the top of the home feed, or sets a user-visible error if the
+     * fetch fails. Practising stays an explicit choice via "Start Practice".
      */
     private suspend fun fetchAndOpenDance(danceId: String) {
         Log.d("DeepLink", "fetchAndOpenDance started for id=$danceId")
@@ -118,8 +119,9 @@ class AppViewModel @Inject constructor(
                 Log.d("DeepLink", "Dance fetched successfully: $dance")
                 _uiState.update {
                     it.copy(
-                        selectedDanceItem = dance,
-                        screen = Screen.DANCE_PRACTICE,
+                        sharedDance = dance,
+                        selectedDanceItem = null,
+                        screen = Screen.HOME,
                         deepLinkLoading = false,
                         deepLinkError = null
                     )
@@ -217,6 +219,7 @@ class AppViewModel @Inject constructor(
                 profile = null,
                 screen = Screen.AUTH,
                 selectedDanceItem = null,
+                sharedDance = null,
                 isUploadingProfilePhoto = false,
                 profilePhotoUploadError = null,
                 deepLinkLoading = false,
@@ -234,7 +237,7 @@ class AppViewModel @Inject constructor(
 
     /** Returns to the home feed and clears any selected practice dance. */
     fun backToHome() {
-        _uiState.update { it.copy(screen = Screen.HOME, selectedDanceItem = null) }
+        _uiState.update { it.copy(screen = Screen.HOME, selectedDanceItem = null, sharedDance = null) }
     }
 
     /** Opens the upload screen for submitting a new dance video. */

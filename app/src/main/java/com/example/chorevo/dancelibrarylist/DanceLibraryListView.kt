@@ -59,14 +59,19 @@ fun DanceLibraryListView(
     @Suppress("UNUSED_PARAMETER") onBack: () -> Unit,
     vm: DanceLibraryListViewModel,
     uid: String?,
-    username: String = "User"
+    username: String = "User",
+    pinnedDance: DanceLibraryModel? = null
 ) {
     val context = LocalContext.current
     val state by vm.uiState.collectAsStateWithLifecycle()
     val upload by vm.uploadState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
-    val items = state.items
+    // A dance opened from a share link plays first, followed by the usual feed.
+    val items = remember(state.items, pinnedDance) {
+        if (pinnedDance == null) state.items
+        else listOf(pinnedDance) + state.items.filter { it.danceId != pinnedDance.danceId }
+    }
     val status = state.message
     var openingDanceId by remember { mutableStateOf<String?>(null) }
 
@@ -98,6 +103,11 @@ fun DanceLibraryListView(
         initialPage = 0,
         pageCount = { items.size }
     )
+
+    // A link tapped while the feed is already open jumps back to the shared video.
+    LaunchedEffect(pinnedDance?.danceId) {
+        if (pinnedDance != null) pagerState.scrollToPage(0)
+    }
 
     val mainPlayer = remember {
         createCachedFeedExoPlayer(context = context, repeat = true)
