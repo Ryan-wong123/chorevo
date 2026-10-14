@@ -13,13 +13,15 @@ fun HomeRoute(
     username: String,
     onPickDance: (DanceLibraryModel) -> Unit,
     onBack: () -> Unit,
-    vm: DanceLibraryListViewModel
+    vm: DanceLibraryListViewModel,
+    sharedDance: DanceLibraryModel? = null
 ) {
     DanceLibraryListView(
         onPickDance = onPickDance,
         onBack = onBack,
         vm = vm,
         uid = uid,
-        username = username
+        username = username,
+        pinnedDance = sharedDance
     )
 }

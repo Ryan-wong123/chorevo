@@ -20,6 +20,7 @@ test("renders the dance's own title in the preview tags", () => {
   assert.match(html, /og:description" content="by Mia · /);
   assert.match(html, /<title>Hip Hop Basics \| Chorevo<\/title>/);
   assert.match(html, /og:video" content="https:\/\/x\/v.mp4"/);
+  assert.match(html, /<video class="video" src="https:\/\/x\/v.mp4"/);
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
 });
 
@@ -38,5 +39,6 @@ test("falls back to generic text for missing or disabled dances", () => {
     const html = renderDancePage(dance, "https://chorevo-dea05.web.app/dance/x");
     assert.match(html, /og:title" content="Check out this dance on Chorevo"/);
     assert.doesNotMatch(html, /og:video/);
+    assert.doesNotMatch(html, /<video/);
   }
 });
