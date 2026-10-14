@@ -83,6 +83,13 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
+      # The emulator's userdata partition no longer fits on a stock runner,
+      # so drop large toolchains this build never uses.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /usr/local/share/boost "$AGENT_TOOLSDIRECTORY/CodeQL"
+          df -h /
+
       - name: Run instrumentation tests (connectedDebugAndroidTest)
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -91,6 +98,7 @@ jobs:
           target: default
           profile: pixel_5
           emulator-boot-timeout: 300
+          disk-size: 2048M
           disable-animations: true
           emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot-save -no-metrics
           script: ./gradlew --stacktrace connectedDebugAndroidTest --no-daemon
