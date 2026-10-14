@@ -6,8 +6,9 @@ import android.net.Uri
  * Single source of truth for Chorevo share links.
  *
  * Links are served by the project's Firebase Hosting site, which rewrites
- * /dance/<id> to public/dance.html. That page opens the app if it is
- * installed (via the chorevo:// scheme) and otherwise shows a landing page.
+ * /dance/<id> to the danceShare Cloud Function (functions/index.js). It puts
+ * the dance's title into the link preview, then the page opens the app if it
+ * is installed (via the chorevo:// scheme) or shows a landing page.
  */
 object ShareLinks {
 

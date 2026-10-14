@@ -66,7 +66,7 @@
 
             <!--
                 Share links: https://chorevo-dea05.web.app/dance/<danceId>
-                (served by Firebase Hosting, see public/dance.html).
+                (Firebase Hosting -> danceShare function, see functions/index.js).
                 android:autoVerify="true" enables App Links once
                 /.well-known/assetlinks.json is hosted with the signing cert.
                 chorevo.app is kept so previously shared links still open.

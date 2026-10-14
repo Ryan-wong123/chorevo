@@ -3,17 +3,19 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Chorevo – Dance with me</title>
+    <title>{{PAGE_TITLE}}</title>
 
-    <!-- Link previews in WhatsApp, Instagram, Facebook, Telegram, X, etc. -->
-    <meta name="description" content="Watch this dance and practise it with real-time pose feedback on Chorevo.">
+    <!-- Link previews in WhatsApp, Instagram, Facebook, Telegram, X, etc.
+         Filled in per dance by functions/index.js. -->
+    <meta name="description" content="{{DESCRIPTION}}">
     <meta property="og:type" content="video.other">
     <meta property="og:site_name" content="Chorevo">
-    <meta property="og:title" content="Check out this dance on Chorevo">
-    <meta property="og:description" content="Watch this dance and practise it with real-time pose feedback on Chorevo.">
-    <meta name="twitter:card" content="summary">
-    <meta name="twitter:title" content="Check out this dance on Chorevo">
-    <meta name="twitter:description" content="Watch this dance and practise it with real-time pose feedback on Chorevo.">
+    <meta property="og:url" content="{{URL}}">
+    <meta property="og:title" content="{{TITLE}}">
+    <meta property="og:description" content="{{DESCRIPTION}}">
+{{VIDEO_TAGS}}    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{TITLE}}">
+    <meta name="twitter:description" content="{{DESCRIPTION}}">
 
     <style>
       :root { --accent: #ff3d6e; --bg: #0f0f14; --card: #1b1b24; --text: #f5f5f7; --muted: #a0a0ad; }
@@ -23,6 +25,7 @@
       .card { width: 100%; max-width: 380px; background: var(--card); border-radius: 20px; padding: 32px 24px; text-align: center; }
       .logo { font-size: 28px; font-weight: 800; letter-spacing: .5px; margin: 0 0 8px; }
       .logo span { color: var(--accent); }
+      .title { font-size: 20px; margin: 16px 0 8px; }
       p { color: var(--muted); line-height: 1.5; margin: 0 0 24px; }
       .btn { display: block; width: 100%; padding: 14px; border-radius: 999px; border: 0; font-size: 16px; font-weight: 600;
              text-decoration: none; cursor: pointer; margin-bottom: 12px; }
@@ -34,7 +37,8 @@
   <body>
     <main class="card">
       <h1 class="logo">Chor<span>evo</span></h1>
-      <p>Someone shared a dance with you. Open it in the Chorevo app to watch and practise along.</p>
+      <h2 class="title">{{TITLE}}</h2>
+      <p>{{DESCRIPTION}}</p>
       <a id="open" class="btn primary" href="#">Open in Chorevo</a>
       <button id="copy" class="btn secondary" type="button">Copy link</button>
       <p id="hint" class="hint"></p>
