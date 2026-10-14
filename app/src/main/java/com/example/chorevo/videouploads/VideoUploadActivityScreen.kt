@@ -201,6 +201,13 @@ fun VideoUploadActivityScreen(
                 singleLine = false
             )
 
+            VideoVisibilitySelector(
+                visibility = uploadDraft.visibility,
+                onVisibilityChange = videoUploadVm::uploadVisibilityChanged,
+                accentColor = brandTeal,
+                enabled = !uploading
+            )
+
             if (showPickButton) {
                 VideoPicker(
                     selectedUri = uploadDraft.selectedVideoUri,

@@ -166,6 +166,7 @@ class VideoUploadsViewModelTest {
                 danceType = "Hip Hop",
                 description = "Fast footwork",
                 videoUri = recordedUri,
+                visibility = DanceLibraryModel.VISIBILITY_PUBLIC,
                 generateTemplate = true,
                 confirmedTemplate = null,
                 fps = 15,
@@ -197,6 +198,7 @@ class VideoUploadsViewModelTest {
                 danceType = "Hip Hop",
                 description = "Fast footwork",
                 videoUri = recordedUri,
+                visibility = DanceLibraryModel.VISIBILITY_PUBLIC,
                 generateTemplate = true,
                 confirmedTemplate = null,
                 fps = 15,
@@ -366,7 +368,7 @@ class VideoUploadsViewModelTest {
         vm.saveEdit()
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { uploadsRepo.updateDance(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { uploadsRepo.updateDance(any(), any(), any(), any(), any()) }
         assertFalse(vm.uiState.value.saving)
         assertNotNull(vm.uiState.value.editDraft)
     }
@@ -381,7 +383,8 @@ class VideoUploadsViewModelTest {
                 danceId = "d1",
                 title = any(),
                 danceType = any(),
-                description = any()
+                description = any(),
+                visibility = any()
             )
         } returns Result.success(Unit)
 
@@ -408,7 +411,8 @@ class VideoUploadsViewModelTest {
                 danceId = "d1",
                 title = "NewTitle",
                 danceType = "NewType",
-                description = "NewDesc"
+                description = "NewDesc",
+                visibility = any()
             )
         }
 
@@ -445,6 +449,93 @@ class VideoUploadsViewModelTest {
         assertNull(s.deleteItem)
         assertEquals("Deleted", s.statusMessage)
         coVerify(atLeast = 2) { uploadsRepo.loadVideos("uid123") }
+    }
+
+    @Test
+    fun setVisibility_success_savesAndUpdatesListedUpload() = runTest {
+        val user = mockk<UserProfile> { every { uid } returns "uid123" }
+        val upload = DanceLibraryModel(danceId = "d1", title = "Routine", educatorUid = "uid123")
+        coEvery { authRepo.getCurrentUserProfile() } returns user
+        coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(listOf(upload))
+        coEvery {
+            uploadsRepo.setVisibility("d1", DanceLibraryModel.VISIBILITY_PRIVATE)
+        } returns Result.success(Unit)
+
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        advanceUntilIdle()
+
+        vm.setVisibility(upload, DanceLibraryModel.VISIBILITY_PRIVATE)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { uploadsRepo.setVisibility("d1", DanceLibraryModel.VISIBILITY_PRIVATE) }
+        val s = vm.uiState.value
+        assertTrue(s.myUploads.single().isPrivate)
+        assertTrue(s.updatingVisibilityIds.isEmpty())
+        assertEquals("Video is now private", s.statusMessage)
+    }
+
+    @Test
+    fun setVisibility_failure_keepsOriginalVisibility() = runTest {
+        val user = mockk<UserProfile> { every { uid } returns "uid123" }
+        val upload = DanceLibraryModel(danceId = "d1", title = "Routine", educatorUid = "uid123")
+        coEvery { authRepo.getCurrentUserProfile() } returns user
+        coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(listOf(upload))
+        coEvery { uploadsRepo.setVisibility(any(), any()) } returns Result.failure(RuntimeException("offline"))
+
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        advanceUntilIdle()
+
+        vm.setVisibility(upload, DanceLibraryModel.VISIBILITY_PRIVATE)
+        advanceUntilIdle()
+
+        val s = vm.uiState.value
+        assertFalse(s.myUploads.single().isPrivate)
+        assertEquals("Could not change visibility: offline", s.statusMessage)
+    }
+
+    @Test
+    fun uploadDance_withPrivateChoice_uploadsAsPrivate() = runTest {
+        val user = mockk<UserProfile> {
+            every { uid } returns "uid123"
+            every { displayName } returns "Coach A"
+            every { email } returns "coach@example.com"
+        }
+        val context = mockk<Context>(relaxed = true)
+        val videoUri = mockk<Uri>(relaxed = true)
+        coEvery { authRepo.getCurrentUserProfile() } returns user
+        coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(emptyList())
+        coEvery {
+            uploadsRepo.uploadDance(
+                context = any(), educatorUid = any(), educatorName = any(), title = any(),
+                danceType = any(), description = any(), videoUri = any(), visibility = any(),
+                generateTemplate = any(), confirmedTemplate = any(), fps = any(),
+                collectHandLandmarks = any(), onProgress = any(), onStageChanged = any(),
+                onTemplateFailure = any(), continueWithoutTemplateOnFailure = any()
+            )
+        } returns Result.success("dance-id")
+
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        advanceUntilIdle()
+
+        vm.uploadTitleChanged("Routine")
+        vm.uploadDanceTypeChanged("Hip Hop")
+        vm.uploadDescriptionChanged("Fast footwork")
+        vm.selectRecordedVideo(videoUri)
+        vm.uploadVisibilityChanged(DanceLibraryModel.VISIBILITY_PRIVATE)
+
+        vm.uploadDance(context = context, generateTemplate = true, fps = 15)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            uploadsRepo.uploadDance(
+                context = any(), educatorUid = any(), educatorName = any(), title = any(),
+                danceType = any(), description = any(), videoUri = any(),
+                visibility = DanceLibraryModel.VISIBILITY_PRIVATE,
+                generateTemplate = any(), confirmedTemplate = any(), fps = any(),
+                collectHandLandmarks = any(), onProgress = any(), onStageChanged = any(),
+                onTemplateFailure = any(), continueWithoutTemplateOnFailure = any()
+            )
+        }
     }
 
     private fun sampleTrack(trackId: String): PoseTrack {

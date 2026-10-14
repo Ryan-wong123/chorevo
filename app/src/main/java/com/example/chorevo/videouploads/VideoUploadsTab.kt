@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -33,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -126,6 +129,38 @@ fun VideoUploadsTab(
                     "Created: ${fmtTs(item.createdAt)}",
                     style = MaterialTheme.typography.bodySmall
                 )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = visibilityIcon(item.visibility),
+                        contentDescription = null,
+                        tint = brandTeal,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        if (item.isPrivate) "Private · only you can see it" else "Public",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(
+                        enabled = item.danceId !in state.updatingVisibilityIds,
+                        onClick = {
+                            vm.setVisibility(
+                                item,
+                                if (item.isPrivate) DanceLibraryModel.VISIBILITY_PUBLIC
+                                else DanceLibraryModel.VISIBILITY_PRIVATE
+                            )
+                        },
+                        colors = tealTextButtonColors,
+                        modifier = Modifier.testTag("toggleVisibility_${item.danceId}")
+                    ) {
+                        Text(if (item.isPrivate) "Make public" else "Make private")
+                    }
+                }
 
                 if (!item.isTemplateReady) {
                     val statusText = when (item.templateGenerationStatus.lowercase(Locale.US)) {
@@ -276,6 +311,12 @@ fun VideoUploadsTab(
                         onValueChange = vm::editDescriptionChanged,
                         label = { Text("Description") },
                         modifier = Modifier.fillMaxWidth()
+                    )
+                    VideoVisibilitySelector(
+                        visibility = draft.visibility,
+                        onVisibilityChange = vm::editVisibilityChanged,
+                        accentColor = brandTeal,
+                        enabled = !state.saving
                     )
                 }
             },
