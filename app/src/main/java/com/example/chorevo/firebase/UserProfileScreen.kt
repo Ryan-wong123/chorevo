@@ -1,6 +1,5 @@
 package com.example.chorevo.firebase
 
-import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -54,6 +53,8 @@ import com.example.chorevo.analytics.DanceDashboardMode
 import com.example.chorevo.analytics.viewmodel.AnalyticsDashboardViewModel
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.share.ShareBottomSheet
+import com.example.chorevo.core.share.ShareContent
 import com.example.chorevo.danceactivity.AchievementLevel
 import com.example.chorevo.danceactivity.levelForPoints
 import com.example.chorevo.danceactivity.nextLevelForPoints
@@ -586,7 +587,6 @@ private fun LikedVideoPage(
     accentColor: Color,
     danceLibraryVm: DanceLibraryListViewModel
 ) {
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     val socialCache by danceLibraryVm.socialCache.collectAsStateWithLifecycle()
@@ -597,6 +597,14 @@ private fun LikedVideoPage(
     LaunchedEffect(item.danceId) { danceLibraryVm.loadSocialData(item.danceId, uid) }
 
     var heartBurstVisible by remember { mutableStateOf(false) }
+    var showShareSheet by remember { mutableStateOf(false) }
+
+    if (showShareSheet) {
+        ShareBottomSheet(
+            content = ShareContent(item.danceId, item.title, item.educatorName),
+            onDismiss = { showShareSheet = false }
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -680,15 +688,7 @@ private fun LikedVideoPage(
 
             // Share
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                IconButton(onClick = {
-                    val link = "https://chorevo.app/dance/${item.danceId}"
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, item.title)
-                        putExtra(Intent.EXTRA_TEXT, "Check out \"${item.title}\" by ${item.educatorName} on Chorevo!\n$link")
-                    }
-                    context.startActivity(Intent.createChooser(intent, "Share via"))
-                }) {
+                IconButton(onClick = { showShareSheet = true }) {
                     Icon(Icons.Outlined.Share, contentDescription = "Share", tint = Color.White, modifier = Modifier.size(28.dp))
                 }
                 Text("Share", style = MaterialTheme.typography.labelSmall, color = Color.White)

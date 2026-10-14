@@ -89,6 +89,7 @@ fun AppRouter(
                 onBackToHome = appViewModel::backToHome,
                 onOpenProfile = appViewModel::openProfile,
                 selectedDanceItem = state.selectedDanceItem,
+                sharedDance = state.sharedDance,
                 profile = state.profile,
                 appViewModel = appViewModel,
                 danceLibraryViewModel = danceLibraryViewModel,
@@ -119,6 +120,7 @@ private fun AppRouteContent(
     onBackToHome: () -> Unit,
     onOpenProfile: () -> Unit,
     selectedDanceItem: DanceLibraryModel?,
+    sharedDance: DanceLibraryModel?,
     profile: UserProfile,
     appViewModel: AppViewModel,
     danceLibraryViewModel: DanceLibraryListViewModel,
@@ -138,7 +140,8 @@ private fun AppRouteContent(
                     username = profile.displayName ?: "User",
                     onPickDance = onPickDance,
                     onBack = {},
-                    vm = danceLibraryViewModel
+                    vm = danceLibraryViewModel,
+                    sharedDance = sharedDance
                 )
             }
 
