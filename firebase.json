@@ -16,8 +16,23 @@
     "rewrites": [
       {
         "source": "/dance/**",
-        "destination": "/dance.html"
+        "function": {
+          "functionId": "danceShare",
+          "region": "us-central1"
+        }
       }
     ]
-  }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "test",
+        "*.log"
+      ]
+    }
+  ]
 }
