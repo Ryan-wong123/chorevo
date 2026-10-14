@@ -61,6 +61,7 @@ class VideoUploadsRepository @Inject constructor(
         danceType: String,
         description: String,
         videoUri: Uri,
+        visibility: String = DanceLibraryModel.VISIBILITY_PUBLIC,
         generateTemplate: Boolean = true,
         confirmedTemplate: PoseTemplate? = null,
         fps: Int = 2,
@@ -144,7 +145,8 @@ class VideoUploadsRepository @Inject constructor(
                 educatorUid = uid,
                 educatorName = educatorName.trim(),
                 videoUrl = videoUrl,
-                enabled = true
+                enabled = true,
+                visibility = visibility
             )
 
             db.collection("danceLibrary")
@@ -316,21 +318,38 @@ class VideoUploadsRepository @Inject constructor(
         danceId: String,
         title: String,
         danceType: String,
-        description: String
+        description: String,
+        visibility: String? = null
     ): Result<Unit> {
         return try {
+            val fields = mutableMapOf<String, Any>(
+                "title" to title.trim(),
+                "danceType" to danceType.trim(),
+                "description" to description.trim()
+            )
+            visibility?.let { fields["visibility"] = it }
+
             db.collection("danceLibrary")
                 .document(danceId)
                 .set(
-                    mapOf(
-                        "title" to title.trim(),
-                        "danceType" to danceType.trim(),
-                        "description" to description.trim()
-                    ),
+                    fields,
                     SetOptions.merge()
                 )
                 .await()
 
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Sets an upload to [DanceLibraryModel.VISIBILITY_PUBLIC] or [DanceLibraryModel.VISIBILITY_PRIVATE]. */
+    suspend fun setVisibility(danceId: String, visibility: String): Result<Unit> {
+        return try {
+            db.collection("danceLibrary")
+                .document(danceId)
+                .set(mapOf("visibility" to visibility), SetOptions.merge())
+                .await()
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

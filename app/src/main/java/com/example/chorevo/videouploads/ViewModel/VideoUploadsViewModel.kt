@@ -73,6 +73,11 @@ class VideoUploadsViewModel @Inject constructor(
         mutate { it.copy(uploadDraft = it.uploadDraft.copy(description = newDescription)) }
     }
 
+    /** Handles the public/private choice for a new upload. */
+    fun uploadVisibilityChanged(visibility: String) {
+        mutate { it.copy(uploadDraft = it.uploadDraft.copy(visibility = visibility)) }
+    }
+
     /** Opens the upload video source chooser. */
     fun openVideoSourceDialog() {
         mutate { it.copy(showVideoSourceDialog = true) }
@@ -323,6 +328,46 @@ class VideoUploadsViewModel @Inject constructor(
         }
     }
 
+    /** Handles edit visibility changed. */
+    fun editVisibilityChanged(visibility: String) {
+        mutate { s ->
+            val d = s.editDraft ?: return@mutate s
+            s.copy(editDraft = d.copy(visibility = visibility))
+        }
+    }
+
+    /** Switches an existing upload between public and private. */
+    fun setVisibility(item: DanceLibraryModel, visibility: String) {
+        if (item.visibility == visibility || item.danceId in _uiState.value.updatingVisibilityIds) return
+
+        viewModelScope.launch {
+            mutate { it.copy(updatingVisibilityIds = it.updatingVisibilityIds + item.danceId) }
+            try {
+                videoUploadRepository.setVisibility(item.danceId, visibility).fold(
+                    onSuccess = {
+                        mutate { s ->
+                            s.copy(
+                                myUploads = s.myUploads.map {
+                                    if (it.danceId == item.danceId) it.copy(visibility = visibility) else it
+                                },
+                                statusMessage = if (visibility == DanceLibraryModel.VISIBILITY_PRIVATE) {
+                                    "Video is now private"
+                                } else {
+                                    "Video is now public"
+                                }
+                            )
+                        }
+                    },
+                    onFailure = { e ->
+                        mutate { it.copy(statusMessage = "Could not change visibility: ${e.message}") }
+                    }
+                )
+            } finally {
+                mutate { it.copy(updatingVisibilityIds = it.updatingVisibilityIds - item.danceId) }
+            }
+        }
+    }
+
     /** Saves edit. */
     fun saveEdit() {
         val draft = _uiState.value.editDraft ?: return
@@ -335,7 +380,8 @@ class VideoUploadsViewModel @Inject constructor(
                     danceId = draft.item.danceId,
                     title = draft.title,
                     description = draft.description,
-                    danceType = draft.danceType
+                    danceType = draft.danceType,
+                    visibility = draft.visibility.takeIf { it.isNotBlank() }
                 )
 
                 res.fold(
@@ -451,6 +497,7 @@ class VideoUploadsViewModel @Inject constructor(
                     danceType = draft.danceType,
                     description = draft.description,
                     videoUri = videoUri,
+                    visibility = draft.visibility,
                     generateTemplate = generateTemplate,
                     confirmedTemplate = confirmedTemplate,
                     fps = fps,

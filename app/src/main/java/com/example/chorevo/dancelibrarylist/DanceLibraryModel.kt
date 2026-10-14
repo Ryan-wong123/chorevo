@@ -1,6 +1,7 @@
 package com.example.chorevo.dancelibrarylist
 
 import com.example.chorevo.posedetection.PoseTemplate
+import com.google.firebase.firestore.Exclude
 
 data class DanceLibraryModel(
     val danceId: String = "",
@@ -17,8 +18,24 @@ data class DanceLibraryModel(
     val templateGenerationStatus: String = "ready",
     val templateGenerationError: String = "",
     val dancerCount: Int = 0,
-    val templateReviewStatus: String = ""
+    val templateReviewStatus: String = "",
+    /** [VISIBILITY_PUBLIC] or [VISIBILITY_PRIVATE]; older uploads have no value and stay public. */
+    val visibility: String = VISIBILITY_PUBLIC
 ) {
+    /** Private videos are only visible to their uploader. */
+    @get:Exclude
+    val isPrivate: Boolean
+        get() = visibility.equals(VISIBILITY_PRIVATE, ignoreCase = true)
+
+    /** Whether [viewerUid] may see this video in feeds, liked lists and share links. */
+    fun isVisibleTo(viewerUid: String?): Boolean =
+        !isPrivate || (!viewerUid.isNullOrBlank() && viewerUid == educatorUid)
+
+    companion object {
+        const val VISIBILITY_PUBLIC = "public"
+        const val VISIBILITY_PRIVATE = "private"
+    }
+
     val isTemplateReady: Boolean
         get() = templateGenerationStatus.equals("ready", ignoreCase = true)
 }
