@@ -13,6 +13,34 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Lets the share sheet detect which social apps are installed (Android 11+). -->
+    <queries>
+        <package android:name="com.whatsapp" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.facebook.orca" />
+        <package android:name="org.telegram.messenger" />
+        <package android:name="com.twitter.android" />
+        <package android:name="com.snapchat.android" />
+        <package android:name="jp.naver.line.android" />
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <application
         android:name=".Chorevo"
         android:allowBackup="true"
@@ -37,19 +65,32 @@
             </intent-filter>
 
             <!--
-                Deep link: https://chorevo.app/dance/<danceId>
-                android:autoVerify="true" enables App Links (verified association).
-                You must host /.well-known/assetlinks.json on chorevo.app for
-                autoVerify to pass — see the README comment at the bottom of this file.
+                Share links: https://chorevo-dea05.web.app/dance/<danceId>
+                (served by Firebase Hosting, see public/dance.html).
+                android:autoVerify="true" enables App Links once
+                /.well-known/assetlinks.json is hosted with the signing cert.
+                chorevo.app is kept so previously shared links still open.
             -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="chorevo.app"
-                    android:pathPrefix="/dance/" />
+                <data android:scheme="https" />
+                <data android:host="chorevo-dea05.web.app" />
+                <data android:host="chorevo-dea05.firebaseapp.com" />
+                <data android:host="chorevo.app" />
+                <data android:pathPrefix="/dance/" />
+            </intent-filter>
+
+            <!--
+                Custom scheme used by the web landing page to hand off into the
+                app even when App Links are not verified: chorevo://dance/<danceId>
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="chorevo" android:host="dance" />
             </intent-filter>
 
         </activity>
