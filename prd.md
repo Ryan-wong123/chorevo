@@ -45,7 +45,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - "Continue with Google" sign-in: a Google ID token from Credential Manager is exchanged for a Firebase credential.
 - Every sign-in and session restore merge-writes the profile to `users/{uid}` and mirrors display name and photo into `leaderboardStats/{uid}`.
 - The current user is restored on app startup before authenticated routes are shown.
-- Profile screen: profile photo, logout, weekly streak card (Mon–Sun ticks and total streak activities), achievements level panel (level and points to next level), weekly challenges summary card, and tabs for Activity History (own analytics), My Videos (uploads), Liked (liked dances), and Other Dance Analytics (learners practising my uploads).
+- Profile screen: name, settings and logout in the header; the profile photo inside a gradient streak ring (with a flame badge showing days practised this week); a stats row (Uploads, Liked, Streak days this week, Points); the weekly streak card, achievements level panel, and weekly challenges summary card; and icon tabs for Uploads (public uploads as a thumbnail grid), Private (private uploads, with lock badges), Liked, Activity (own analytics), and Learners (learners practising my uploads). Tapping an upload opens an action sheet: Play, Edit details, Make public/private, Delete.
 - The Liked tab is a three-column grid; tapping a video opens a full-screen vertical feed with like/unlike and Share. Private dances are hidden unless they belong to the viewer.
 - Settings (gear on Profile): profile header with name, email and photo editing (gallery upload to `profilePhotos/{uid}/profile.jpg`), a Notifications toggle, a reminder time picker, and Sign Out.
 
@@ -55,7 +55,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Only enabled, public dances with ready pose templates are shown in the feed. Private dances appear only in their uploader's profile.
 - Full-screen vertical video feed with the next video preloaded.
 - Dance metadata includes title, description, dance type, educator UID/name, video URL, template status, dancer count, review status, and visibility.
-- Each video shows its title, educator and description, and a dock with like (button or double-tap with a heart animation), like count, comments, Share, and Start Practice.
+- Each video has a right-hand rail (creator avatar with a gradient ring; like with count, also by double-tap with a heart animation; comments with count; Share) and, bottom-left, the creator, title, a two-line caption that expands on tap, dance-type and dancer-count chips, and a gradient Practice button. A thin progress bar above the bottom bar shows playback and can be tapped or dragged to seek.
 - Comments open in a bottom sheet: newest first, 20 per page with "Load more", and an input to post a comment.
 - Start Practice prepares the dance by loading its pose template from Firebase Storage, then opens practice. Opening a dance (including from a share link) shows its video first; practice only starts when the user taps Start Practice.
 
@@ -95,14 +95,15 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 ### AR Practice and Scoring
 
 - CameraX provides live camera preview behind a camera-permission gate.
-- A 3-second "Get Ready" countdown starts each run.
+- A 3-second "Get Ready" countdown (a large gradient circle; each number pops in) starts each run.
 - Live landmarks come from Holistic Landmarker (body pose plus left/right hand landmarks), falling back to Pose Landmarker lite (body only) if Holistic is unavailable or fails. Face landmarks are never stored, rendered, or scored.
 - Practice modes: Full Routine, or Step-by-Step with per-segment loop preview and Previous/Next.
-- Overlays: a 3D instructor avatar driven by the mirrored reference landmarks, and the learner's body skeleton.
+- Overlays: a 3D instructor avatar driven by the mirrored reference landmarks, and the learner's body skeleton coloured by live accuracy (green good, amber OK, red needs work).
+- Live HUD: a circular score ring (top-right) showing the live score, and a "COMBO" badge counting seconds of continuous good matching once it reaches 3 seconds. The controls panel is frosted glass with Align/Timing/Smooth (and Hands) stat pills, and fades to half opacity while dancing.
 - `PoseSimilarityEvaluator` compares stable body joints against the selected reference track and produces the body score.
 - When the template has hand tracks, `HandSimilarityEvaluator` scores hands and the screen shows an "Overall" score (85% body, 15% hands), a "Hands" score, and hand feedback.
 - Saved session scores are body-only: alignment, timing consistency, smoothness, plus average pose error, timeline points, performance segments, and feedback messages (including hand feedback). `balanceScore` is a fixed placeholder (1.0). The quality flag is `GOOD` when alignment is at least 0.75, otherwise `DONE`.
-- Submitting writes a Room `DanceSessionEntity`, attempts Firestore sync, awards points and badges, updates weekly challenges, and shows a results dialog (points, level-ups, new badges).
+- Submitting writes a Room `DanceSessionEntity`, attempts Firestore sync, awards points and badges, updates weekly challenges, and opens a full-screen results screen: an animated score count-up in a gradient ring, a grade badge (S ≥ 90, A ≥ 80, B ≥ 65, otherwise C), Alignment/Timing/Smooth scores, points, level progress and new badges, confetti on a personal best (best alignment for that dance on this device), and "Share my result", which shares a generated result-card image with the dance link.
 
 ### Analytics
 

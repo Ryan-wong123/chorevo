@@ -43,7 +43,10 @@ class PoseSimilarityEvaluator(
 
         // dashboard series (optional; only filled when includeSeries = true)
         val timelinePoints: List<TimelinePoint> = emptyList(),
-        val performanceSegments: List<PerformanceSegment> = emptyList()
+        val performanceSegments: List<PerformanceSegment> = emptyList(),
+
+        /** Fast-reacting (EWMA) score of recent frames, for live UI; null before the first frame. */
+        val liveScore: Double? = null
     )
 
     private val frames: List<PoseFrame> = template.frames.sortedBy { it.tMs }
@@ -189,7 +192,8 @@ class PoseSimilarityEvaluator(
                 smoothnessScore = smoothness,
                 avgPoseError = meanErr,
                 latestFeedback = latestFeedback,
-                feedbackMessages = feedbackMessages.toList()
+                feedbackMessages = feedbackMessages.toList(),
+                liveScore = ewmaScore
             )
         }
 
@@ -208,7 +212,8 @@ class PoseSimilarityEvaluator(
             latestFeedback = latestFeedback,
             feedbackMessages = feedbackMessages.toList(),
             timelinePoints = timeline.toList(),
-            performanceSegments = segments.toList()
+            performanceSegments = segments.toList(),
+            liveScore = ewmaScore
         )
     }
 

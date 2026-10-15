@@ -73,13 +73,13 @@ Compose screens and routes live in feature packages. They observe ViewModel stat
 Screens:
 
 - `AuthScreen`: email/password and "Continue with Google".
-- `DanceLibraryListView`: home video feed with like, comments sheet, Share and Start Practice.
-- `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, learner skeleton, scores, and results dialogs.
+- `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet.
+- `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
 - `VideoUploadActivityScreen`: upload form, video picker/recorder, dancer review panel, visibility.
 - `AnalyticsDashboardView`: learner and creator analytics.
 - `LeaderboardScreen`: Global/Friends leaderboard.
 - `CommunityScreen`: forum posts and replies.
-- `UserProfileScreen`: profile header, streak card, level panel, weekly challenge summary, and tabs (Activity History, My Videos via `VideoUploadsTab`, Liked, Other Dance Analytics), plus the full-screen liked-videos feed.
+- `UserProfileScreen`: header, streak-ring avatar, stats row, streak card, level panel, weekly challenge summary, and icon tabs (Uploads and Private as thumbnail grids via `VideoUploadsTab(gridFilter = …)` with an action sheet, Liked, Activity, Learners), plus the full-screen liked-videos feed.
 - `SettingsScreen`: profile photo, notifications, reminder time, sign out.
 - `WeeklyChallengesScreen`, `WeeklyChallengeSummaryCard`, `WeeklyChallengeCelebrationDialog`.
 
@@ -89,6 +89,7 @@ Shared components:
 - `ShareBottomSheet` (`core/share/ShareSheet.kt`): share sheet used by the home feed and the liked-videos feed.
 - `VideoVisibilitySelector` (`videouploads/VideoVisibilitySelector.kt`): Public/Private chips used by the upload form and the Edit dialog.
 - `InstructorAvatarOverlay` (`posedetection`): 3D avatar driven by reference landmarks.
+- `VideoThumbnailTile` (`core/VideoThumbnailTile.kt`): 9:16 video thumbnail with title and an optional badge, used by the liked and uploads grids.
 
 ### State and Coordination Layer
 
@@ -222,6 +223,10 @@ Key fields:
 - `ownerUid` (account that saved the session; blank for sessions saved before v6)
 
 `DanceSessionDao` provides `insert` (replace on conflict), `latestFlow()`, `sinceFlow(sinceTs)`, `unsynced()`, `unsyncedFor(uid)` (that account's sessions plus legacy ones with no owner), and `markSynced(id)`. Production code uses `insert`, `unsyncedFor`, and `markSynced`.
+
+### SharedPreferences
+
+`PersonalBestStore` (`practice_personal_bests`) keeps each user's best alignment per dance on the device, used to trigger the personal-best celebration on the results screen.
 
 ### DataStore
 
