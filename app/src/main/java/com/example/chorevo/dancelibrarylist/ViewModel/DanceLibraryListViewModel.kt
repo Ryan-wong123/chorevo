@@ -5,7 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.example.chorevo.danceactivity.DanceSessionEntity
 import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
 import com.example.chorevo.dancelibrarylist.DanceComment
+import com.example.chorevo.dancelibrarylist.DanceCategory
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.dancelibrarylist.DiscoveryFilter
+import com.example.chorevo.dancelibrarylist.FeedTab
+import com.example.chorevo.dancelibrarylist.applyDiscovery
+import com.example.chorevo.dancelibrarylist.categoriesOf
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.google.firebase.firestore.DocumentSnapshot
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
@@ -19,9 +24,19 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 data class DanceLibraryUiState(
+    /** Every public, ready dance, in feed order. */
     val items: List<DanceLibraryModel> = emptyList(),
     val isLoading: Boolean = false,
     val message: String? = null,
+    /** Discovery bar: tab, category chip and search text. */
+    val filter: DiscoveryFilter = DiscoveryFilter(),
+    /** Category chips built from [items]. */
+    val categories: List<DanceCategory> = emptyList(),
+    /** [items] after the discovery filter; this is what the feed shows. */
+    val visibleItems: List<DanceLibraryModel> = emptyList(),
+    /** Like counts used to rank Trending; loaded the first time Trending is opened. */
+    val likeCounts: Map<String, Int> = emptyMap(),
+    val isLoadingTrending: Boolean = false,
 )
 
 data class DanceSessionUploadUiState(
@@ -85,15 +100,61 @@ class DanceLibraryListViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(
                             items = list,
+                            categories = categoriesOf(list),
                             isLoading = false,
                             message = if (list.isEmpty()) "No dances available." else null
-                        )
+                        ).withVisibleItems()
                     }
+                    if (_uiState.value.filter.tab == FeedTab.TRENDING) loadLikeCounts()
                 },
                 onFailure = { e ->
                     _uiState.update { it.copy(isLoading = false, message = "Failed: ${e.message}") }
                 }
             )
+        }
+    }
+
+    // ── Discovery bar ─────────────────────────────────────────────────────
+
+    /** Clock for Trending's age decay; replaceable in tests. */
+    internal var clock: () -> Long = System::currentTimeMillis
+
+    private fun DanceLibraryUiState.withVisibleItems(): DanceLibraryUiState =
+        copy(visibleItems = applyDiscovery(items, filter, likeCounts, clock()))
+
+    private fun updateFilter(transform: (DiscoveryFilter) -> DiscoveryFilter) {
+        _uiState.update { it.copy(filter = transform(it.filter)).withVisibleItems() }
+    }
+
+    /** Switches between For You, Trending and New. */
+    fun selectTab(tab: FeedTab) {
+        updateFilter { it.copy(tab = tab) }
+        if (tab == FeedTab.TRENDING && _uiState.value.likeCounts.isEmpty()) loadLikeCounts()
+    }
+
+    /** Selects a category chip; selecting the active chip again clears it. */
+    fun selectCategory(key: String?) {
+        updateFilter { it.copy(categoryKey = if (it.categoryKey == key) null else key) }
+    }
+
+    fun setSearchQuery(query: String) {
+        updateFilter { it.copy(query = query) }
+    }
+
+    /** Clears the category and search, keeping the tab. */
+    fun clearDiscoveryFilters() {
+        updateFilter { it.copy(categoryKey = null, query = "") }
+    }
+
+    private fun loadLikeCounts() {
+        val ids = _uiState.value.items.map { it.danceId }
+        if (ids.isEmpty() || _uiState.value.isLoadingTrending) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoadingTrending = true) }
+            val counts = runCatching { repo.likeCounts(ids) }.getOrDefault(emptyMap())
+            _uiState.update {
+                it.copy(likeCounts = counts, isLoadingTrending = false).withVisibleItems()
+            }
         }
     }
 
