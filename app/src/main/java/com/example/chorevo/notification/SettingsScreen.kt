@@ -61,6 +61,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.outlined.DarkMode
+import com.example.chorevo.core.ViewModel.ThemeMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -191,6 +194,14 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            AppearanceCard(
+                selected = uiState.themeMode,
+                onSelect = appViewModel::setThemeMode,
+                cardColor = cardBg
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             NotificationCard(
                 pushEnabled = pushEnabled,
                 reminderTime = formatTime(selectedHour, selectedMinute),
@@ -246,6 +257,68 @@ fun SettingsScreen(
                 showTimePicker = false
             }
         )
+    }
+}
+
+/** Dark / Light / System choice for the app's colours. */
+@Composable
+private fun AppearanceCard(
+    selected: ThemeMode,
+    onSelect: (ThemeMode) -> Unit,
+    cardColor: Color
+) {
+    val colors = ChorevoTheme.colors
+    Card(
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("appearanceCard"),
+        colors = CardDefaults.cardColors(containerColor = cardColor)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.DarkMode,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Appearance",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(PillShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .padding(4.dp)
+            ) {
+                ThemeMode.entries.forEach { mode ->
+                    val isSelected = mode == selected
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(PillShape)
+                            .background(if (isSelected) colors.accent else Color.Transparent)
+                            .clickable { onSelect(mode) }
+                            .padding(vertical = 10.dp)
+                            .testTag("themeMode_${mode.key}"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = mode.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSelected) colors.onAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 package com.example.chorevo.videouploads
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.material3.OutlinedButton
@@ -137,6 +138,10 @@ fun VideoUploadActivityScreen(
     var step by rememberSaveable { mutableStateOf(UploadStep.VIDEO) }
     var analyzeInBackground by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
+    // System back walks back through the steps before leaving the screen.
+    BackHandler(enabled = step != UploadStep.VIDEO && !uploading) {
+        step = step.previous()
+    }
     // A successful upload clears the draft; start the next upload from step 1.
     LaunchedEffect(uploadDraft.selectedVideoUri, uploading) {
         if (uploadDraft.selectedVideoUri == null && !uploading) {

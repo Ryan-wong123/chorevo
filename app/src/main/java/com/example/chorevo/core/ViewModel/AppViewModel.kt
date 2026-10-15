@@ -69,6 +69,12 @@ class AppViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            settings.themeModeFlow.collect { key ->
+                _uiState.update { it.copy(themeMode = ThemeMode.fromKey(key)) }
+            }
+        }
+
+        viewModelScope.launch {
             settings.notificationTimeFlow.collect { (hour, minute) ->
                 _uiState.update {
                     it.copy(
@@ -240,6 +246,25 @@ class AppViewModel @Inject constructor(
     /** Returns to the home feed and clears any selected practice dance. */
     fun backToHome() {
         _uiState.update { it.copy(screen = Screen.HOME, selectedDanceItem = null, sharedDance = null) }
+    }
+
+    /**
+     * Handles the system back gesture: goes to [Screen.backTarget].
+     * Returns false on root screens so the system can close the app.
+     */
+    fun navigateBack(): Boolean {
+        when (_uiState.value.screen.backTarget) {
+            Screen.HOME -> backToHome()
+            Screen.PROFILE -> openProfile()
+            else -> return false
+        }
+        return true
+    }
+
+    /** Saves the light/dark choice from Settings. */
+    fun setThemeMode(mode: ThemeMode) {
+        _uiState.update { it.copy(themeMode = mode) }
+        viewModelScope.launch { settings.setThemeMode(mode.key) }
     }
 
     /** Opens the upload screen for submitting a new dance video. */

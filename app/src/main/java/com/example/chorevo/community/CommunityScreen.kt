@@ -1,6 +1,7 @@
 package com.example.chorevo.community
 
 import com.example.chorevo.ui.theme.ChorevoTheme
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +71,15 @@ fun CommunityScreen(
     val displayName = profile.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User"
     val selectedPost = state.selectedPostId?.let { id -> state.posts.firstOrNull { it.id == id } }
     var isCreatingPost by rememberSaveable { mutableStateOf(false) }
+
+    // System back leaves the post editor or post detail before leaving the forum.
+    BackHandler(enabled = isCreatingPost || selectedPost != null) {
+        if (isCreatingPost) {
+            isCreatingPost = false
+        } else {
+            state.selectedPostId?.let(vm::selectPost)
+        }
+    }
 
     LaunchedEffect(state.errorMessage) {
         val message = state.errorMessage ?: return@LaunchedEffect

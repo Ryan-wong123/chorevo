@@ -9,6 +9,15 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.dp
+import kotlin.coroutines.cancellation.CancellationException
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -135,7 +144,31 @@ private fun AppRouteContent(
     danceLibraryViewModel: DanceLibraryListViewModel,
     videoUploadsViewModel: VideoUploadsViewModel
 ) {
-    Box(modifier = Modifier.padding(innerPadding)) {
+    // Predictive back: while the user drags the back gesture the current screen
+    // shrinks and rounds its corners; releasing goes to Screen.backTarget.
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    val backScale by animateFloatAsState(1f - 0.1f * backProgress, label = "backScale")
+    LaunchedEffect(screen) { backProgress = 0f }
+    PredictiveBackHandler(enabled = screen.backTarget != null) { events ->
+        try {
+            events.collect { backProgress = it.progress }
+            appViewModel.navigateBack()
+        } catch (e: CancellationException) {
+            backProgress = 0f
+            throw e
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .padding(innerPadding)
+            .graphicsLayer {
+                scaleX = backScale
+                scaleY = backScale
+                shape = RoundedCornerShape((backProgress * 32).dp)
+                clip = backProgress > 0f
+            }
+    ) {
         AnimatedContent(
             targetState = screen,
             transitionSpec = { screenTransition(initialState, targetState) },

@@ -4,6 +4,7 @@ import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.ShimmerGrid
 import com.example.chorevo.videouploads.UploadsGridFilter
 import com.example.chorevo.core.VideoThumbnailTile
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Groups
@@ -149,6 +150,9 @@ fun UserProfileScreen(
     val email = profile.email ?: "-"
     val currentLevel = levelForPoints(uiState.points.totalPoints)
     val nextLevel = nextLevelForPoints(uiState.points.totalPoints)
+
+    // System back closes the liked-videos player before leaving the profile.
+    BackHandler(enabled = likedPlayerStartIndex != null) { likedPlayerStartIndex = null }
 
     // Fullscreen liked video player — slides over everything
     likedPlayerStartIndex?.let { startIndex ->
