@@ -34,14 +34,21 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
-    match /danceTemplates/{fileName} {
+    // Generated pose templates, scoped to the uploader.
+    match /danceTemplates/{userId}/{fileName} {
       allow read: if isSignedIn();
 
-      allow create, update: if isSignedIn()
+      allow create, update: if isOwner(userId)
         && request.resource.size < 20 * 1024 * 1024
         && request.resource.contentType == 'application/json';
 
-      allow delete: if isSignedIn();
+      allow delete: if isOwner(userId);
+    }
+
+    // Templates written before uploader scoping: readable, no longer writable.
+    match /danceTemplates/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if false;
     }
 
     match /{allPaths=**} {

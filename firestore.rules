@@ -76,6 +76,11 @@ service cloud.firestore {
         && data.createdAt is int;
     }
 
+    // The dance owner may clean up likes/comments when deleting their dance.
+    function isDanceOwner(danceId) {
+      return get(/databases/$(database)/documents/danceLibrary/$(danceId)).data.educatorUid == request.auth.uid;
+    }
+
     match /users/{uid} {
       allow read: if isOwner(uid) || (signedIn() && request.auth.uid != uid);
       allow create, update: if isOwner(uid);
@@ -135,6 +140,34 @@ service cloud.firestore {
     }
 
     match /danceLibrary/{danceId} {
+      // Likes: one document per user, keyed by their uid.
+      match /likes/{likerUid} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && request.auth.uid == likerUid
+          && request.resource.data.keys().hasOnly(['liked'])
+          && request.resource.data.liked == true;
+        allow delete: if signedIn()
+          && (request.auth.uid == likerUid || isDanceOwner(danceId));
+      }
+
+      // Comments: authored by the caller, no edits, deletable by the author.
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['commentId', 'uid', 'username', 'text', 'createdAt'])
+          && request.resource.data.commentId == commentId
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.username is string
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt is int;
+        allow update: if false;
+        allow delete: if signedIn()
+          && (resource.data.uid == request.auth.uid || isDanceOwner(danceId));
+      }
+
       allow read: if signedIn();
 
       allow create: if signedIn()
