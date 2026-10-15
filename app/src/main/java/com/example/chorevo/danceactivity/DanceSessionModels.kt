@@ -17,5 +17,7 @@ data class DanceSessionEntity(
     val alignmentScore: Double = 0.0,
     val qualityFlag: String,
     val analysisJson: String = "{}",
-    val synced: Boolean = false
+    val synced: Boolean = false,
+    /** Account that recorded the session; blank for sessions saved before v6. */
+    val ownerUid: String = ""
 )

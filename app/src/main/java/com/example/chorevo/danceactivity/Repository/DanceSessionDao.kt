@@ -26,6 +26,13 @@ interface DanceSessionDao {
     @Query("SELECT * FROM dance_sessions WHERE synced = 0 ORDER BY tsEnd ASC")
     suspend fun unsynced(): List<DanceSessionEntity>
 
+    /**
+     * Unsynced sessions recorded by [uid], plus legacy sessions with no owner
+     * (saved before ownership was tracked).
+     */
+    @Query("SELECT * FROM dance_sessions WHERE synced = 0 AND (ownerUid = :uid OR ownerUid = '') ORDER BY tsEnd ASC")
+    suspend fun unsyncedFor(uid: String): List<DanceSessionEntity>
+
     /** Handles mark synced. */
     @Query("UPDATE dance_sessions SET synced = 1 WHERE sessionId = :id")
     suspend fun markSynced(id: String)
