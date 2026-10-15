@@ -180,7 +180,7 @@ class VideoUploadsRepository @Inject constructor(
 
             if (confirmedTemplate != null) {
                 onStageChanged?.invoke("Saving confirmed dancer template")
-                val templateStoragePath = PoseTemplateStorage.jsonPath(danceId)
+                val templateStoragePath = PoseTemplateStorage.jsonPath(uid, danceId)
                 val templateJsonBytes = PoseTemplateJson
                     .toJson(confirmedTemplate)
                     .toByteArray(Charsets.UTF_8)
@@ -367,15 +367,21 @@ class VideoUploadsRepository @Inject constructor(
                     IllegalStateException("Missing educatorUid for delete")
                 )
 
-            db.collection("danceLibrary")
-                .document(danceId)
-                .delete()
-                .await()
+            val danceRef = db.collection("danceLibrary").document(danceId)
 
             val videoRef = storage.reference.child("danceVideos/$uid/$danceId.mp4")
-            val templateRef = storage.reference.child(PoseTemplateStorage.jsonPath(danceId))
+            val templateRef = storage.reference.child(PoseTemplateStorage.jsonPath(uid, danceId))
             runCatching { videoRef.delete().await() }
             runCatching { templateRef.delete().await() }
+
+            // Then likes and comments, which Firestore does not delete with the parent.
+            for (sub in listOf("likes", "comments")) {
+                runCatching {
+                    danceRef.collection(sub).get().await().documents.forEach { it.reference.delete().await() }
+                }
+            }
+
+            danceRef.delete().await()
 
             Result.success(Unit)
         } catch (e: Exception) {
