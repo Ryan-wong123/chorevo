@@ -38,6 +38,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - The bar is hidden on the sign-in and practice screens and slides away while the user swipes between feed videos.
 - Settings and Weekly Challenges are sub-screens of Profile.
 - The Chorevo design system: a fixed brand palette (teal primary, magenta accent) in dark and light variants that follow the system setting (dynamic colour is off), Sora and Plus Jakarta Sans fonts, and rounded shapes.
+- Motion and feedback: screens fade through when switching tabs and practice slides up over the feed; lists and grids show shimmering placeholders while loading instead of "Loading…" text or spinners; empty lists show an animated empty state (floating icon, title, hint); the phone gives a light haptic tick on likes and a stronger confirm on practice combos, the results grade reveal, and a finished publish. Haptics follow the system touch-feedback setting.
 
 ### Authentication and Profile
 
@@ -72,10 +73,13 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 ### Creator Uploads
 
-- Upload flow supports picking a gallery video or recording one with the camera.
-- The form takes title, dance type, description, and visibility (Public or Private, default Public).
-- "Analyze Dancers" runs on-device multi-dancer analysis (see section 13) and shows a dancer review panel. The creator selects which detected dancers to keep and the default dancer, confirms, then taps "Upload Confirmed Dance".
-- Alternatively, "Upload and analyze in background" uploads the video and generates the template later with WorkManager.
+- Uploading is a five-step flow with a segmented step indicator ("Step N of 5") and Back/Next buttons; steps slide in the direction of travel:
+  1. **Video**: pick a gallery video or record one with the camera; a large preview of the chosen video is shown.
+  2. **Cover**: choose the cover frame with a slider over the video or one of five quick-pick frames; the chosen frame is stored as `coverFrameMs` (default 1 s) and used for the thumbnail in profile and liked grids.
+  3. **Details**: title, dance type, and description (all required to continue).
+  4. **Dancers**: "Analyze Dancers" runs on-device multi-dancer analysis (see section 13) and shows a dancer review panel; the creator selects which dancers to keep and the default dancer, then confirms. Alternatively they tick "Skip review and analyze in the background after upload".
+  5. **Publish**: a summary card (cover, title, type, dancers, visibility), the Public/Private choice (default Public), upload progress, and the Publish button. A confirmed review uploads with that template; otherwise the template is generated later with WorkManager.
+- After a successful publish the draft clears and the flow returns to step 1.
 - Videos are compressed (720p, up to 24 fps) and the smaller of the original and compressed file is uploaded to `danceVideos/{uid}/{danceId}.mp4`.
 - Dance metadata is written to `danceLibrary/{danceId}`.
 - Users can list, preview, edit (title, dance type, description, visibility), and delete their own uploads.
@@ -184,7 +188,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - A signed-in creator must be able to upload a video with title, dance type, description, and visibility.
 - The app must write upload metadata and media storage paths consistently.
 - The app must track template generation states: queued, processing, ready, failed, skipped, or saving.
-- A creator must be able to review and confirm detected dancers before uploading with "Upload Confirmed Dance".
+- A creator must be able to review and confirm detected dancers before publishing, or choose background analysis instead.
+- A creator must be able to choose the cover frame shown on the video's thumbnail.
 - A creator must be able to update title, dance type, description, and visibility for their own uploads.
 - A creator must be able to delete their own upload metadata, video object, and template object.
 - A private dance must only be visible to its uploader: hidden from the feed, from other users' liked videos, from share links opened by other users, and from the web share page.
@@ -276,7 +281,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - `users/{uid}/achievements/current`: earnedBadges, lastUpdated.
 - `users/{uid}/streaks/current`: weekStart, daysMask (Mon–Sun bits), totalStreakActivities, lastActivityDate. (The rules also allow a legacy `streak/` path that no code uses.)
 - `users/{uid}/weeklyChallenges/{weekStart}`: the week's three challenges, progress, and rewards.
-- `danceLibrary/{danceId}`: creator-uploaded dance metadata, `visibility` (`public` or `private`; missing means public), template state (`templateGenerationStatus`, `templateGenerationError`, `templateStoragePath`, `templateReviewStatus`, `dancerCount`), and upload details (original/compressed/uploaded sizes, `wasCompressed`, `storagePath`).
+- `danceLibrary/{danceId}`: creator-uploaded dance metadata, `visibility` (`public` or `private`; missing means public), `coverFrameMs` (cover thumbnail position in ms; missing means 1000), template state (`templateGenerationStatus`, `templateGenerationError`, `templateStoragePath`, `templateReviewStatus`, `dancerCount`), and upload details (original/compressed/uploaded sizes, `wasCompressed`, `storagePath`).
 - `danceLibrary/{danceId}/likes/{uid}`: `{liked: true}`.
 - `danceLibrary/{danceId}/comments/{commentId}`: commentId, uid, username, text, createdAt.
 - `communityPosts/{postId}`: id, uid, displayName, photoUrl, title, body, createdAt.
@@ -400,7 +405,7 @@ A body-only live practice path evaluates major joints such as shoulders, elbows,
 
 ## 13. Multi-Dancer AI (Implemented in High-Recall Analysis)
 
-This extends MediaPipe template generation with multi-person detection and tracking for uploaded videos with several dancers, low lighting, partial occlusion, temporary out-of-frame movement, or overlapping dancers. It is implemented for the on-device "Analyze Dancers" step (the high-recall profile). The background "Upload and analyze in background" job uses the standard profile and does not include these steps.
+This extends MediaPipe template generation with multi-person detection and tracking for uploaded videos with several dancers, low lighting, partial occlusion, temporary out-of-frame movement, or overlapping dancers. It is implemented for the on-device "Analyze Dancers" step (the high-recall profile). The background analysis job (chosen with "Skip review and analyze in the background after upload") uses the standard profile and does not include these steps.
 
 ### 13.1 Problem Statement
 
@@ -417,7 +422,7 @@ Group videos can fail in these ways:
 - Detect as many visible dancers as practical from uploaded reference videos (up to 8).
 - Keep a stable identity for each dancer across frames.
 - Preserve the MediaPipe 33-landmark template format.
-- Require creator review/confirmation of detected dancers before "Upload Confirmed Dance".
+- Require creator review/confirmation of detected dancers before publishing a confirmed template.
 - Avoid inventing false data for hidden landmarks (interpolated landmarks get low visibility; there is no per-frame "inferred" flag).
 - Keep YOLO and multi-dancer analysis out of live practice. Live practice uses single-person Holistic (pose + hands) and falls back to Pose Landmarker lite.
 

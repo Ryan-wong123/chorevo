@@ -1,5 +1,7 @@
 package com.example.chorevo.firebase
 
+import com.example.chorevo.core.AnimatedEmptyState
+import com.example.chorevo.core.ShimmerGrid
 import com.example.chorevo.videouploads.UploadsGridFilter
 import com.example.chorevo.core.VideoThumbnailTile
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -365,39 +367,16 @@ private fun LikedVideosGrid(
     modifier: Modifier = Modifier
 ) {
     when {
-        isLoading -> {
-            Box(
-                modifier = modifier.fillMaxWidth().height(200.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = accentColor)
-            }
-        }
+        isLoading -> ShimmerGrid(cells = 6, modifier = modifier)
 
         dances.isEmpty() -> {
-            Column(
-                modifier = modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Favorite,
-                    contentDescription = null,
-                    tint = accentColor.copy(alpha = 0.3f),
-                    modifier = Modifier.size(48.dp)
-                )
-                Text(
-                    "No liked videos yet",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                Text(
-                    "Heart a dance in the feed and it'll appear here",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-                )
-            }
+            AnimatedEmptyState(
+                icon = Icons.Filled.Favorite,
+                title = "No liked videos yet",
+                message = "Heart a dance in the feed and it'll appear here",
+                accent = accentColor,
+                modifier = modifier
+            )
         }
 
         else -> {
@@ -420,6 +399,7 @@ private fun LikedVideosGrid(
             ) {
                 itemsIndexed(dances) { index, dance ->
                     VideoThumbnailTile(
+                        frameTimeMs = dance.coverFrameMs,
                         videoUrl = dance.videoUrl,
                         title = dance.title,
                         onClick = { onTap(index) }

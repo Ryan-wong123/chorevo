@@ -1,5 +1,7 @@
 package com.example.chorevo.leaderboard
 
+import com.example.chorevo.core.AnimatedEmptyState
+import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -18,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PersonAdd
@@ -180,7 +184,9 @@ fun LeaderboardScreen(
                 Spacer(Modifier.height(12.dp))
             }
 
-            if (state.isLoading) {
+            if (state.isLoading && state.entries.isEmpty()) {
+                ShimmerList(rows = 6)
+            } else if (state.isLoading) {
                 LinearProgressIndicator(
                     modifier = Modifier.fillMaxWidth(),
                     color = brandTeal,
@@ -190,16 +196,20 @@ fun LeaderboardScreen(
             }
 
             if (!state.isLoading && state.entries.isEmpty()) {
-                Text(
-                    text = if (state.scope == LeaderboardScope.FRIENDS) {
-                        "No friends added yet."
-                    } else {
-                        "No ranking data yet."
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant
-                )
-            } else {
+                if (state.scope == LeaderboardScope.FRIENDS) {
+                    AnimatedEmptyState(
+                        icon = Icons.Filled.Group,
+                        title = "No friends added yet.",
+                        message = "Add dancers from the Global board to compare scores."
+                    )
+                } else {
+                    AnimatedEmptyState(
+                        icon = Icons.Filled.EmojiEvents,
+                        title = "No ranking data yet.",
+                        message = "Finish a practice session to claim the first spot."
+                    )
+                }
+            } else if (state.entries.isNotEmpty()) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)

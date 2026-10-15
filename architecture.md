@@ -60,7 +60,7 @@ The manifest also declares a `<queries>` block so the share sheet can detect ins
 - routes unauthenticated users to auth,
 - creates shared Hilt ViewModels for the dance library and uploads,
 - wraps main content in `AppNavigationRoute` (floating bottom bar),
-- switches with `when (screen)` over the `Screen` enum: `AUTH`, `HOME`, `DANCE_PRACTICE`, `UPLOAD`, `COMMUNITY`, `LEADERBOARD`, and the profile section (`PROFILE`, `SETTINGS`, `WEEKLY_CHALLENGES`, all rendered by `ProfileSectionRoute`),
+- switches with `when (screen)` inside an `AnimatedContent` (practice slides up over the feed and back down; other screen changes fade through with a slight scale; the practice content keeps the last selected dance while it animates out) over the `Screen` enum: `AUTH`, `HOME`, `DANCE_PRACTICE`, `UPLOAD`, `COMMUNITY`, `LEADERBOARD`, and the profile section (`PROFILE`, `SETTINGS`, `WEEKLY_CHALLENGES`, all rendered by `ProfileSectionRoute`),
 - passes `AppUiState.sharedDance` to `HomeRoute` so a dance opened from a share link is pinned first in the feed,
 - shows share-link errors (missing, disabled, private, not ready) as a snackbar.
 
@@ -75,7 +75,7 @@ Screens:
 - `AuthScreen`: email/password and "Continue with Google".
 - `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet.
 - `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
-- `VideoUploadActivityScreen`: upload form, video picker/recorder, dancer review panel, visibility.
+- `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
 - `AnalyticsDashboardView`: learner and creator analytics.
 - `LeaderboardScreen`: Global/Friends leaderboard.
 - `CommunityScreen`: forum posts and replies.
@@ -89,7 +89,10 @@ Shared components:
 - `ShareBottomSheet` (`core/share/ShareSheet.kt`): share sheet used by the home feed and the liked-videos feed.
 - `VideoVisibilitySelector` (`videouploads/VideoVisibilitySelector.kt`): Public/Private chips used by the upload form and the Edit dialog.
 - `InstructorAvatarOverlay` (`posedetection`): 3D avatar driven by reference landmarks.
-- `VideoThumbnailTile` (`core/VideoThumbnailTile.kt`): 9:16 video thumbnail with title and an optional badge, used by the liked and uploads grids.
+- `VideoThumbnailTile` (`core/VideoThumbnailTile.kt`): 9:16 video thumbnail (the frame at the dance's `coverFrameMs`) with title and an optional badge, used by the liked and uploads grids; shimmers while the frame loads.
+- `Shimmer.kt` (`core`): `Modifier.shimmer()` plus `ShimmerBlock`, `ShimmerList` and `ShimmerGrid` loading placeholders (used by the feed skeleton, profile/uploads grids, leaderboard, weekly challenges and analytics detail).
+- `AnimatedEmptyState` (`core/EmptyState.kt`): floating icon in a pulsing halo, title and hint, faded in on first show; used for empty feed, uploads, liked, leaderboard and challenges.
+- `Haptics` / `rememberHaptics()` (`core/Haptics.kt`): `tick()` (likes) and `success()` (combo milestones, results grade, finished publish) via the view's haptic feedback.
 
 ### State and Coordination Layer
 
@@ -98,7 +101,7 @@ ViewModels own screen state and user actions. All of these are `@HiltViewModel`:
 - `AppViewModel`: auth/profile restore, selected top-level screen, selected dance, navigation helpers (`openUpload`, `openCommunity`, `openLeaderboard`, `openProfile`, `openSettings`, `openWeeklyChallenges`, `backToHome`), reminder preferences, profile photo upload state, starting the unsynced-session retry, and share-link handling (`openDanceById`, pending link while signed out, `sharedDance`, `deepLinkLoading`, `deepLinkError`).
 - `AuthViewModel`: email/password and Google sign-in state, and one-off `AuthEvent`s.
 - `DanceLibraryListViewModel`: library loading, template preparation, per-dance social cache (likes and comments, optimistic updates), and practice session submission.
-- `VideoUploadsViewModel`: upload draft (including visibility), dancer analysis and review, upload progress, edit/delete flows, and per-upload visibility toggles (`setVisibility`, `updatingVisibilityIds`).
+- `VideoUploadsViewModel`: upload draft (including visibility and `coverFrameMs`, reset when a new video is picked), dancer analysis and review, upload progress, edit/delete flows, and per-upload visibility toggles (`setVisibility`, `updatingVisibilityIds`).
 - `AnalyticsDashboardViewModel`: session list and selected session detail.
 - `LeaderboardViewModel`: leaderboard scope, metric, friend actions.
 - `ProfileViewModel`: streak, points, and liked dances for the profile.
@@ -116,7 +119,7 @@ Repositories isolate Firebase, Room, and Storage APIs:
 
 - `FirebaseAuthRepository`: sign up, sign in, Google sign-in (`signInWithGoogle`), sign out, profile restore, profile photo upload. Every auth path merge-writes `users/{uid}` and mirrors displayName/photoUrl into `leaderboardStats/{uid}`.
 - `DanceLibraryRepository`: library query (excludes private dances), liked dances (excludes other users' private dances), `getDanceById(danceId, viewerUid)` for share links, likes (`loadSocialData`, `toggleLike`), comments (`loadComments`, `loadMoreComments`, `postComment`), template download, local session insert, session upload.
-- `VideoUploadsRepository`: video compression/upload, dance metadata write (including `visibility`), template upload or WorkManager queue, upload management, `updateDance` (optional visibility), `setVisibility`, and `deleteDance`.
+- `VideoUploadsRepository`: video compression/upload, dance metadata write (including `visibility` and `coverFrameMs`), template upload or WorkManager queue, upload management, `updateDance` (optional visibility), `setVisibility`, and `deleteDance`.
 - `AnalyticsRepository`: learner and educator session listeners, Firestore mapping, learner display names, and reference video availability.
 - `LeaderboardRepository`: leaderboard stats, ranking, friend list management.
 - `FirebaseStreakRepository`, `AchievementRepository`, `PointsRepository`: streaks, badges, and points.
@@ -174,7 +177,7 @@ Main collections:
 - `users/{uid}/achievements/current`: earnedBadges, lastUpdated.
 - `users/{uid}/streaks/current`: weekStart, daysMask, totalStreakActivities, lastActivityDate, updatedAt. (`firestore.rules` also allows a legacy `streak/` path that no code uses.)
 - `users/{uid}/weeklyChallenges/{weekStart}`: weekly challenge set and progress.
-- `danceLibrary/{danceId}`: uploaded dance metadata, including `visibility` (`"public"` or `"private"`; a missing field reads as `"public"` through the `DanceLibraryModel` default), template status fields, and upload size details.
+- `danceLibrary/{danceId}`: uploaded dance metadata, including `visibility` (`"public"` or `"private"`; a missing field reads as `"public"` through the `DanceLibraryModel` default), `coverFrameMs` (cover thumbnail position; missing reads as 1000), template status fields, and upload size details.
 - `danceLibrary/{danceId}/likes/{uid}`: `{liked: true}`.
 - `danceLibrary/{danceId}/comments/{commentId}`: commentId, uid, username, text, createdAt.
 - `communityPosts/{postId}` and `communityPosts/{postId}/replies/{replyId}`: forum posts and replies.
@@ -246,14 +249,14 @@ Key fields:
 
 ### Dance Upload Flow
 
-1. User picks a gallery video or records one in the upload UI.
-2. Optional "Analyze Dancers": `VideoUploadsViewModel.analyzeDancers` runs `VideoPoseTemplateGenerator.generate` with the high-recall profile (8 fps, YOLO person detector, hands) on device; the user selects dancers and a default dancer and confirms.
-3. `VideoUploadsViewModel.uploadDance` gathers profile and draft data (including visibility).
+1. Step 1 (Video): user picks a gallery video or records one. Step 2 (Cover): `CoverFramePicker` sets `UploadDraft.coverFrameMs`. Step 3 (Details): title, dance type, description.
+2. Step 4 (Dancers), "Analyze Dancers" or the "analyze in the background" checkbox: `VideoUploadsViewModel.analyzeDancers` runs `VideoPoseTemplateGenerator.generate` with the high-recall profile (8 fps, YOLO person detector, hands) on device; the user selects dancers and a default dancer and confirms.
+3. Step 5 (Publish): `VideoUploadsViewModel.uploadDance` gathers profile and draft data (including visibility and `coverFrameMs`); it uses `generateTemplate = false` when the review was confirmed and `true` (background analysis) otherwise.
 4. `VideoUploadsRepository` compresses the video (720p, up to 24 fps) and uploads the smaller of the original and compressed files.
 5. Video uploads to `danceVideos/{uid}/{danceId}.mp4`.
 6. Metadata writes to `danceLibrary/{danceId}`, then status fields are written (`saving`, `queued` or `skipped`, and `templateReviewStatus`).
-7. "Upload Confirmed Dance": the confirmed template (filtered to the selected dancers and hand tracks) uploads to `danceTemplates/{uid}/{danceId}.json`, and the status becomes `ready` with `templateReviewStatus = "confirmed"` and `dancerCount`.
-8. "Upload and analyze in background": WorkManager enqueues `VideoTemplateGenerationWorker` (network required; inputs `dance_id`, `storage_path`, `template_fps`, `collect_hand_landmarks`).
+7. Confirmed review: the confirmed template (filtered to the selected dancers and hand tracks) uploads to `danceTemplates/{uid}/{danceId}.json`, and the status becomes `ready` with `templateReviewStatus = "confirmed"` and `dancerCount`.
+8. Background analysis: WorkManager enqueues `VideoTemplateGenerationWorker` (network required; inputs `dance_id`, `storage_path`, `template_fps`, `collect_hand_landmarks`).
 9. The worker sets `processing`, downloads the video, generates a template with the standard profile, uploads the JSON, and writes `ready` with `templateStoragePath` and `dancerCount` (removing any legacy inline `template` field). It retries up to three attempts, then writes `failed` with `templateGenerationError`.
 
 ### Share Flow
@@ -519,7 +522,7 @@ Unit tests (`app/src/test`):
 - `firebase`: `FirebaseAuthRepositoryTest`
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`
 - `posedetection`: `ByteTrackDancerTrackerTest`, `ConservativeFramePreprocessorTest`, `CropPoseGeometryTest`, `HandSimilarityEvaluatorTest`, `HandTrackAssignerTest`, `HolisticFrameLandmarksTest`, `HolisticFrameSelectorTest`, `MissingLandmarkInterpolatorTest`, `MultiPersonPoseTrackerTest`, `PersonDetectorFactoryTest`, `PoseDetectionMergerTest`, `PoseSimilarityEvaluatorTest`, `PoseTemplateJsonTest`, `TrackFragmentMergerTest`, `YoloPersonDetectionParserTest`
-- `videouploads`: `VideoUploadTest` (upload ViewModel, dancer review, confirmed templates, visibility)
+- `videouploads`: `VideoUploadTest` (upload ViewModel, dancer review, confirmed templates, visibility, cover frame)
 - `weeklychallenge`: `WeeklyChallengeEngineTest`, `WeeklyChallengeViewModelTest`
 
 Instrumented tests (`app/src/androidTest`): `AnalyticsDashboardViewTest`, `DanceARPracticeScreenTest`, `DanceSessionDaoTest` (Room DAO), `DanceLibraryListViewTest`, `AuthScreenTest`, `LeaderboardScreenTest`, `VideoUploadActivityScreenTest`.
@@ -547,7 +550,7 @@ Deployment:
 
 ## 10. Known Architectural Considerations
 
-- Navigation is a custom state machine (`AppUiState.screen` plus `when` in `AppRouter`); the Navigation Compose dependencies are declared but unused. This may become hard to scale if nested flows grow.
+- Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`); the Navigation Compose dependencies are declared but unused. This may become hard to scale if nested flows grow.
 - Package segments `ViewModel`, `Repository` and `Database` are mixed-case, `videouploads/repository` is lowercase, and the router files declare `package com.routes`. New packages should be lowercase and match their folders.
 - `RepositoryModule` imports the wrong `@Provides` annotation and is ignored by Hilt; repositories rely on `@Inject` constructors instead.
 - Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).

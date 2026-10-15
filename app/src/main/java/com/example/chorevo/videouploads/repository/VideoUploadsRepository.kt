@@ -62,6 +62,7 @@ class VideoUploadsRepository @Inject constructor(
         description: String,
         videoUri: Uri,
         visibility: String = DanceLibraryModel.VISIBILITY_PUBLIC,
+        coverFrameMs: Long = DanceLibraryModel.DEFAULT_COVER_FRAME_MS,
         generateTemplate: Boolean = true,
         confirmedTemplate: PoseTemplate? = null,
         fps: Int = 2,
@@ -156,7 +157,8 @@ class VideoUploadsRepository @Inject constructor(
                 enabled = true,
                 templateGenerationStatus = initialStatus,
                 templateReviewStatus = reviewStatus,
-                visibility = visibility
+                visibility = visibility,
+                coverFrameMs = coverFrameMs
             )
 
             db.collection("danceLibrary")

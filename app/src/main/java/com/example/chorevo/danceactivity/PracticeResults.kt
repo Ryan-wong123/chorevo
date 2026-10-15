@@ -57,6 +57,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import androidx.core.content.res.ResourcesCompat
+import com.example.chorevo.core.rememberHaptics
 import com.example.chorevo.R
 import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.ui.theme.ChorevoTheme
@@ -118,8 +119,10 @@ internal fun PracticeResultDialog(
 
     val countUp = remember { Animatable(0f) }
     val gradePop = remember { Animatable(0f) }
+    val haptics = rememberHaptics()
     LaunchedEffect(score) {
         countUp.animateTo((score * 100).toFloat(), tween(1200, easing = FastOutSlowInEasing))
+        haptics.success()
         gradePop.animateTo(1f, tween(350, easing = FastOutSlowInEasing))
     }
 
