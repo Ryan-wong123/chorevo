@@ -489,7 +489,7 @@ Storage rules enforce:
 
 - owner-only writes for `danceVideos/{uid}/` (video, < 200 MB), `danceThumbnails/{uid}/` (image, < 10 MB), and `profilePhotos/{uid}/` (image, < 10 MB),
 - public reads for dance videos and thumbnails, and authenticated reads for profile photos and templates,
-- `danceTemplates/{userId}/{fileName}`: written and deleted only by that user (JSON, < 20 MB); legacy `danceTemplates/{fileName}` files are read-only. (This version of `storage.rules` is pending deployment until the updated app is installed; the deployed version still allows any signed-in user to write or delete templates.)
+- `danceTemplates/{userId}/{fileName}`: written and deleted only by that user (JSON, < 20 MB); legacy `danceTemplates/{fileName}` files are read-only. Older app builds that still write to the legacy path can no longer save templates.
 - deny-by-default fallback.
 
 Video privacy:

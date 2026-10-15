@@ -350,7 +350,7 @@ These are product targets. They are not instrumented yet: the Firebase Analytics
 
 ### Known Issues
 
-- The owner-only Storage rule for `danceTemplates/` is written but not yet deployed: older app versions still write templates to `danceTemplates/{danceId}.json`, so the rule must be deployed only after the updated app is installed. Until then, the deployed rule still lets any signed-in user overwrite or delete templates.
+- App builds from before the template-ownership change write templates to the now read-only `danceTemplates/{danceId}.json` path, so their uploads fail to save templates. Everyone who uploads needs an app build that includes this change.
 - The Friends leaderboard only shows friends who are in the global top 100 for the selected metric.
 
 ## 12. Pose + Hands Holistic Practice (Implemented)
