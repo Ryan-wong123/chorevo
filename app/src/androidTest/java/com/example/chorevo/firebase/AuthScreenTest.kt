@@ -52,7 +52,10 @@ class AuthScreenTest {
         composeRule.onNodeWithText("Sign up here").assertIsDisplayed()
         composeRule.onNodeWithText("Continue with Google").assertIsDisplayed()
 
-        composeRule.onAllNodesWithText("Login").assertCountEquals(2)
+        // Only the button says "Login" (the old corner label is gone); the
+        // subtitle says what the mode is.
+        composeRule.onAllNodesWithText("Login").assertCountEquals(1)
+        composeRule.onNodeWithText("Sign in to keep dancing").assertIsDisplayed()
         loginButton().assertIsDisplayed()
     }
 
