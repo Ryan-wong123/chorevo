@@ -3,6 +3,7 @@ package com.example.chorevo.analytics
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -175,5 +176,39 @@ class AnalyticsDashboardViewTest {
 
         assertTextExists("No segment data found.")
         assertTextExists("No timeline data found.")
+    }
+
+    @Test
+    fun overview_showsTilesTrendHeatmapAndBodyFocus() {
+        val now = System.currentTimeMillis()
+        val sessions = (1..4).map { i ->
+            DanceSessionSummary(
+                sessionId = "s$i",
+                activityName = "Practice $i",
+                activityType = "DANCE",
+                tsStart = now - i * 3_600_000L,
+                tsEnd = now - i * 3_600_000L + 120_000L,
+                durationMs = 120_000L,
+                alignmentScore = 0.5 + i * 0.1,
+                smoothnessScore = 0.6,
+                timingConsistencyScore = 0.7,
+                avgPoseError = null,
+                frames = null,
+                bodyFocus = mapOf(BodyArea.LEFT_ARM to i, BodyArea.POSTURE to 1)
+            )
+        }
+
+        composeRule.setContent {
+            AnalyticsOverview(sessions = sessions)
+        }
+
+        assertTextExists("Avg score")
+        assertTextExists("Best score")
+        assertTextExists("90%")          // best = 0.5 + 4 * 0.1
+        assertTextExists("8m")           // 4 × 2 min
+        assertTextExists("Focus on: left arm")
+        composeRule.onNodeWithTag("trendCard").assertExists()
+        composeRule.onNodeWithTag("activityHeatmap").assertExists()
+        composeRule.onNodeWithTag("bodyDiagram").assertExists()
     }
 }

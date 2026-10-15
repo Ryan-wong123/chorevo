@@ -1,6 +1,7 @@
 package com.example.chorevo.analytics.repository
 
 import android.util.Log
+import com.example.chorevo.analytics.bodyFocusFromFeedback
 import com.example.chorevo.analytics.AnalysisData
 import com.example.chorevo.analytics.DanceDashboardArgs
 import com.example.chorevo.analytics.DanceDashboardMode
@@ -38,7 +39,7 @@ class AnalyticsRepository @Inject constructor(
      */
     fun observeSessions(
         args: DanceDashboardArgs,
-        limit: Long = 30
+        limit: Long = 60
     ): Flow<List<DanceSessionSummary>> {
         return when (args.mode) {
             DanceDashboardMode.MY_DANCE ->
@@ -311,6 +312,7 @@ class AnalyticsRepository @Inject constructor(
         val analysisMap = get("analysis") as? Map<*, *>
         val avgPoseError = (analysisMap?.get("avgPoseError") as? Number)?.toDouble()
         val frames = (analysisMap?.get("frames") as? Number)?.toInt()
+        val bodyFocus = bodyFocusFromFeedback(analysisMap.feedbackTexts())
 
         return DanceSessionSummary(
             sessionId = sessionId,
@@ -323,7 +325,8 @@ class AnalyticsRepository @Inject constructor(
             smoothnessScore = smoothnessScore,
             timingConsistencyScore = timingConsistencyScore,
             avgPoseError = avgPoseError,
-            frames = frames
+            frames = frames,
+            bodyFocus = bodyFocus
         )
     }
     /**
@@ -368,6 +371,7 @@ class AnalyticsRepository @Inject constructor(
         val analysisMap = get("analysis") as? Map<*, *>
         val avgPoseError = (analysisMap?.get("avgPoseError") as? Number)?.toDouble()
         val frames = (analysisMap?.get("frames") as? Number)?.toInt()
+        val bodyFocus = bodyFocusFromFeedback(analysisMap.feedbackTexts())
 
         val docPath = reference.path
         val sessionKey = "$rawSessionId||$docPath"
@@ -383,7 +387,8 @@ class AnalyticsRepository @Inject constructor(
             smoothnessScore = smoothnessScore,
             timingConsistencyScore = timingConsistencyScore,
             avgPoseError = avgPoseError,
-            frames = frames
+            frames = frames,
+            bodyFocus = bodyFocus
         )
     }
     /**
@@ -519,4 +524,14 @@ class AnalyticsRepository @Inject constructor(
         val videoUrl: String?,
         val reason: String? = null
     )
+
+    /** Feedback message texts from an analysis map (stored as strings or {tMs, message} maps). */
+    private fun Map<*, *>?.feedbackTexts(): List<String> =
+        (this?.get("feedbackMessages") as? List<*>).orEmpty().mapNotNull { item ->
+            when (item) {
+                is String -> item
+                is Map<*, *> -> item["message"] as? String
+                else -> null
+            }
+        }
 }

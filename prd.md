@@ -44,6 +44,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 ### Authentication and Profile
 
+- First launch (signed out) shows a three-page welcome carousel over a dark "stage" background with a looping animated pose-skeleton dancer: "Learn any routine", "Live AI feedback", "Level up every week". Skip or "Get started" goes to sign-in, and the carousel is not shown again on that device.
+- The sign-in screen uses the same stage background and dancer, a gradient "Chorevo" wordmark and tagline, and a card with icon text fields, a gradient Login / Create Account button (with a spinner while signing in), a Google button, inline error messages, and a "Sign up here" / "Login here" switch. It scrolls above the keyboard.
 - Email/password sign up and sign in through Firebase Auth.
 - "Continue with Google" sign-in: a Google ID token from Credential Manager is exchanged for a Firebase credential.
 - Every sign-in and session restore merge-writes the profile to `users/{uid}` and mirrors display name and photo into `leaderboardStats/{uid}`.
@@ -113,7 +115,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 ### Analytics
 
-- Learners can review their latest 30 sessions from `users/{uid}/danceLearningSessions` (profile "Activity History" tab).
+- Learners can review their latest 60 sessions from `users/{uid}/danceLearningSessions` (profile Activity tab).
+- Above the session list (Activity and Learners tabs) an overview shows: number tiles (average score with a sparkline and the change between the older and newer half of sessions, best score, sessions with active days this week, total practice time); a score trend chart of alignment, smoothness and timing over the last 12 sessions; an activity heatmap of sessions per day for the last 8 weeks; and a "What to work on" body diagram that colours arms, legs, posture and hands from green to red by how often live feedback corrected them, with the top areas listed.
 - Creators can view collection-group analytics for sessions where `analysis.educatorUid` matches their UID, optionally filtered by dance (profile "Other Dance Analytics" tab), with learner names and the reference video.
 - Analytics detail includes summary metrics, reference video playback, a timeline chart, and performance segments.
 
@@ -219,6 +222,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 ### Analytics
 
 - A learner must be able to see recent own sessions and session details.
+- A learner must be able to see overall progress (average and best score, trend, activity, and body areas to improve) without opening each session.
 - A creator must be able to see learner sessions linked to their uploaded dances.
 - Analytics must parse missing or partially populated analysis data safely.
 - Timeline and segment data must be sorted before display.
@@ -304,7 +308,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 ### DataStore
 
-- `notification_preferences`: `push_enabled`, `notification_hour` (default 9), `notification_minute` (default 0), `theme_mode` (`dark`, `light` or `system`; missing means dark).
+- `notification_preferences`: `push_enabled`, `notification_hour` (default 9), `notification_minute` (default 0), `theme_mode` (`dark`, `light` or `system`; missing means dark), `onboarding_seen` (welcome carousel shown).
 
 ### Web (Firebase Hosting + Cloud Functions)
 

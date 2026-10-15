@@ -319,7 +319,8 @@ fun UserProfileScreen(
                     title = "My Dance Sessions",
                     vm = analyticsVm,
                     modifier = Modifier.fillMaxWidth(),
-                    embeddedInParentScroll = true
+                    embeddedInParentScroll = true,
+                    showOverview = true
                 )
                 ProfileTab.UPLOADS, ProfileTab.PRIVATE -> VideoUploadsTab(
                     onUploadDanceDemo = { },
@@ -340,7 +341,8 @@ fun UserProfileScreen(
                     title = "Others Dancing to My Uploads",
                     vm = analyticsVm,
                     modifier = Modifier.fillMaxWidth(),
-                    embeddedInParentScroll = true
+                    embeddedInParentScroll = true,
+                    showOverview = true
                 )
                 ProfileTab.LIKED_VIDEOS -> {
                     LikedVideosGrid(
