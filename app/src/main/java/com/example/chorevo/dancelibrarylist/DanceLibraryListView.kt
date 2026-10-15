@@ -1,10 +1,13 @@
 package com.example.chorevo.dancelibrarylist
 
+import com.example.chorevo.ui.theme.PillShape
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,6 +19,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.*
@@ -25,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -35,17 +42,24 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.coerceAtLeast
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import com.example.chorevo.core.AnimatedEmptyState
+import com.example.chorevo.core.LocalFloatingBarInset
+import com.example.chorevo.core.LocalFloatingBarState
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.rememberHaptics
+import com.example.chorevo.core.shimmer
 import com.example.chorevo.core.share.ShareBottomSheet
 import com.example.chorevo.core.share.ShareContent
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceSocialState
+import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -94,7 +108,16 @@ fun DanceLibraryListView(
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            Text(status ?: "Loading...", color = Color.White)
+            if (state.isLoading) {
+                FeedSkeleton()
+            } else {
+                AnimatedEmptyState(
+                    icon = Icons.Filled.PlayArrow,
+                    title = status ?: "No dances available.",
+                    message = "New routines show up here as creators publish them.",
+                    contentColor = Color.White
+                )
+            }
         }
         return
     }
@@ -103,6 +126,15 @@ fun DanceLibraryListView(
         initialPage = 0,
         pageCount = { items.size }
     )
+
+    // Tuck the floating bottom bar away while the user swipes between videos.
+    val floatingBar = LocalFloatingBarState.current
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.isScrollInProgress }.collect { floatingBar.hidden = it }
+    }
+    DisposableEffect(floatingBar) {
+        onDispose { floatingBar.hidden = false }
+    }
 
     // A link tapped while the feed is already open jumps back to the shared video.
     LaunchedEffect(pinnedDance?.danceId) {
@@ -212,7 +244,7 @@ fun DanceLibraryListView(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CircularProgressIndicator(color = Color(0xFF00B8C8))
+                    CircularProgressIndicator(color = ChorevoTheme.colors.accent)
                     Text(
                         text = if (openingDanceId != null) "Loading reference template..." else "Submitting result...",
                         color = Color.White
@@ -235,7 +267,9 @@ private fun TikTokVideoPage(
     vm: DanceLibraryListViewModel,
     onStartPractice: () -> Unit
 ) {
-    val accentColor = Color(0xFF00B8C8)
+    val accentColor = ChorevoTheme.colors.accent
+    // Keeps the title and dock above the floating bottom bar.
+    val barInset = LocalFloatingBarInset.current
     val scope = rememberCoroutineScope()
 
     val socialCache by vm.socialCache.collectAsStateWithLifecycle()
@@ -255,8 +289,10 @@ private fun TikTokVideoPage(
     }
 
     var heartBurstOffset by remember { mutableStateOf<Offset?>(null) }
+    val haptics = rememberHaptics()
 
     fun triggerLike() {
+        haptics.tick()
         if (!isLiked && uid != null) {
             vm.toggleLike(item.danceId, uid, isCurrentlyLiked = false)
         }
@@ -300,74 +336,74 @@ private fun TikTokVideoPage(
             HeartBurst(offset = offset)
         }
 
-        // ── 3. Title + author overlay (above dock) ────────────────────────
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, bottom = 172.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = "by ${item.educatorName}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = accentColor
-                )
-                if (item.description.isNotBlank()) {
-                    Text(
-                        text = "· ${item.description}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.75f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
-
-        // ── 4. Scrim gradient behind dock + title area ────────────────────
+        // ── 3. Scrim so overlay text stays readable on bright video ───────
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
+                .height(300.dp + barInset)
                 .align(Alignment.BottomCenter)
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f))
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
                     )
                 )
         )
 
-        // ── 5. Floating Practice Dock ─────────────────────────────────────
-        PracticeDock(
+        // ── 4. Right rail: creator, like, comment, share ──────────────────
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 10.dp, bottom = 24.dp + barInset),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            CreatorAvatar(name = item.educatorName)
+            RailAction(
+                icon    = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                label   = if (likeCount > 0) formatCount(likeCount) else "Like",
+                tint    = if (isLiked) ChorevoTheme.colors.like else Color.White,
+                onClick = {
+                    if (uid != null) {
+                        haptics.tick()
+                        vm.toggleLike(item.danceId, uid, isCurrentlyLiked = isLiked)
+                    }
+                },
+                testTag = "likeButton"
+            )
+            RailAction(
+                icon    = Icons.Filled.ChatBubble,
+                label   = if (comments.isNotEmpty()) formatCount(comments.size) else "Comment",
+                tint    = Color.White,
+                onClick = { showComments = true },
+                testTag = "commentButton"
+            )
+            RailAction(
+                icon    = Icons.AutoMirrored.Filled.Reply,
+                label   = "Share",
+                tint    = Color.White,
+                onClick = { showShareSheet = true },
+                testTag = "shareButton",
+                mirrorIcon = true
+            )
+        }
+
+        // ── 5. Bottom-left info: creator, title, caption, chips, CTA ───────
+        VideoInfo(
+            item = item,
+            accentColor = accentColor,
+            onStartPractice = onStartPractice,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, end = 84.dp, bottom = 24.dp + barInset)
+        )
+
+        // ── 6. Thin progress scrubber just above the bottom bar ───────────
+        VideoScrubber(
+            exoPlayer = exoPlayer,
+            playing = isActive,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 16.dp, vertical = 24.dp),
-            likeCount    = likeCount,
-            isLiked      = isLiked,
-            commentCount = comments.size,
-            accentColor  = accentColor,
-            onLike = {
-                if (uid != null) {
-                    vm.toggleLike(item.danceId, uid, isCurrentlyLiked = isLiked)
-                }
-            },
-            onComment = { showComments = true },
-            onShare = { showShareSheet = true },
-            onStartPractice = onStartPractice
+                .padding(bottom = (barInset - 4.dp).coerceAtLeast(0.dp))
         )
     }
 
@@ -495,7 +531,7 @@ private fun TikTokVideoPage(
                 ) {
                     OutlinedTextField(
                         value         = commentText,
-                        onValueChange = { commentText = it },
+                        onValueChange = { commentText = it.take(DanceLibraryRepository.MAX_COMMENT_LENGTH) },
                         placeholder   = { Text("Add a comment...") },
                         modifier      = Modifier.weight(1f),
                         shape         = RoundedCornerShape(14.dp),
@@ -512,7 +548,7 @@ private fun TikTokVideoPage(
                         shape  = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = accentColor,
-                            contentColor   = Color.White
+                            contentColor   = ChorevoTheme.colors.onAccent
                         )
                     ) {
                         Text("Post", fontWeight = FontWeight.SemiBold)
@@ -523,123 +559,246 @@ private fun TikTokVideoPage(
     }
 }
 
-/**
- * The floating bottom dock — social row on top, CTA row below.
- *
- * Layout:
- *   ┌─────────────────────────────────────┐
- *   │  ❤️ 120    💬 32    ↗ Share         │
- *   │─────────────────────────────────────│
- *   │         [ Practice ]                │
- *   └─────────────────────────────────────┘
- */
-@Composable
-private fun PracticeDock(
-    modifier: Modifier = Modifier,
-    likeCount: Int,
-    isLiked: Boolean,
-    commentCount: Int,
-    accentColor: Color,
-    onLike: () -> Unit,
-    onComment: () -> Unit,
-    onShare: () -> Unit,
-    onStartPractice: () -> Unit
-) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Social actions row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(20.dp),
-            verticalAlignment     = Alignment.CenterVertically
-        ) {
-            DockAction(
-                icon    = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                label   = if (likeCount > 0) likeCount.toString() else "Like",
-                tint    = if (isLiked) Color(0xFFFF4466) else Color.White,
-                onClick = onLike,
-                testTag = "likeButton"
-            )
-            DockAction(
-                icon    = Icons.Outlined.ChatBubbleOutline,
-                label   = if (commentCount > 0) commentCount.toString() else "Comment",
-                tint    = Color.White,
-                onClick = onComment,
-                testTag = "commentButton"
-            )
-            Spacer(Modifier.weight(1f))
-            DockAction(
-                icon    = Icons.Outlined.Share,
-                label   = "Share",
-                tint    = Color.White,
-                onClick = onShare,
-                testTag = "shareButton"
-            )
-        }
+/** Abbreviates counts the way social apps do: 999, 1.2K, 3.4M. */
+private fun formatCount(count: Int): String = when {
+    count >= 1_000_000 -> String.format(java.util.Locale.US, "%.1fM", count / 1_000_000f).replace(".0M", "M")
+    count >= 1_000 -> String.format(java.util.Locale.US, "%.1fK", count / 1_000f).replace(".0K", "K")
+    else -> count.toString()
+}
 
-        // CTA row
-        Button(
-            onClick  = onStartPractice,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(50.dp)
-                .testTag("practiceButton"),
-            shape  = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = accentColor,
-                contentColor   = Color.White
-            ),
-            elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-        ) {
-            Text(
-                text          = "Practice",
-                style         = MaterialTheme.typography.titleSmall,
-                fontWeight    = FontWeight.Bold,
-                letterSpacing = 0.5.sp
-            )
-        }
+/** Creator avatar with the brand gradient ring (initial on a dark disc). */
+@Composable
+private fun CreatorAvatar(name: String) {
+    val colors = ChorevoTheme.colors
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(colors.brandGradient)
+            .padding(2.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.6f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = name.trim().take(1).uppercase().ifEmpty { "?" },
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White
+        )
     }
 }
 
-/** Inline social action chip: icon + label side-by-side. */
+/** One right-rail action: a large icon with its count underneath. */
 @Composable
-private fun DockAction(
+private fun RailAction(
     icon: ImageVector,
     label: String,
     tint: Color,
     onClick: () -> Unit,
-    testTag: String
+    testTag: String,
+    mirrorIcon: Boolean = false
 ) {
     val iconTint by animateColorAsState(
         targetValue   = tint,
         animationSpec = tween(200),
-        label         = "dockIconTint"
+        label         = "railIconTint"
     )
+    // Springy pop whenever the icon swaps (e.g. like ↔ unlike), skipped on first show.
+    val pop = remember { Animatable(1f) }
+    var iconSettled by remember { mutableStateOf(false) }
+    LaunchedEffect(icon) {
+        if (iconSettled) {
+            pop.snapTo(1.35f)
+            pop.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium))
+        }
+        iconSettled = true
+    }
 
-    Row(
+    Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(50.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .testTag(testTag)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment     = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(5.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Icon(
             imageVector        = icon,
             contentDescription = label,
             tint               = iconTint,
-            modifier           = Modifier.size(22.dp)
+            modifier           = Modifier
+                .size(32.dp)
+                .graphicsLayer {
+                    scaleX = pop.value * (if (mirrorIcon) -1f else 1f)
+                    scaleY = pop.value
+                }
         )
         Text(
             text       = label,
-            fontSize   = 13.sp,
-            fontWeight = FontWeight.SemiBold,
-            color      = Color.White.copy(alpha = 0.9f)
+            style      = MaterialTheme.typography.labelMedium,
+            color      = Color.White
+        )
+    }
+}
+
+/** Creator, title, expandable caption, chips and the Practice call to action. */
+@Composable
+private fun VideoInfo(
+    item: DanceLibraryModel,
+    accentColor: Color,
+    onStartPractice: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var captionExpanded by rememberSaveable(item.danceId) { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "by ${item.educatorName}",
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White
+        )
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.titleLarge,
+            color = Color.White,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (item.description.isNotBlank()) {
+            Text(
+                text = item.description,
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.85f),
+                maxLines = if (captionExpanded) 8 else 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .animateContentSize()
+                    .clickable { captionExpanded = !captionExpanded }
+                    .testTag("videoCaption")
+            )
+        }
+
+        val chips = buildList {
+            item.danceType.takeIf { it.isNotBlank() }?.let { add(it) }
+            if (item.dancerCount > 1) add("${item.dancerCount} dancers")
+        }
+        if (chips.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                chips.forEach { label -> OverlayChip(label) }
+            }
+        }
+
+        Spacer(Modifier.height(4.dp))
+
+        val colors = ChorevoTheme.colors
+        Row(
+            modifier = Modifier
+                .height(44.dp)
+                .clip(PillShape)
+                .background(colors.brandGradient)
+                .clickable(onClick = onStartPractice)
+                .testTag("practiceButton")
+                .padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint = colors.onGradient,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = "Practice",
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.onGradient
+            )
+        }
+    }
+}
+
+/** Small translucent chip for dance type and dancer count. */
+@Composable
+private fun OverlayChip(label: String) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelMedium,
+        color = Color.White,
+        modifier = Modifier
+            .clip(PillShape)
+            .background(Color.White.copy(alpha = 0.18f))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    )
+}
+
+/**
+ * Thin playback progress bar. Tap or drag to seek; it thickens while dragging.
+ */
+@Composable
+private fun VideoScrubber(
+    exoPlayer: ExoPlayer,
+    playing: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var progress by remember { mutableStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+
+    LaunchedEffect(playing) {
+        while (playing) {
+            val duration = exoPlayer.duration
+            if (!dragging && duration > 0) {
+                progress = (exoPlayer.currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+            }
+            delay(100)
+        }
+    }
+
+    fun seekTo(fraction: Float) {
+        val duration = exoPlayer.duration
+        if (duration > 0) exoPlayer.seekTo((duration * fraction.coerceIn(0f, 1f)).toLong())
+    }
+
+    val accent = ChorevoTheme.colors.accent
+    val trackHeight by animateDpAsState(if (dragging) 6.dp else 2.dp, label = "scrubberHeight")
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(24.dp)
+            .testTag("videoScrubber")
+            .pointerInput(playing) {
+                if (!playing) return@pointerInput
+                detectTapGestures { offset -> seekTo(offset.x / size.width) }
+            }
+            .pointerInput(playing) {
+                if (!playing) return@pointerInput
+                detectHorizontalDragGestures(
+                    onDragStart = { dragging = true },
+                    onDragEnd = { seekTo(progress); dragging = false },
+                    onDragCancel = { dragging = false },
+                    onHorizontalDrag = { change, _ ->
+                        progress = (change.position.x / size.width).coerceIn(0f, 1f)
+                    }
+                )
+            },
+        contentAlignment = Alignment.BottomStart
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(trackHeight)
+                .background(Color.White.copy(alpha = 0.25f))
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(progress)
+                .height(trackHeight)
+                .background(accent)
         )
     }
 }
@@ -671,7 +830,7 @@ private fun HeartBurst(offset: Offset) {
         Icon(
             imageVector        = Icons.Filled.Favorite,
             contentDescription = null,
-            tint               = Color(0xFFFF4466).copy(alpha = alpha.value),
+            tint               = ChorevoTheme.colors.like.copy(alpha = alpha.value),
             modifier           = Modifier
                 .size(72.dp)
                 .offset {
@@ -682,5 +841,48 @@ private fun HeartBurst(offset: Offset) {
                 }
                 .scale(scale.value)
         )
+    }
+}
+/** Placeholder for the feed while the first page loads: rail buttons and caption lines. */
+@Composable
+private fun FeedSkeleton() {
+    val base = Color.White.copy(alpha = 0.08f)
+    val highlight = Color.White.copy(alpha = 0.18f)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("feedSkeleton")
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 12.dp, bottom = 140.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            repeat(4) {
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .shimmer(base, highlight)
+                )
+            }
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 120.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            listOf(120.dp, 220.dp, 170.dp).forEach { w ->
+                Box(
+                    Modifier
+                        .width(w)
+                        .height(14.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .shimmer(base, highlight)
+                )
+            }
+        }
     }
 }

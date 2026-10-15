@@ -160,11 +160,13 @@ object VideoPoseTemplateGenerator {
                 NoOpCropPoseEstimator()
             }
 
-            val handFramesByTrackId = linkedMapOf<String, MutableList<HandLandmarkFrame>>()
+            // Hands are attached to dancers later by matching the pose they were detected with.
+            val handObservations = mutableListOf<HandObservation>()
 
-            fun recordHandFrame(trackId: String, frame: HandLandmarkFrame) {
+            fun recordHandFrame(pose: List<Float>, frame: HandLandmarkFrame) {
+                if (pose.isEmpty()) return
                 if (frame.leftHand.isEmpty() && frame.rightHand.isEmpty()) return
-                handFramesByTrackId.getOrPut(trackId) { mutableListOf() } += frame
+                handObservations += HandObservation(tMs = frame.tMs, pose = pose, hand = frame)
             }
 
             try {
@@ -241,8 +243,11 @@ object VideoPoseTemplateGenerator {
                         trackedCropResult.warnings.forEach { warning ->
                             analysisWarnings.putIfAbsent(warning.code, warning)
                         }
+                        val cropPosesByTrackId = trackedCropResult.poses.associateBy { it.trackId }
                         trackedCropResult.handFrames.forEach { handFrame ->
-                            recordHandFrame(handFrame.trackId, handFrame.frame)
+                            cropPosesByTrackId[handFrame.trackId]?.let { cropPose ->
+                                recordHandFrame(cropPose.frame.landmarks, handFrame.frame.copy(tMs = tMs))
+                            }
                         }
 
                         // VIDEO running mode requires timestamped detect
@@ -266,7 +271,7 @@ object VideoPoseTemplateGenerator {
                         }
                         if (!highRecall && holisticFrame != null) {
                             recordHandFrame(
-                                trackId = "track_1",
+                                pose = holisticFrame.pose,
                                 frame = HandLandmarkFrame(
                                     tMs = tMs,
                                     leftHand = holisticFrame.leftHand,
@@ -336,7 +341,9 @@ object VideoPoseTemplateGenerator {
                     ?: return@withContext Result.failure(
                         IllegalStateException("No dancers were detected in the uploaded video")
                     )
-                val templateWithHands = template.withHandTracks(handFramesByTrackId)
+                val templateWithHands = template.copy(
+                    handTracks = HandTrackAssigner.assign(template.availableTracks(), handObservations)
+                )
                 val processedTemplate = postProcessUploadedTemplate(
                     template = templateWithHands,
                     highRecall = highRecall,
@@ -405,30 +412,6 @@ object VideoPoseTemplateGenerator {
         } catch (_: Exception) {
             false
         }
-    }
-
-    private fun PoseTemplate.withHandTracks(
-        handFramesByTrackId: Map<String, List<HandLandmarkFrame>>
-    ): PoseTemplate {
-        if (handFramesByTrackId.isEmpty()) return this
-        val availableTrackIds = availableTracks().map { it.trackId }.toSet()
-        val tracks = handFramesByTrackId
-            .filterKeys { trackId -> trackId in availableTrackIds }
-            .mapNotNull { (trackId, frames) ->
-                val sortedFrames = frames
-                    .groupBy { it.tMs }
-                    .map { (_, sameTimeFrames) ->
-                        sameTimeFrames.maxByOrNull { frame ->
-                            frame.leftHand.size + frame.rightHand.size
-                        } ?: sameTimeFrames.first()
-                    }
-                    .sortedBy { it.tMs }
-                if (sortedFrames.isEmpty()) null else HandTrack(
-                    trackId = trackId,
-                    frames = sortedFrames
-                )
-            }
-        return copy(handTracks = tracks)
     }
 
     private fun com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult.toFlatDetections(): List<List<Float>> {

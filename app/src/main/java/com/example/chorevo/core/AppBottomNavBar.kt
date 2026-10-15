@@ -1,33 +1,52 @@
 package com.example.chorevo.core
 
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.outlined.EmojiEvents
+import com.example.chorevo.ui.theme.ChorevoTheme
+import com.example.chorevo.ui.theme.PillShape
 
 enum class BottomNavItem(val label: String) {
     HOME("Home"),
@@ -37,134 +56,149 @@ enum class BottomNavItem(val label: String) {
     PROFILE("Profile")
 }
 
-/** Displays the main app sections so users can quickly switch between core features. */
+/** Height of the floating bar itself. */
+val FloatingBarHeight: Dp = 64.dp
+
+/** Gap between the floating bar and the bottom of the screen. */
+val FloatingBarBottomMargin: Dp = 12.dp
+
+/**
+ * Space a full-bleed screen should leave at the bottom so its content sits
+ * above the floating bar. Zero on screens without the bar.
+ */
+val LocalFloatingBarInset = staticCompositionLocalOf { 0.dp }
+
+/** Lets immersive screens (the video feed) tuck the bar away while scrolling. */
+@Stable
+class FloatingBarState {
+    var hidden by mutableStateOf(false)
+}
+
+val LocalFloatingBarState = staticCompositionLocalOf { FloatingBarState() }
+
+/**
+ * Floating, translucent pill navigation bar with a raised gradient upload
+ * button in the centre (TikTok style).
+ */
 @Composable
 fun AppBottomNavBar(
     selected: BottomNavItem,
     onSelect: (BottomNavItem) -> Unit,
-    modifier: Modifier = Modifier,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
+    modifier: Modifier = Modifier
 ) {
-    val pillShape = RoundedCornerShape(24.dp)
+    val colors = ChorevoTheme.colors
 
     Surface(
         modifier = modifier
-            .padding(contentPadding)
-            .clip(pillShape),
-        shape = pillShape,
-        tonalElevation = 0.dp,
-        shadowElevation = 10.dp,
-        color = MaterialTheme.colorScheme.surface
+            .padding(horizontal = 20.dp)
+            .fillMaxWidth()
+            .height(FloatingBarHeight)
+            .shadow(elevation = 18.dp, shape = PillShape, clip = false)
+            .testTag("floatingBottomBar"),
+        shape = PillShape,
+        color = colors.glass,
+        border = BorderStroke(1.dp, colors.glassBorder)
     ) {
-        NavigationBar(
-            modifier = Modifier.fillMaxWidth(),
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 0.dp
+        Row(
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            NavigationBarItem(
-                selected = selected == BottomNavItem.HOME,
-                onClick = { onSelect(BottomNavItem.HOME) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected == BottomNavItem.HOME) Icons.Filled.Home else Icons.Outlined.Home,
-                        contentDescription = "Home"
-                    )
-                },
-                label = { BottomNavLabel(BottomNavItem.HOME.label) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            NavTab(BottomNavItem.HOME, selected, Icons.Filled.Home, Icons.Outlined.Home, "Home", onSelect)
+            NavTab(
+                BottomNavItem.LEADERBOARD, selected,
+                Icons.Filled.EmojiEvents, Icons.Outlined.EmojiEvents, "Leaderboard", onSelect
             )
-
-            NavigationBarItem(
+            UploadButton(
                 selected = selected == BottomNavItem.UPLOAD,
-                onClick = { onSelect(BottomNavItem.UPLOAD) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected == BottomNavItem.UPLOAD) Icons.Filled.CloudUpload else Icons.Outlined.CloudUpload,
-                        contentDescription = "Upload"
-                    )
-                },
-                label = { BottomNavLabel(BottomNavItem.UPLOAD.label) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                onClick = { onSelect(BottomNavItem.UPLOAD) }
             )
-            NavigationBarItem(
-                selected = selected == BottomNavItem.LEADERBOARD,
-                onClick = { onSelect(BottomNavItem.LEADERBOARD) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected == BottomNavItem.LEADERBOARD)
-                            Icons.Filled.EmojiEvents
-                        else
-                            Icons.Outlined.EmojiEvents,
-                        contentDescription = "Leaderboard"
-                    )
-                },
-                label = { BottomNavLabel(BottomNavItem.LEADERBOARD.label) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            )
-            NavigationBarItem(
-                selected = selected == BottomNavItem.COMMUNITY,
-                onClick = { onSelect(BottomNavItem.COMMUNITY) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected == BottomNavItem.COMMUNITY) Icons.Filled.Forum else Icons.Outlined.Forum,
-                        contentDescription = "Community"
-                    )
-                },
-                label = { BottomNavLabel(BottomNavItem.COMMUNITY.label) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            )
-            NavigationBarItem(
-                selected = selected == BottomNavItem.PROFILE,
-                onClick = { onSelect(BottomNavItem.PROFILE) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected == BottomNavItem.PROFILE) Icons.Filled.Person else Icons.Outlined.Person,
-                        contentDescription = "Profile"
-                    )
-                },
-                label = { BottomNavLabel(BottomNavItem.PROFILE.label) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.onSurface,
-                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
-                    indicatorColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            )
+            NavTab(BottomNavItem.COMMUNITY, selected, Icons.Filled.Forum, Icons.Outlined.Forum, "Community", onSelect)
+            NavTab(BottomNavItem.PROFILE, selected, Icons.Filled.Person, Icons.Outlined.Person, "Profile", onSelect)
         }
     }
 }
 
 @Composable
-private fun BottomNavLabel(text: String) {
-    Text(
-        text = text,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        fontSize = 11.sp
+private fun RowScope.NavTab(
+    item: BottomNavItem,
+    selected: BottomNavItem,
+    selectedIcon: ImageVector,
+    icon: ImageVector,
+    contentDescription: String,
+    onSelect: (BottomNavItem) -> Unit
+) {
+    val isSelected = item == selected
+    val accent = ChorevoTheme.colors.accent
+    val tint by animateColorAsState(
+        targetValue = if (isSelected) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+        label = "navTint"
     )
+
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .clip(PillShape)
+            .clickable(role = Role.Tab, onClick = { onSelect(item) })
+            .testTag("bottomNav_${item.name}"),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(PillShape)
+                .background(if (isSelected) accent.copy(alpha = 0.16f) else Color.Transparent)
+                .padding(horizontal = 14.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isSelected) selectedIcon else icon,
+                contentDescription = contentDescription,
+                tint = tint,
+                modifier = Modifier.size(22.dp)
+            )
+        }
+        Text(
+            text = item.label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+    }
+}
+
+/** Raised circular gradient "+" button for creating an upload. */
+@Composable
+private fun RowScope.UploadButton(selected: Boolean, onClick: () -> Unit) {
+    val colors = ChorevoTheme.colors
+
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight(),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(width = 56.dp, height = 44.dp)
+                .shadow(elevation = if (selected) 2.dp else 10.dp, shape = PillShape, clip = false)
+                .clip(PillShape)
+                .background(colors.brandGradient)
+                .clickable(role = Role.Button, onClick = onClick)
+                .testTag("bottomNav_${BottomNavItem.UPLOAD.name}"),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = "Upload",
+                tint = colors.onGradient,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+    }
 }

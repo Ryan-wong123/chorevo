@@ -85,7 +85,7 @@ class AnalyticsRepositoryTest {
         every { users.document("u1") } returns userDoc
         every { userDoc.collection("danceLearningSessions") } returns sessions
         every { sessions.orderBy("tsStart", Query.Direction.DESCENDING) } returns ordered
-        every { ordered.limit(30) } returns limited
+        every { ordered.limit(60) } returns limited
 
         val listenerSlot = slot<EventListener<QuerySnapshot>>()
         every { limited.addSnapshotListener(capture(listenerSlot)) } returns registration

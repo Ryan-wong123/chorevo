@@ -261,6 +261,99 @@ class FirebaseAuthRepositoryTest {
         verify(exactly = 1) { db.collection("leaderboardStats") }
     }
 
+    /** Wires a signed-in Google user whose stored profile has [storedName] / [storedPhoto]. */
+    private fun googleSignInFixture(
+        storedName: String?,
+        storedPhoto: String?,
+        googleName: String?,
+        googlePhoto: String?
+    ): Triple<FirebaseAuthRepository, DocumentReference, DocumentReference> {
+        val auth = mockk<FirebaseAuth>()
+        val db = mockk<FirebaseFirestore>()
+        val authResult = mockk<AuthResult>()
+        val user = mockk<FirebaseUser>()
+        val usersCollection = mockk<CollectionReference>()
+        val docRef = mockk<DocumentReference>()
+        val snapshot = mockk<DocumentSnapshot>()
+        val leaderboardCollection = mockk<CollectionReference>()
+        val leaderboardDoc = mockk<DocumentReference>()
+
+        every { authResult.user } returns user
+        every { user.uid } returns "g1"
+        every { user.email } returns "g@example.com"
+        every { user.displayName } returns googleName
+        every { user.photoUrl } returns googlePhoto?.let { url -> mockk<android.net.Uri> { every { this@mockk.toString() } returns url } }
+        every { auth.signInWithCredential(any<AuthCredential>()) } returns Tasks.forResult(authResult)
+        every { db.collection("users") } returns usersCollection
+        every { db.collection("leaderboardStats") } returns leaderboardCollection
+        every { usersCollection.document("g1") } returns docRef
+        every { leaderboardCollection.document("g1") } returns leaderboardDoc
+        every { docRef.get() } returns Tasks.forResult(snapshot)
+        every { snapshot.getString("displayName") } returns storedName
+        every { snapshot.getString("photoUrl") } returns storedPhoto
+        every { docRef.set(any<Map<String, Any?>>(), SetOptions.merge()) } returns Tasks.forResult(null)
+        every { leaderboardDoc.set(any<Map<String, Any?>>(), SetOptions.merge()) } returns Tasks.forResult(null)
+        return Triple(makeRepo(auth, db), docRef, leaderboardDoc)
+    }
+
+    @Test
+    fun signIn_keepsNameAndPhotoTheUserSetInTheApp() = runTest {
+        val (repo, docRef, _) = googleSignInFixture(
+            storedName = "Stage Name",
+            storedPhoto = "https://custom/photo.jpg",
+            googleName = "Google Name",
+            googlePhoto = "https://google/photo.jpg"
+        )
+
+        val profile = repo.signInWithGoogle("token").getOrThrow()
+
+        assertEquals("Stage Name", profile.displayName)
+        assertEquals("https://custom/photo.jpg", profile.photoUrl)
+        verify(exactly = 1) {
+            docRef.set(
+                match<Map<String, Any?>> {
+                    it["displayName"] == "Stage Name" && it["photoUrl"] == "https://custom/photo.jpg"
+                },
+                SetOptions.merge()
+            )
+        }
+    }
+
+    @Test
+    fun signIn_neverWritesNullNameOrPhoto() = runTest {
+        val (repo, docRef, _) = googleSignInFixture(
+            storedName = null,
+            storedPhoto = null,
+            googleName = null,
+            googlePhoto = null
+        )
+
+        val profile = repo.signInWithGoogle("token").getOrThrow()
+
+        assertNull(profile.displayName)
+        verify(exactly = 1) {
+            docRef.set(
+                match<Map<String, Any?>> { !it.containsKey("displayName") && !it.containsKey("photoUrl") },
+                SetOptions.merge()
+            )
+        }
+    }
+
+    @Test
+    fun signIn_fillsMissingNameAndPhotoFromProvider() = runTest {
+        val (repo, _, _) = googleSignInFixture(
+            storedName = null,
+            storedPhoto = null,
+            googleName = "Google Name",
+            googlePhoto = "https://google/photo.jpg"
+        )
+
+        val profile = repo.signInWithGoogle("token").getOrThrow()
+
+        assertEquals("Google Name", profile.displayName)
+        assertEquals("https://google/photo.jpg", profile.photoUrl)
+    }
+
     @Test
     fun getCurrentUserProfile_nullWhenNoCurrentUser() = runTest {
         val auth = mockk<FirebaseAuth>()

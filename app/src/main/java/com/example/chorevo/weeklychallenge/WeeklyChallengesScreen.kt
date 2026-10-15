@@ -1,5 +1,9 @@
 package com.example.chorevo.weeklychallenge
 
+import androidx.compose.runtime.ReadOnlyComposable
+import com.example.chorevo.core.AnimatedEmptyState
+import com.example.chorevo.core.ShimmerList
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -41,7 +46,8 @@ import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-private val brandTeal = Color(0xFF00B8C8)
+private val brandTeal: Color
+    @Composable @ReadOnlyComposable get() = ChorevoTheme.colors.accent
 
 /**
  * Full-screen view of this week's three personalized "AI Focus Quest" challenges.
@@ -93,14 +99,13 @@ fun WeeklyChallengesScreen(
             Spacer(Modifier.height(16.dp))
 
             if (state.loading && state.challenges.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = brandTeal)
-                }
+                ShimmerList(rows = 4)
             } else if (state.challenges.isEmpty()) {
-                Text(
-                    text = state.errorMessage ?: "No challenges available yet — check back after your next session.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant
+                AnimatedEmptyState(
+                    icon = Icons.Filled.EmojiEvents,
+                    title = if (state.errorMessage != null) "Couldn't load challenges" else "No challenges yet",
+                    message = state.errorMessage ?: "No challenges available yet — check back after your next session.",
+                    accent = brandTeal
                 )
             } else {
                 LazyColumn(
@@ -121,7 +126,7 @@ private fun WeeklyChallengesTopBar(onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(brandTeal)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .height(64.dp)
             .padding(horizontal = 8.dp),
@@ -131,13 +136,13 @@ private fun WeeklyChallengesTopBar(onBack: () -> Unit) {
             Icon(
                 imageVector = Icons.Default.ArrowBack,
                 contentDescription = "Back",
-                tint = Color.White
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
 
         Text(
             text = "Weekly Challenges",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(start = 4.dp)
@@ -158,7 +163,7 @@ private fun WeeklyChallengeHeaderCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = cardBg)
     ) {
         Column(Modifier.padding(16.dp)) {
@@ -210,7 +215,7 @@ private fun WeeklyChallengeCard(challenge: WeeklyChallenge, cardBg: Color) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = if (challenge.completed) brandTeal.copy(alpha = 0.10f) else cardBg
         )

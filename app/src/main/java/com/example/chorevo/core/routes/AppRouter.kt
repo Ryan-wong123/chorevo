@@ -1,5 +1,25 @@
 package com.routes
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import com.example.chorevo.firebase.OnboardingScreen
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.dp
+import kotlin.coroutines.cancellation.CancellationException
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -62,10 +82,15 @@ fun AppRouter(
         }
 
         // After auth check, if no signed-in profile exists, force auth
+        // First launch shows the welcome carousel, then sign-in.
         if (state.profile == null) {
-            AuthRoute(
-                onAuthed = appViewModel::onAuthed
-            )
+            Crossfade(targetState = state.onboardingSeen, label = "onboarding") { seen ->
+                when (seen) {
+                    null -> StartupLoadingRoute()
+                    false -> OnboardingScreen(onFinish = appViewModel::completeOnboarding)
+                    true -> AuthRoute(onAuthed = appViewModel::onAuthed)
+                }
+            }
             return@Scaffold
         }
 
@@ -126,67 +151,123 @@ private fun AppRouteContent(
     danceLibraryViewModel: DanceLibraryListViewModel,
     videoUploadsViewModel: VideoUploadsViewModel
 ) {
-    Box(modifier = Modifier.padding(innerPadding)) {
-        when (screen) {
-            Screen.AUTH -> {
-                AuthRoute(
-                    onAuthed = onAuthed
-                )
-            }
+    // Predictive back: while the user drags the back gesture the current screen
+    // shrinks and rounds its corners; releasing goes to Screen.backTarget.
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    val backScale by animateFloatAsState(1f - 0.1f * backProgress, label = "backScale")
+    LaunchedEffect(screen) { backProgress = 0f }
+    PredictiveBackHandler(enabled = screen.backTarget != null) { events ->
+        try {
+            events.collect { backProgress = it.progress }
+            appViewModel.navigateBack()
+        } catch (e: CancellationException) {
+            backProgress = 0f
+            throw e
+        }
+    }
 
-            Screen.HOME -> {
-                HomeRoute(
-                    uid = uid,
-                    username = profile.displayName ?: "User",
-                    onPickDance = onPickDance,
-                    onBack = {},
-                    vm = danceLibraryViewModel,
-                    sharedDance = sharedDance
-                )
+    Box(
+        modifier = Modifier
+            .padding(innerPadding)
+            .graphicsLayer {
+                scaleX = backScale
+                scaleY = backScale
+                shape = RoundedCornerShape((backProgress * 32).dp)
+                clip = backProgress > 0f
             }
+    ) {
+        AnimatedContent(
+            targetState = screen,
+            transitionSpec = { screenTransition(initialState, targetState) },
+            label = "screen"
+        ) { screen ->
+            when (screen) {
+                Screen.AUTH -> {
+                    AuthRoute(
+                        onAuthed = onAuthed
+                    )
+                }
 
-            Screen.DANCE_PRACTICE -> {
-                if (selectedDanceItem == null) {
-                    onBackToHome()
-                } else {
-                    DancePracticeRoute(
-                        item = selectedDanceItem,
+                Screen.HOME -> {
+                    HomeRoute(
                         uid = uid,
+                        username = profile.displayName ?: "User",
+                        onPickDance = onPickDance,
+                        onBack = {},
+                        vm = danceLibraryViewModel,
+                        sharedDance = sharedDance
+                    )
+                }
+
+                Screen.DANCE_PRACTICE -> {
+                    // Leaving practice clears the selection before the exit animation ends;
+                    // keep showing the last dance while this content slides away.
+                    val practiceItem = rememberLastNonNull(selectedDanceItem)
+                    if (practiceItem == null) {
+                        LaunchedEffect(Unit) { onBackToHome() }
+                    } else {
+                        DancePracticeRoute(
+                            item = practiceItem,
+                            uid = uid,
+                            onBack = onBackToHome,
+                            onNavigateToProfile = onOpenProfile,
+                            danceLibraryVm = danceLibraryViewModel
+                        )
+                    }
+                }
+
+                Screen.UPLOAD -> {
+                    UploadRoute(
                         onBack = onBackToHome,
-                        onNavigateToProfile = onOpenProfile,
+                        vm = videoUploadsViewModel
+                    )
+                }
+
+                Screen.COMMUNITY -> {
+                    CommunityRoute(
+                        profile = profile
+                    )
+                }
+
+                Screen.LEADERBOARD -> {
+                    LeaderboardRoute(
+                        myUid = uid
+                    )
+                }
+
+                Screen.PROFILE, Screen.SETTINGS, Screen.WEEKLY_CHALLENGES -> {
+                    ProfileSectionRoute(
+                        screen = screen,
+                        profile = profile,
+                        appViewModel = appViewModel,
+                        videoUploadsVm = videoUploadsViewModel,
                         danceLibraryVm = danceLibraryViewModel
                     )
                 }
             }
-
-            Screen.UPLOAD -> {
-                UploadRoute(
-                    onBack = onBackToHome,
-                    vm = videoUploadsViewModel
-                )
-            }
-
-            Screen.COMMUNITY -> {
-                CommunityRoute(
-                    profile = profile
-                )
-            }
-
-            Screen.LEADERBOARD -> {
-                LeaderboardRoute(
-                    myUid = uid
-                )
-            }
-
-            Screen.PROFILE, Screen.SETTINGS, Screen.WEEKLY_CHALLENGES -> {
-                ProfileSectionRoute(
-                    screen = screen,
-                    profile = profile,
-                    appViewModel = appViewModel,
-                    videoUploadsVm = videoUploadsViewModel,
-                    danceLibraryVm = danceLibraryViewModel
-                )
-            }
         }
     }
+}
+
+/**
+ * Practice slides up over the feed like a sheet and back down when closed;
+ * everything else uses a quick fade-through with a slight scale.
+ */
+private fun screenTransition(from: Screen, to: Screen): ContentTransform = when {
+    to == Screen.DANCE_PRACTICE ->
+        (slideInVertically(tween(320)) { it / 4 } + fadeIn(tween(220))) togetherWith fadeOut(tween(160))
+    from == Screen.DANCE_PRACTICE ->
+        fadeIn(tween(220)) togetherWith (slideOutVertically(tween(280)) { it / 4 } + fadeOut(tween(200)))
+    else ->
+        (fadeIn(tween(220, delayMillis = 60)) + scaleIn(tween(220, delayMillis = 60), initialScale = 0.96f)) togetherWith
+            fadeOut(tween(90))
+}
+
+/** Returns [value], or the last non-null value seen while it is null. */
+@Composable
+private fun <T : Any> rememberLastNonNull(value: T?): T? {
+    val holder = remember { arrayOfNulls<Any>(1) }
+    if (value != null) holder[0] = value
+    @Suppress("UNCHECKED_CAST")
+    return holder[0] as T?
 }

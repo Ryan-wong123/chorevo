@@ -78,6 +78,11 @@ class VideoUploadsViewModel @Inject constructor(
         mutate { it.copy(uploadDraft = it.uploadDraft.copy(visibility = visibility)) }
     }
 
+    /** Handles the chosen cover frame for a new upload. */
+    fun uploadCoverFrameChanged(timeMs: Long) {
+        mutate { it.copy(uploadDraft = it.uploadDraft.copy(coverFrameMs = timeMs.coerceAtLeast(0L))) }
+    }
+
     /** Opens the upload video source chooser. */
     fun openVideoSourceDialog() {
         mutate { it.copy(showVideoSourceDialog = true) }
@@ -95,7 +100,8 @@ class VideoUploadsViewModel @Inject constructor(
             it.copy(
                 uploadDraft = it.uploadDraft.copy(
                     selectedVideoUri = uri,
-                    selectedVideoLabel = uri.lastPathSegment ?: "Gallery video"
+                    selectedVideoLabel = uri.lastPathSegment ?: "Gallery video",
+                    coverFrameMs = DanceLibraryModel.DEFAULT_COVER_FRAME_MS
                 ),
                 dancerReview = DancerReviewUiState()
             )
@@ -109,7 +115,8 @@ class VideoUploadsViewModel @Inject constructor(
             it.copy(
                 uploadDraft = it.uploadDraft.copy(
                     selectedVideoUri = uri,
-                    selectedVideoLabel = "Live recording"
+                    selectedVideoLabel = "Live recording",
+                    coverFrameMs = DanceLibraryModel.DEFAULT_COVER_FRAME_MS
                 ),
                 dancerReview = DancerReviewUiState()
             )
@@ -498,6 +505,7 @@ class VideoUploadsViewModel @Inject constructor(
                     description = draft.description,
                     videoUri = videoUri,
                     visibility = draft.visibility,
+                    coverFrameMs = draft.coverFrameMs,
                     generateTemplate = generateTemplate,
                     confirmedTemplate = confirmedTemplate,
                     fps = fps,

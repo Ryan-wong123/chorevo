@@ -30,6 +30,57 @@ service cloud.firestore {
         && linkedDanceOwner(data) == data.analysis.educatorUid;
     }
 
+    function validCommunityPost(data, postId) {
+      return data.keys().hasOnly([
+          'id',
+          'uid',
+          'displayName',
+          'photoUrl',
+          'title',
+          'body',
+          'createdAt'
+        ])
+        && data.id == postId
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && (data.photoUrl == null || data.photoUrl is string)
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 120
+        && data.body is string
+        && data.body.size() > 0
+        && data.body.size() <= 1500
+        && data.createdAt is int;
+    }
+
+    function validCommunityReply(data, postId, replyId) {
+      return data.keys().hasOnly([
+          'id',
+          'postId',
+          'uid',
+          'displayName',
+          'photoUrl',
+          'body',
+          'createdAt'
+        ])
+        && data.id == replyId
+        && data.postId == postId
+        && data.uid == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() > 0
+        && (data.photoUrl == null || data.photoUrl is string)
+        && data.body is string
+        && data.body.size() > 0
+        && data.body.size() <= 500
+        && data.createdAt is int;
+    }
+
+    // The dance owner may clean up likes/comments when deleting their dance.
+    function isDanceOwner(danceId) {
+      return get(/databases/$(database)/documents/danceLibrary/$(danceId)).data.educatorUid == request.auth.uid;
+    }
+
     match /users/{uid} {
       allow read: if isOwner(uid) || (signedIn() && request.auth.uid != uid);
       allow create, update: if isOwner(uid);
@@ -48,6 +99,10 @@ service cloud.firestore {
       }
 
       match /streaks/{docId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /weeklyChallenges/{weekId} {
         allow read, write: if isOwner(uid);
       }
 
@@ -85,6 +140,34 @@ service cloud.firestore {
     }
 
     match /danceLibrary/{danceId} {
+      // Likes: one document per user, keyed by their uid.
+      match /likes/{likerUid} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && request.auth.uid == likerUid
+          && request.resource.data.keys().hasOnly(['liked'])
+          && request.resource.data.liked == true;
+        allow delete: if signedIn()
+          && (request.auth.uid == likerUid || isDanceOwner(danceId));
+      }
+
+      // Comments: authored by the caller, no edits, deletable by the author.
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.keys().hasOnly(['commentId', 'uid', 'username', 'text', 'createdAt'])
+          && request.resource.data.commentId == commentId
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.username is string
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt is int;
+        allow update: if false;
+        allow delete: if signedIn()
+          && (resource.data.uid == request.auth.uid || isDanceOwner(danceId));
+      }
+
       allow read: if signedIn();
 
       allow create: if signedIn()
@@ -104,6 +187,25 @@ service cloud.firestore {
       allow read: if signedIn();
       allow create, update: if signedIn() && request.auth.uid == uid;
       allow delete: if false;
+    }
+
+    match /communityPosts/{postId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && validCommunityPost(request.resource.data, postId);
+      allow update: if false;
+      allow delete: if signedIn()
+        && resource.data.uid == request.auth.uid;
+
+      match /replies/{replyId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && exists(/databases/$(database)/documents/communityPosts/$(postId))
+          && validCommunityReply(request.resource.data, postId, replyId);
+        allow update: if false;
+        allow delete: if signedIn()
+          && resource.data.uid == request.auth.uid;
+      }
     }
   }
 }

@@ -1,5 +1,7 @@
 package com.example.chorevo.notification
 
+import com.example.chorevo.ui.theme.PillShape
+import com.example.chorevo.ui.theme.ChorevoTheme
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -59,6 +61,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.outlined.DarkMode
+import com.example.chorevo.core.ViewModel.ThemeMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -86,7 +91,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val uiState by appViewModel.uiState.collectAsStateWithLifecycle()
 
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val screenBg = MaterialTheme.colorScheme.surface
     val cardBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
 
@@ -189,6 +194,14 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            AppearanceCard(
+                selected = uiState.themeMode,
+                onSelect = appViewModel::setThemeMode,
+                cardColor = cardBg
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             NotificationCard(
                 pushEnabled = pushEnabled,
                 reminderTime = formatTime(selectedHour, selectedMinute),
@@ -221,9 +234,9 @@ fun SettingsScreen(
                     .height(54.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = brandTeal,
-                    contentColor = Color.White
+                    contentColor = ChorevoTheme.colors.onAccent
                 ),
-                shape = RoundedCornerShape(14.dp)
+                shape = PillShape
             ) {
                 Text(
                     text = "Sign Out",
@@ -247,6 +260,68 @@ fun SettingsScreen(
     }
 }
 
+/** Dark / Light / System choice for the app's colours. */
+@Composable
+private fun AppearanceCard(
+    selected: ThemeMode,
+    onSelect: (ThemeMode) -> Unit,
+    cardColor: Color
+) {
+    val colors = ChorevoTheme.colors
+    Card(
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("appearanceCard"),
+        colors = CardDefaults.cardColors(containerColor = cardColor)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.DarkMode,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Appearance",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(PillShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .padding(4.dp)
+            ) {
+                ThemeMode.entries.forEach { mode ->
+                    val isSelected = mode == selected
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(PillShape)
+                            .background(if (isSelected) colors.accent else Color.Transparent)
+                            .clickable { onSelect(mode) }
+                            .padding(vertical = 10.dp)
+                            .testTag("themeMode_${mode.key}"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = mode.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSelected) colors.onAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** Updates tings top bar. */
 @Composable
 private fun SettingsTopBar(
@@ -256,7 +331,7 @@ private fun SettingsTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(brandTeal)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .height(64.dp)
             .padding(horizontal = 8.dp),
@@ -266,13 +341,13 @@ private fun SettingsTopBar(
             Icon(
                 imageVector = Icons.Default.ArrowBack,
                 contentDescription = "Back",
-                tint = Color.White
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
 
         Text(
             text = "Settings",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(start = 4.dp)
@@ -310,7 +385,7 @@ private fun ProfileHeader(
                 ) {
                     Text(
                         text = displayName.take(2).uppercase(Locale.getDefault()),
-                        color = Color.White,
+                        color = ChorevoTheme.colors.onAccent,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
                     )
@@ -376,7 +451,7 @@ private fun NotificationCard(
     cardColor: Color
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = cardColor)
     ) {
@@ -385,7 +460,7 @@ private fun NotificationCard(
                 Icon(
                     imageVector = Icons.Default.Notifications,
                     contentDescription = null,
-                    tint = Color.Black
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
@@ -503,7 +578,7 @@ private fun SettingToggle(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
+                checkedThumbColor = ChorevoTheme.colors.onAccent,
                 checkedTrackColor = brandTeal
             )
         )

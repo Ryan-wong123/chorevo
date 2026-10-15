@@ -62,6 +62,7 @@ class VideoUploadsRepository @Inject constructor(
         description: String,
         videoUri: Uri,
         visibility: String = DanceLibraryModel.VISIBILITY_PUBLIC,
+        coverFrameMs: Long = DanceLibraryModel.DEFAULT_COVER_FRAME_MS,
         generateTemplate: Boolean = true,
         confirmedTemplate: PoseTemplate? = null,
         fps: Int = 2,
@@ -137,6 +138,14 @@ class VideoUploadsRepository @Inject constructor(
             // 4) Save Firestore doc immediately, then build template in background.
             onStageChanged?.invoke("Saving details")
             onProgress?.invoke(0.98f)
+            val initialStatus = when {
+                confirmedTemplate != null -> "saving"
+                generateTemplate -> "queued"
+                else -> "skipped"
+            }
+            val reviewStatus = if (confirmedTemplate != null) "confirmed" else ""
+            // The real status goes into the first write. DanceLibraryModel defaults
+            // to "ready", which would briefly make the dance show up in the feed.
             val doc = DanceLibraryModel(
                 danceId = danceId,
                 title = title.trim(),
@@ -146,7 +155,10 @@ class VideoUploadsRepository @Inject constructor(
                 educatorName = educatorName.trim(),
                 videoUrl = videoUrl,
                 enabled = true,
-                visibility = visibility
+                templateGenerationStatus = initialStatus,
+                templateReviewStatus = reviewStatus,
+                visibility = visibility,
+                coverFrameMs = coverFrameMs
             )
 
             db.collection("danceLibrary")
@@ -167,12 +179,8 @@ class VideoUploadsRepository @Inject constructor(
                         "uploadedSizeBytes" to uploadedSize,
                         "wasCompressed" to useCompressed,
                         "storagePath" to storagePath,
-                        "templateGenerationStatus" to when {
-                            confirmedTemplate != null -> "saving"
-                            generateTemplate -> "queued"
-                            else -> "skipped"
-                        },
-                        "templateReviewStatus" to if (confirmedTemplate != null) "confirmed" else ""
+                        "templateGenerationStatus" to initialStatus,
+                        "templateReviewStatus" to reviewStatus
                     ),
                     SetOptions.merge()
                 )
@@ -180,7 +188,7 @@ class VideoUploadsRepository @Inject constructor(
 
             if (confirmedTemplate != null) {
                 onStageChanged?.invoke("Saving confirmed dancer template")
-                val templateStoragePath = PoseTemplateStorage.jsonPath(danceId)
+                val templateStoragePath = PoseTemplateStorage.jsonPath(uid, danceId)
                 val templateJsonBytes = PoseTemplateJson
                     .toJson(confirmedTemplate)
                     .toByteArray(Charsets.UTF_8)
@@ -367,15 +375,21 @@ class VideoUploadsRepository @Inject constructor(
                     IllegalStateException("Missing educatorUid for delete")
                 )
 
-            db.collection("danceLibrary")
-                .document(danceId)
-                .delete()
-                .await()
+            val danceRef = db.collection("danceLibrary").document(danceId)
 
             val videoRef = storage.reference.child("danceVideos/$uid/$danceId.mp4")
-            val templateRef = storage.reference.child(PoseTemplateStorage.jsonPath(danceId))
+            val templateRef = storage.reference.child(PoseTemplateStorage.jsonPath(uid, danceId))
             runCatching { videoRef.delete().await() }
             runCatching { templateRef.delete().await() }
+
+            // Then likes and comments, which Firestore does not delete with the parent.
+            for (sub in listOf("likes", "comments")) {
+                runCatching {
+                    danceRef.collection(sub).get().await().documents.forEach { it.reference.delete().await() }
+                }
+            }
+
+            danceRef.delete().await()
 
             Result.success(Unit)
         } catch (e: Exception) {

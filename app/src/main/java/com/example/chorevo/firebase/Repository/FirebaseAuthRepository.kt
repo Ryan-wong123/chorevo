@@ -31,7 +31,7 @@ class FirebaseAuthRepository @Inject constructor(
         syncUserProfile(
             user = user,
             fallbackEmail = email,
-            fallbackDisplayName = displayName.trim()
+            explicitDisplayName = displayName.trim()
         )
     }
 
@@ -130,34 +130,42 @@ class FirebaseAuthRepository @Inject constructor(
         auth.signOut()
     }
 
-    /** Creates or refreshes the Firestore user record, then returns the normalized profile. */
+    /**
+     * Creates or refreshes the Firestore user record, then returns the normalized profile.
+     *
+     * [explicitDisplayName] (chosen at sign-up) is always saved. The fallback
+     * name and photo from the auth provider only fill in values the stored
+     * profile does not have yet, so a name or photo the user set in the app is
+     * never overwritten or blanked on sign-in or app start.
+     */
     private suspend fun syncUserProfile(
         user: FirebaseUser,
         fallbackEmail: String? = user.email,
+        explicitDisplayName: String? = null,
         fallbackDisplayName: String? = null,
         fallbackPhotoUrl: String? = user.photoUrl?.toString()
     ): UserProfile {
-        val trimmedDisplayName = fallbackDisplayName?.trim().takeUnless { it.isNullOrBlank() }
-        val resolvedPhotoUrl = fallbackPhotoUrl ?: user.photoUrl?.toString()
         val userRef = db.collection("users").document(user.uid)
+        val existing = userRef.get().await()
+        val storedDisplayName = existing.getString("displayName")?.trim().takeUnless { it.isNullOrBlank() }
+        val storedPhotoUrl = existing.getString("photoUrl")?.takeUnless { it.isBlank() }
 
-        userRef.set(
-            mapOf(
-                "uid" to user.uid,
-                "email" to (user.email ?: fallbackEmail),
-                "role" to UserRole.USER.name,
-                "displayName" to trimmedDisplayName,
-                "photoUrl" to resolvedPhotoUrl,
-                "lastSeen" to System.currentTimeMillis()
-            ),
-            SetOptions.merge()
-        ).await()
+        val displayName = explicitDisplayName?.trim().takeUnless { it.isNullOrBlank() }
+            ?: storedDisplayName
+            ?: fallbackDisplayName?.trim().takeUnless { it.isNullOrBlank() }
+        val photoUrl = storedPhotoUrl ?: fallbackPhotoUrl?.takeUnless { it.isBlank() }
 
-        val snap = userRef.get().await()
-        val displayName = snap.getString("displayName")?.trim()
-            .takeUnless { it.isNullOrBlank() }
-            ?: trimmedDisplayName
-        val photoUrl = snap.getString("photoUrl") ?: resolvedPhotoUrl
+        val fields = mutableMapOf<String, Any?>(
+            "uid" to user.uid,
+            "email" to (user.email ?: fallbackEmail),
+            "role" to UserRole.USER.name,
+            "lastSeen" to System.currentTimeMillis()
+        )
+        // Only write name/photo when there is a value, so merge never nulls them out.
+        if (displayName != null) fields["displayName"] = displayName
+        if (photoUrl != null) fields["photoUrl"] = photoUrl
+
+        userRef.set(fields, SetOptions.merge()).await()
 
         syncLeaderboardProfile(
             uid = user.uid,

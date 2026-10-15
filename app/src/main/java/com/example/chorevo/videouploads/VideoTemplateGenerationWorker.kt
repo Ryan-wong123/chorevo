@@ -32,6 +32,7 @@ class VideoTemplateGenerationWorker(
         val storagePath = inputData.getString(KEY_STORAGE_PATH) ?: return Result.failure()
         val fps = inputData.getInt(KEY_FPS, 5).coerceAtLeast(1)
         val collectHandLandmarks = inputData.getBoolean(KEY_COLLECT_HAND_LANDMARKS, true)
+        val ownerUid = PoseTemplateStorage.ownerUidFromVideoPath(storagePath) ?: return Result.failure()
 
         val firestore = FirebaseFirestore.getInstance()
         val storage = FirebaseStorage.getInstance()
@@ -70,7 +71,7 @@ class VideoTemplateGenerationWorker(
 
             templateResult.fold(
                 onSuccess = { template ->
-                    val templateStoragePath = PoseTemplateStorage.jsonPath(danceId)
+                    val templateStoragePath = PoseTemplateStorage.jsonPath(ownerUid, danceId)
                     val templateJsonBytes = PoseTemplateJson
                         .toJson(template)
                         .toByteArray(Charsets.UTF_8)

@@ -26,6 +26,7 @@ object DatabaseModule {
             AppDb::class.java,
             "app.db"
         )
+            .addMigrations(AppDb.MIGRATION_5_6)
             .fallbackToDestructiveMigration()
             .build()
     }
