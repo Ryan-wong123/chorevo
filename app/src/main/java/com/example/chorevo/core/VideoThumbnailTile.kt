@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,7 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 9:16 video thumbnail (a frame from 1 s in) with a play icon and the title
+ * 9:16 video thumbnail (the frame at [frameTimeMs]) with a play icon and the title
  * underneath. [badge] draws extra content over the thumbnail, e.g. a lock icon.
  */
 @Composable
@@ -44,17 +43,18 @@ fun VideoThumbnailTile(
     title: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    frameTimeMs: Long = 1_000L,
     badge: (@Composable BoxScope.() -> Unit)? = null
 ) {
-    var bitmap by remember(videoUrl) { mutableStateOf<Bitmap?>(null) }
+    var bitmap by remember(videoUrl, frameTimeMs) { mutableStateOf<Bitmap?>(null) }
 
-    LaunchedEffect(videoUrl) {
+    LaunchedEffect(videoUrl, frameTimeMs) {
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
                 val retriever = MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(videoUrl, emptyMap())
-                    retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    retriever.getFrameAtTime(frameTimeMs * 1_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 } finally {
                     retriever.release()
                 }
@@ -78,11 +78,7 @@ fun VideoThumbnailTile(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    strokeWidth = 2.dp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Box(Modifier.fillMaxSize().shimmer())
             }
 
             Icon(

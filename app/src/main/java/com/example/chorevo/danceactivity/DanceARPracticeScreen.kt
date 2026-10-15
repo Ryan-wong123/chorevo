@@ -1,5 +1,6 @@
 package com.example.chorevo.danceactivity
 
+import com.example.chorevo.core.rememberHaptics
 import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.ui.theme.ChorevoTheme
 import android.Manifest
@@ -176,6 +177,12 @@ fun DanceARPracticeScreen(
     var liveScore by remember { mutableStateOf<Double?>(if (testMode) 0.82 else null) }
     var comboStartMs by remember { mutableStateOf<Long?>(null) }
     var comboSeconds by remember { mutableIntStateOf(0) }
+    // Buzz when a combo starts and again at every 5-second milestone.
+    val haptics = rememberHaptics()
+    val comboTier = if (comboSeconds >= COMBO_MIN_SECONDS) 1 + comboSeconds / 5 else 0
+    LaunchedEffect(comboTier) {
+        if (comboTier > 0) haptics.success()
+    }
     // Scores of the last submitted session, for the results screen.
     var lastResult by remember { mutableStateOf<PracticeResult?>(null) }
     val personalBests = remember(context) { PersonalBestStore(context) }

@@ -1,6 +1,8 @@
 package com.example.chorevo.weeklychallenge
 
 import androidx.compose.runtime.ReadOnlyComposable
+import com.example.chorevo.core.AnimatedEmptyState
+import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -96,14 +99,13 @@ fun WeeklyChallengesScreen(
             Spacer(Modifier.height(16.dp))
 
             if (state.loading && state.challenges.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = brandTeal)
-                }
+                ShimmerList(rows = 4)
             } else if (state.challenges.isEmpty()) {
-                Text(
-                    text = state.errorMessage ?: "No challenges available yet — check back after your next session.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colors.onSurfaceVariant
+                AnimatedEmptyState(
+                    icon = Icons.Filled.EmojiEvents,
+                    title = if (state.errorMessage != null) "Couldn't load challenges" else "No challenges yet",
+                    message = state.errorMessage ?: "No challenges available yet — check back after your next session.",
+                    accent = brandTeal
                 )
             } else {
                 LazyColumn(

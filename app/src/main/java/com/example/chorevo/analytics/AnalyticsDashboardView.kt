@@ -1,5 +1,7 @@
 package com.example.chorevo.analytics
 
+import com.example.chorevo.core.ShimmerBlock
+import androidx.compose.ui.platform.testTag
 import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -105,23 +107,16 @@ fun AnalyticsDashboardView(
 
                 if (selected == null) {
                     Card(Modifier.fillMaxWidth()) {
-                        Box(
+                        Column(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(14.dp),
-                            contentAlignment = Alignment.Center
+                                .padding(14.dp)
+                                .testTag("analyticsDetailLoading"),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(Modifier.width(10.dp))
-                                Text(
-                                    "Loading analytics…",
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                            }
+                            ShimmerBlock(Modifier.fillMaxWidth(0.5f).height(14.dp))
+                            ShimmerBlock(Modifier.fillMaxWidth().height(120.dp))
+                            ShimmerBlock(Modifier.fillMaxWidth(0.8f).height(12.dp))
                         }
                     }
                 } else {

@@ -538,6 +538,51 @@ class VideoUploadsViewModelTest {
         }
     }
 
+    @Test
+    fun uploadDance_withChosenCoverFrame_passesCoverFrame() = runTest {
+        val user = mockk<UserProfile> {
+            every { uid } returns "uid123"
+            every { displayName } returns "Coach A"
+            every { email } returns "coach@example.com"
+        }
+        val context = mockk<Context>(relaxed = true)
+        val videoUri = mockk<Uri>(relaxed = true)
+        coEvery { authRepo.getCurrentUserProfile() } returns user
+        coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(emptyList())
+        coEvery {
+            uploadsRepo.uploadDance(
+                context = any(), educatorUid = any(), educatorName = any(), title = any(),
+                danceType = any(), description = any(), videoUri = any(), visibility = any(), coverFrameMs = any(),
+                generateTemplate = any(), confirmedTemplate = any(), fps = any(),
+                collectHandLandmarks = any(), onProgress = any(), onStageChanged = any(),
+                onTemplateFailure = any(), continueWithoutTemplateOnFailure = any()
+            )
+        } returns Result.success("dance-id")
+
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        advanceUntilIdle()
+
+        vm.uploadTitleChanged("Routine")
+        vm.uploadDanceTypeChanged("Hip Hop")
+        vm.uploadDescriptionChanged("Fast footwork")
+        vm.selectRecordedVideo(videoUri)
+        vm.uploadCoverFrameChanged(4_500L)
+
+        vm.uploadDance(context = context, generateTemplate = true, fps = 15)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            uploadsRepo.uploadDance(
+                context = any(), educatorUid = any(), educatorName = any(), title = any(),
+                danceType = any(), description = any(), videoUri = any(),
+                visibility = any(), coverFrameMs = 4_500L,
+                generateTemplate = any(), confirmedTemplate = any(), fps = any(),
+                collectHandLandmarks = any(), onProgress = any(), onStageChanged = any(),
+                onTemplateFailure = any(), continueWithoutTemplateOnFailure = any()
+            )
+        }
+    }
+
     private fun sampleTrack(trackId: String): PoseTrack {
         return PoseTrack(
             trackId = trackId,

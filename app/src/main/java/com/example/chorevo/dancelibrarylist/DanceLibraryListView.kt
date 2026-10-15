@@ -49,10 +49,13 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.LocalFloatingBarInset
 import com.example.chorevo.core.LocalFloatingBarState
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.rememberHaptics
+import com.example.chorevo.core.shimmer
 import com.example.chorevo.core.share.ShareBottomSheet
 import com.example.chorevo.core.share.ShareContent
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceSocialState
@@ -105,7 +108,16 @@ fun DanceLibraryListView(
                 .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
-            Text(status ?: "Loading...", color = Color.White)
+            if (state.isLoading) {
+                FeedSkeleton()
+            } else {
+                AnimatedEmptyState(
+                    icon = Icons.Filled.PlayArrow,
+                    title = status ?: "No dances available.",
+                    message = "New routines show up here as creators publish them.",
+                    contentColor = Color.White
+                )
+            }
         }
         return
     }
@@ -277,8 +289,10 @@ private fun TikTokVideoPage(
     }
 
     var heartBurstOffset by remember { mutableStateOf<Offset?>(null) }
+    val haptics = rememberHaptics()
 
     fun triggerLike() {
+        haptics.tick()
         if (!isLiked && uid != null) {
             vm.toggleLike(item.danceId, uid, isCurrentlyLiked = false)
         }
@@ -350,6 +364,7 @@ private fun TikTokVideoPage(
                 tint    = if (isLiked) ChorevoTheme.colors.like else Color.White,
                 onClick = {
                     if (uid != null) {
+                        haptics.tick()
                         vm.toggleLike(item.danceId, uid, isCurrentlyLiked = isLiked)
                     }
                 },
@@ -589,6 +604,16 @@ private fun RailAction(
         animationSpec = tween(200),
         label         = "railIconTint"
     )
+    // Springy pop whenever the icon swaps (e.g. like ↔ unlike), skipped on first show.
+    val pop = remember { Animatable(1f) }
+    var iconSettled by remember { mutableStateOf(false) }
+    LaunchedEffect(icon) {
+        if (iconSettled) {
+            pop.snapTo(1.35f)
+            pop.animateTo(1f, spring(dampingRatio = 0.4f, stiffness = Spring.StiffnessMedium))
+        }
+        iconSettled = true
+    }
 
     Column(
         modifier = Modifier
@@ -605,7 +630,10 @@ private fun RailAction(
             tint               = iconTint,
             modifier           = Modifier
                 .size(32.dp)
-                .graphicsLayer { if (mirrorIcon) scaleX = -1f }
+                .graphicsLayer {
+                    scaleX = pop.value * (if (mirrorIcon) -1f else 1f)
+                    scaleY = pop.value
+                }
         )
         Text(
             text       = label,
@@ -813,5 +841,48 @@ private fun HeartBurst(offset: Offset) {
                 }
                 .scale(scale.value)
         )
+    }
+}
+/** Placeholder for the feed while the first page loads: rail buttons and caption lines. */
+@Composable
+private fun FeedSkeleton() {
+    val base = Color.White.copy(alpha = 0.08f)
+    val highlight = Color.White.copy(alpha = 0.18f)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("feedSkeleton")
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 12.dp, bottom = 140.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            repeat(4) {
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .shimmer(base, highlight)
+                )
+            }
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(start = 16.dp, bottom = 120.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            listOf(120.dp, 220.dp, 170.dp).forEach { w ->
+                Box(
+                    Modifier
+                        .width(w)
+                        .height(14.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .shimmer(base, highlight)
+                )
+            }
+        }
     }
 }

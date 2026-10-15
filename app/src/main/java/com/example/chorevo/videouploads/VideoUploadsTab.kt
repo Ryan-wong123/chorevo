@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -66,7 +67,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
+import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.SharedPlayerView
+import com.example.chorevo.core.ShimmerGrid
+import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.core.VideoThumbnailTile
 import com.example.chorevo.core.createCachedFeedExoPlayer
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
@@ -257,17 +261,14 @@ fun VideoUploadsTab(
                 if (gridFilter == UploadsGridFilter.PRIVATE) item.isPrivate else !item.isPrivate
             }
             if (state.refreshing && gridItems.isEmpty()) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                ShimmerGrid(cells = 6)
+            } else {
+                UploadsThumbnailGrid(
+                    items = gridItems,
+                    showingPrivate = gridFilter == UploadsGridFilter.PRIVATE,
+                    onTap = { actionItem = it }
+                )
             }
-            UploadsThumbnailGrid(
-                items = gridItems,
-                emptyText = if (gridFilter == UploadsGridFilter.PRIVATE) {
-                    "No private videos. Make an upload private to see it here."
-                } else {
-                    "No public videos yet. Tap + to upload your first dance."
-                },
-                onTap = { actionItem = it }
-            )
         } else {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -284,13 +285,19 @@ fun VideoUploadsTab(
                 }
             }
 
-            if (state.refreshing) {
+            if (state.refreshing && state.myUploads.isEmpty()) {
+                ShimmerList(rows = 3)
+            } else if (state.refreshing) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             }
 
             if (state.myUploads.isEmpty() && !state.refreshing) {
-                Text("No uploaded videos yet.", style = MaterialTheme.typography.bodySmall)
-            } else {
+                AnimatedEmptyState(
+                    icon = Icons.Filled.VideoLibrary,
+                    title = "No uploaded videos yet",
+                    message = "Your published dances will appear here."
+                )
+            } else if (state.myUploads.isNotEmpty()) {
                 if (embeddedInParentScroll) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -515,16 +522,23 @@ private fun VideoPreviewPlayer(
 @Composable
 private fun UploadsThumbnailGrid(
     items: List<DanceLibraryModel>,
-    emptyText: String,
+    showingPrivate: Boolean,
     onTap: (DanceLibraryModel) -> Unit
 ) {
     if (items.isEmpty()) {
-        Text(
-            emptyText,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(vertical = 32.dp)
-        )
+        if (showingPrivate) {
+            AnimatedEmptyState(
+                icon = Icons.Filled.Lock,
+                title = "No private videos",
+                message = "Make an upload private to see it here."
+            )
+        } else {
+            AnimatedEmptyState(
+                icon = Icons.Filled.VideoLibrary,
+                title = "No public videos yet",
+                message = "Tap + to upload your first dance."
+            )
+        }
         return
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -535,6 +549,7 @@ private fun UploadsThumbnailGrid(
                         videoUrl = item.videoUrl,
                         title = item.title,
                         onClick = { onTap(item) },
+                        frameTimeMs = item.coverFrameMs,
                         modifier = Modifier
                             .weight(1f)
                             .testTag("uploadTile_${item.danceId}"),
