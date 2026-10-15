@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -275,8 +276,9 @@ class LeaderboardScreenTest {
             LeaderboardScreen(myUid = "uid1", vm = vm)
         }
 
-        waitForTextExists("Sessions: 15")
-        composeRule.onNodeWithText("Sessions: 15").assertIsDisplayed()
+        // Rank 1 stands on the podium, which shows the short metric value.
+        waitForTextExists("15 sessions")
+        composeRule.onNodeWithText("15 sessions").assertIsDisplayed()
     }
 
     @Test
@@ -299,8 +301,8 @@ class LeaderboardScreenTest {
         waitForTextExists("Bob")
         composeRule.onNodeWithText("Similarity").performClick()
 
-        waitForTextExists("Average similarity: 0.75")
-        composeRule.onNodeWithText("Average similarity: 0.75").assertIsDisplayed()
+        waitForTextExists("75% match")
+        composeRule.onNodeWithText("75% match").assertIsDisplayed()
     }
 
     @Test
@@ -323,8 +325,8 @@ class LeaderboardScreenTest {
         waitForTextExists("Bob")
         composeRule.onNodeWithText("Active Days").performClick()
 
-        waitForTextExists("Active days: 12")
-        composeRule.onNodeWithText("Active days: 12").assertIsDisplayed()
+        waitForTextExists("12 days")
+        composeRule.onNodeWithText("12 days").assertIsDisplayed()
     }
 
     // ── Friend Buttons ────────────────────────────────────────────────────────
@@ -520,9 +522,7 @@ class LeaderboardScreenTest {
         waitForTextExists("Bob")
         composeRule.onNodeWithText("Bob").assertIsDisplayed()
         composeRule.onNodeWithText("Carol").assertIsDisplayed()
-        // Both share rank #1
-        assertTrue(
-            composeRule.onAllNodesWithText("#1").fetchSemanticsNodes().size >= 2
-        )
+        // Both share rank 1: two gold podium blocks.
+        composeRule.onAllNodesWithTag("podium_rank_1").assertCountEquals(2)
     }
 }
