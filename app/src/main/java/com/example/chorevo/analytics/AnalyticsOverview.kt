@@ -513,23 +513,24 @@ private fun DrawScope.drawBodyFigure(
     val h = size.height
     val stroke = w * 0.09f
     fun p(x: Float, y: Float) = Offset(w * x, h * y)
-    fun limb(color: Color, vararg pts: Offset) {
-        for (i in 0 until pts.size - 1) {
-            drawLine(color, pts[i], pts[i + 1], strokeWidth = stroke, cap = StrokeCap.Round)
+    fun limb(color: Color, vararg pts: Pair<Float, Float>) {
+        val points = pts.map { (x, y) -> p(x, y) }
+        for (i in 0 until points.size - 1) {
+            drawLine(color, points[i], points[i + 1], strokeWidth = stroke, cap = StrokeCap.Round)
         }
     }
 
     // Head and torso (posture).
     drawCircle(posture, radius = w * 0.13f, center = p(0.5f, 0.11f))
-    limb(posture, p(0.5f, 0.24f), p(0.5f, 0.55f))
-    limb(posture, p(0.3f, 0.28f), p(0.7f, 0.28f))
-    limb(posture, p(0.38f, 0.55f), p(0.62f, 0.55f))
+    limb(posture, 0.5f to 0.24f, 0.5f to 0.55f)
+    limb(posture, 0.3f to 0.28f, 0.7f to 0.28f)
+    limb(posture, 0.38f to 0.55f, 0.62f to 0.55f)
 
     // Dancer's right arm/leg on the viewer's left.
-    limb(rightArm, p(0.3f, 0.28f), p(0.16f, 0.42f), p(0.1f, 0.56f))
-    limb(leftArm, p(0.7f, 0.28f), p(0.84f, 0.42f), p(0.9f, 0.56f))
-    limb(rightLeg, p(0.4f, 0.55f), p(0.36f, 0.76f), p(0.33f, 0.96f))
-    limb(leftLeg, p(0.6f, 0.55f), p(0.64f, 0.76f), p(0.67f, 0.96f))
+    limb(rightArm, 0.3f to 0.28f, 0.16f to 0.42f, 0.1f to 0.56f)
+    limb(leftArm, 0.7f to 0.28f, 0.84f to 0.42f, 0.9f to 0.56f)
+    limb(rightLeg, 0.4f to 0.55f, 0.36f to 0.76f, 0.33f to 0.96f)
+    limb(leftLeg, 0.6f to 0.55f, 0.64f to 0.76f, 0.67f to 0.96f)
 
     // Hands.
     drawCircle(hands, radius = w * 0.07f, center = p(0.1f, 0.58f))
