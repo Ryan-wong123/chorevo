@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
@@ -197,5 +198,70 @@ class DanceLibraryListViewTest {
         composeRule.waitUntil(timeoutMillis = 5_000) { picked != null }
         assertEquals("d1", picked!!.danceId)
         assertEquals("Salsa Basics", picked!!.title)
+    }
+
+    // ── Discovery bar ─────────────────────────────────────────────────────
+
+    private fun discoveryItems() = listOf(
+        DanceLibraryModel(
+            danceId = "d1", title = "Salsa Basics", educatorName = "Coach A",
+            danceType = "Salsa", videoUrl = "https://example.com/v1.mp4", enabled = true
+        ),
+        DanceLibraryModel(
+            danceId = "d2", title = "Hip Hop Groove", educatorName = "Coach B",
+            danceType = "Hip Hop", videoUrl = "https://example.com/v2.mp4", enabled = true
+        )
+    )
+
+    @Test
+    fun discoveryBar_showsTabsAndCategoryChips() {
+        coEvery { repo.listEnabled() } returns Result.success(discoveryItems())
+
+        composeRule.setContent {
+            DanceLibraryListView(onPickDance = { }, onBack = { }, vm = vm, uid = "uid123")
+        }
+
+        waitForTextExists("Salsa Basics")
+        composeRule.onNodeWithText("For You").assertIsDisplayed()
+        composeRule.onNodeWithText("Trending").assertIsDisplayed()
+        composeRule.onNodeWithText("New").assertIsDisplayed()
+        composeRule.onNodeWithTag("categoryChip_all").assertIsDisplayed()
+        composeRule.onNodeWithTag("categoryChip_salsa").assertIsDisplayed()
+        composeRule.onNodeWithTag("categoryChip_hiphop").assertIsDisplayed()
+    }
+
+    @Test
+    fun categoryChip_filtersFeedToThatStyle() {
+        coEvery { repo.listEnabled() } returns Result.success(discoveryItems())
+
+        composeRule.setContent {
+            DanceLibraryListView(onPickDance = { }, onBack = { }, vm = vm, uid = "uid123")
+        }
+
+        waitForTextExists("Salsa Basics")
+        composeRule.onNodeWithTag("categoryChip_hiphop").performClick()
+
+        waitForTextExists("Hip Hop Groove")
+        composeRule.onNodeWithText("Hip Hop Groove").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Salsa Basics").assertCountEquals(0)
+    }
+
+    @Test
+    fun searchWithNoMatch_showsEmptyState_andClearFiltersRestoresFeed() {
+        coEvery { repo.listEnabled() } returns Result.success(discoveryItems())
+
+        composeRule.setContent {
+            DanceLibraryListView(onPickDance = { }, onBack = { }, vm = vm, uid = "uid123")
+        }
+
+        waitForTextExists("Salsa Basics")
+        composeRule.onNodeWithTag("searchButton").performClick()
+        composeRule.onNodeWithTag("searchField").performTextInput("ballet")
+
+        waitForTextExists("No dances match")
+        composeRule.onNodeWithTag("clearFilters").performClick()
+
+        waitForTextExists("Salsa Basics")
+        composeRule.onNodeWithText("Salsa Basics").assertIsDisplayed()
     }
 }

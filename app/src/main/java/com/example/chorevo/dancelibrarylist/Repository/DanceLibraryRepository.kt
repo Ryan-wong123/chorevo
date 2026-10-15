@@ -6,11 +6,15 @@ import com.example.chorevo.dancelibrarylist.DanceComment
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
+import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -259,6 +263,26 @@ class DanceLibraryRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Like counts for several dances, for the Trending tab. Uses server-side
+     * count() aggregations (one cheap query per dance, run in parallel);
+     * a dance whose count fails is left out and treated as 0 likes.
+     */
+    suspend fun likeCounts(danceIds: List<String>): Map<String, Int> = coroutineScope {
+        danceIds.distinct().map { id ->
+            async {
+                runCatching {
+                    val snap = firestore.collection("danceLibrary")
+                        .document(id).collection("likes")
+                        .count()
+                        .get(AggregateSource.SERVER)
+                        .await()
+                    id to snap.count.toInt()
+                }.getOrNull()
+            }
+        }.awaitAll().filterNotNull().toMap()
     }
 
     suspend fun toggleLike(danceId: String, uid: String, isCurrentlyLiked: Boolean): Result<Unit> {

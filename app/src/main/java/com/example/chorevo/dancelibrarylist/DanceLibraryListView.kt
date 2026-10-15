@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Share
@@ -81,10 +82,22 @@ fun DanceLibraryListView(
     val upload by vm.uploadState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
-    // A dance opened from a share link plays first, followed by the usual feed.
-    val items = remember(state.items, pinnedDance) {
-        if (pinnedDance == null) state.items
-        else listOf(pinnedDance) + state.items.filter { it.danceId != pinnedDance.danceId }
+    // The discovery bar's filtered feed. A dance opened from a share link plays
+    // first, but only on the unfiltered For You feed.
+    val items = remember(state.visibleItems, state.filter, pinnedDance) {
+        if (pinnedDance == null || state.filter != DiscoveryFilter()) state.visibleItems
+        else listOf(pinnedDance) + state.visibleItems.filter { it.danceId != pinnedDance.danceId }
+    }
+    val discoveryBar: @Composable (Modifier) -> Unit = { modifier ->
+        DiscoveryBar(
+            filter = state.filter,
+            categories = state.categories,
+            isLoadingTrending = state.isLoadingTrending,
+            onSelectTab = vm::selectTab,
+            onSelectCategory = vm::selectCategory,
+            onQueryChange = vm::setSearchQuery,
+            modifier = modifier
+        )
     }
     val status = state.message
     var openingDanceId by remember { mutableStateOf<String?>(null) }
@@ -101,7 +114,9 @@ fun DanceLibraryListView(
         vm.clearUploadMessage()
     }
 
-    if (items.isEmpty()) {
+    // No dances at all (or still loading). A search with no matches is handled
+    // below so the discovery bar stays put.
+    if (items.isEmpty() && state.items.isEmpty()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -139,6 +154,11 @@ fun DanceLibraryListView(
     // A link tapped while the feed is already open jumps back to the shared video.
     LaunchedEffect(pinnedDance?.danceId) {
         if (pinnedDance != null) pagerState.scrollToPage(0)
+    }
+
+    // A new tab, chip or search starts the feed from its first video.
+    LaunchedEffect(state.filter) {
+        if (pagerState.currentPage != 0) pagerState.scrollToPage(0)
     }
 
     val mainPlayer = remember {
@@ -198,40 +218,67 @@ fun DanceLibraryListView(
             hostState = snackbarHostState,
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 56.dp)
+                .padding(top = 130.dp)
         )
 
-        VerticalPager(
-            state = pagerState,
-            modifier = Modifier
-                .fillMaxSize()
-                .testTag("dancePager")
-        ) { page ->
-            TikTokVideoPage(
-                item = items[page],
-                isActive = pagerState.currentPage == page,
-                exoPlayer = mainPlayer,
-                uid = uid,
-                username = username,
-                vm = vm,
-                onStartPractice = {
-                    val selectedItem = items[page]
-                    if (openingDanceId != null) return@TikTokVideoPage
-                    openingDanceId = selectedItem.danceId
-                    scope.launch {
-                        vm.preparePracticeItem(selectedItem).fold(
-                            onSuccess = { prepared -> onPickDance(prepared) },
-                            onFailure = { error ->
-                                snackbarHostState.showSnackbar(
-                                    error.message ?: "Unable to load the dance reference template"
-                                )
-                            }
-                        )
-                        openingDanceId = null
-                    }
+        if (items.isEmpty()) {
+            // Dances exist but none match the search / chip.
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                AnimatedEmptyState(
+                    icon = Icons.Filled.Search,
+                    title = "No dances match",
+                    message = if (state.filter.query.isNotBlank()) {
+                        "Nothing found for \"${state.filter.query.trim()}\". Try another word or style."
+                    } else {
+                        "No dances in this style yet."
+                    },
+                    contentColor = Color.White
+                )
+                TextButton(
+                    onClick = vm::clearDiscoveryFilters,
+                    modifier = Modifier.testTag("clearFilters")
+                ) {
+                    Text("Clear filters", color = ChorevoTheme.colors.accent)
                 }
-            )
+            }
+        } else {
+            VerticalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .testTag("dancePager")
+            ) { page ->
+                TikTokVideoPage(
+                    item = items[page],
+                    isActive = pagerState.currentPage == page,
+                    exoPlayer = mainPlayer,
+                    uid = uid,
+                    username = username,
+                    vm = vm,
+                    onStartPractice = {
+                        val selectedItem = items[page]
+                        if (openingDanceId != null) return@TikTokVideoPage
+                        openingDanceId = selectedItem.danceId
+                        scope.launch {
+                            vm.preparePracticeItem(selectedItem).fold(
+                                onSuccess = { prepared -> onPickDance(prepared) },
+                                onFailure = { error ->
+                                    snackbarHostState.showSnackbar(
+                                        error.message ?: "Unable to load the dance reference template"
+                                    )
+                                }
+                            )
+                            openingDanceId = null
+                        }
+                    }
+                )
+            }
         }
+
+        discoveryBar(Modifier.align(Alignment.TopCenter))
 
         if (upload.isWorking || openingDanceId != null) {
             Box(
