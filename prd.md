@@ -59,6 +59,12 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Firestore-backed library from the `danceLibrary` collection.
 - Only enabled, public dances with ready pose templates are shown in the feed. Private dances appear only in their uploader's profile.
 - Full-screen vertical video feed with the next video preloaded.
+- A discovery bar floats over the top of the feed:
+  - **Tabs:** For You (the feed's normal order), Trending (ranked by likes with an age decay, (likes + 1) / (age in days + 2)^1.5, so new dances can trend), and New (newest uploads first). Like counts for Trending load the first time the tab is opened.
+  - **Search:** the search button swaps the tabs for a search field that filters as you type; every word must appear in the title, dance type, creator name, or description (case-insensitive).
+  - **Category chips:** "All" plus one chip per dance type, most common first. Spellings are grouped ("Hip Hop", "hip-hop" and "HIPHOP" are one chip) and labelled with the most common spelling. Tapping the active chip again clears it.
+  - Chips and search narrow whichever tab is selected, and changing any of them starts the feed from its first video. If nothing matches, an empty state with "Clear filters" is shown and the bar stays in place.
+  - A dance opened from a share link is pinned first only on the unfiltered For You feed.
 - Dance metadata includes title, description, dance type, educator UID/name, video URL, template status, dancer count, review status, and visibility.
 - Each video has a right-hand rail (creator avatar with a gradient ring; like with count, also by double-tap with a heart animation; comments with count; Share) and, bottom-left, the creator, title, a two-line caption that expands on tap, dance-type and dancer-count chips, and a gradient Practice button. A thin progress bar above the bottom bar shows playback and can be tapped or dragged to seek.
 - Comments open in a bottom sheet: newest first, 20 per page with "Load more", and an input to post a comment.
@@ -188,6 +194,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Selecting Start Practice must load the dance's pose template before entering practice.
 - Template loading failures must surface a clear user-facing message.
 - Users must be able to like and unlike dances and read and post comments.
+- Users must be able to switch the feed between For You, Trending and New, search it, and filter it by dance type.
 
 ### Upload Management
 

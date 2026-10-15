@@ -76,7 +76,7 @@ Screens:
 - `OnboardingScreen` (`firebase`): first-launch welcome carousel (`HorizontalPager`, page dots, Skip / Next / Get started). `AppRouter` shows it instead of `AuthRoute` while `AppUiState.onboardingSeen == false` (null while loading shows the startup route); `AppViewModel.completeOnboarding` saves `onboarding_seen`.
 - `AuthScreen`: email/password and "Continue with Google" on the stage background with the animated dancer and gradient wordmark; `systemBarsPadding`, `imePadding` and vertical scroll keep the form above the keyboard.
 - `DancingFigure` / `StageBackground` (`core/DancingFigure.kt`): a pose skeleton looping through keyframed poses (smoothstep interpolation, brand-gradient bones with a glow) and a dark background with two drifting brand glows; used by onboarding and sign-in.
-- `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet.
+- `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet. `DiscoveryBar` (`dancelibrarylist/DiscoveryBar.kt`) is drawn over the top of the feed: tabs (`feedTab_*` tags), a search field (`searchButton`, `searchField`) and category chips (`categoryChip_all`, `categoryChip_<key>`). The feed shows `DanceLibraryUiState.visibleItems`, and a filter with no matches shows an empty state with `clearFilters` while keeping the bar mounted.
 - `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
 - `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
 - `AnalyticsDashboardView`: learner and creator analytics. With `showOverview = true` (the profile's Activity and Learners tabs) it renders `AnalyticsOverview` above the list: stat tiles with a sparkline, a draw-in trend chart, an 8-week activity heatmap, and a body diagram. The numbers come from `computeOverviewStats` and the body focus from `bodyFocusFromFeedback` (`analytics/AnalyticsStats.kt`, plain Kotlin, unit tested), which counts corrections per `BodyArea` in each session's stored feedback messages.
@@ -193,6 +193,7 @@ Main collections:
 Important query patterns:
 
 - Enabled library items: `danceLibrary where enabled == true`, then filtered client-side to ready templates and non-private dances. The query does not filter on `visibility` because older documents have no such field.
+- Discovery (search, category chips, For You / Trending / New) runs client-side over that full list in `applyDiscovery` (`dancelibrarylist/Discovery.kt`, plain Kotlin), so it needs no extra Firestore indexes. Trending uses `DanceLibraryRepository.likeCounts`: one server-side `count()` aggregation on `danceLibrary/{id}/likes` per dance, run in parallel and cached in `DanceLibraryListViewModel` (`likeCounts`) after the first Trending open. Category keys come from `danceTypeKey` (lower-case letters and digits only).
 - Liked dances: the enabled-library query, then one `likes/{uid}` read per dance.
 - Comments: `orderBy createdAt desc limit 20`; "Load more" continues with the same order and `startAfter(cursor)`.
 - Creator uploads: `danceLibrary where educatorUid == uid orderBy createdAt desc`.
@@ -523,7 +524,7 @@ Unit tests (`app/src/test`):
 
 - `analytics`: `AnalyticsDashboardViewModelTest`, `AnalyticsRepositoryTest`, `AnalyticsStatsTest` (overview numbers, trend, heatmap days, body focus)
 - `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link handling, system back targets, theme mode, and onboarding)
-- `dancelibrarylist`: `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` (including video privacy)
+- `dancelibrarylist`: `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` (including video privacy), `DiscoveryTest` (category grouping, search, trending score, tab ordering), `DanceLibraryDiscoveryViewModelTest` (tabs, one-time like-count load, chips, search)
 - `firebase`: `FirebaseAuthRepositoryTest`
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`
 - `posedetection`: `ByteTrackDancerTrackerTest`, `ConservativeFramePreprocessorTest`, `CropPoseGeometryTest`, `HandSimilarityEvaluatorTest`, `HandTrackAssignerTest`, `HolisticFrameLandmarksTest`, `HolisticFrameSelectorTest`, `MissingLandmarkInterpolatorTest`, `MultiPersonPoseTrackerTest`, `PersonDetectorFactoryTest`, `PoseDetectionMergerTest`, `PoseSimilarityEvaluatorTest`, `PoseTemplateJsonTest`, `TrackFragmentMergerTest`, `YoloPersonDetectionParserTest`
@@ -562,6 +563,7 @@ Deployment:
 - Leaderboard values are client-written; high-trust ranking would need server-side verification.
 - Template generation is compute-heavy and runs off the main thread (`Dispatchers.Default` or WorkManager).
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
+- The feed and discovery load every public dance in one query and filter on the device. That is fine for a small library; a large one would need paged queries, a stored `likeCount` (maintained by a Cloud Function) for Trending, and a search service, since Firestore has no full-text search. Trending also costs one `count()` query per dance on first open.
 - Video privacy is client-enforced; rules-level enforcement needs a `visibility` backfill and a `visibility == "public"` feed query.
 - App Links are declared with `autoVerify`. `public/.well-known/assetlinks.json` exists, but the `firebase.json` hosting `ignore` rule `**/.*` excludes it from deploys, so links are not verified. A copy in `app/src/main/assets/assetlinks.json` is bundled in the APK and serves no purpose.
 - The share function and Hosting are not deployed by CI, so web changes must be deployed manually after merging.
