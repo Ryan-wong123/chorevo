@@ -1,5 +1,7 @@
 package com.example.chorevo.notification
 
+import com.example.chorevo.ui.theme.PillShape
+import com.example.chorevo.ui.theme.ChorevoTheme
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -86,7 +88,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val uiState by appViewModel.uiState.collectAsStateWithLifecycle()
 
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val screenBg = MaterialTheme.colorScheme.surface
     val cardBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
 
@@ -221,9 +223,9 @@ fun SettingsScreen(
                     .height(54.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = brandTeal,
-                    contentColor = Color.White
+                    contentColor = ChorevoTheme.colors.onAccent
                 ),
-                shape = RoundedCornerShape(14.dp)
+                shape = PillShape
             ) {
                 Text(
                     text = "Sign Out",
@@ -256,7 +258,7 @@ private fun SettingsTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(brandTeal)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .height(64.dp)
             .padding(horizontal = 8.dp),
@@ -266,13 +268,13 @@ private fun SettingsTopBar(
             Icon(
                 imageVector = Icons.Default.ArrowBack,
                 contentDescription = "Back",
-                tint = Color.White
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
 
         Text(
             text = "Settings",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(start = 4.dp)
@@ -310,7 +312,7 @@ private fun ProfileHeader(
                 ) {
                     Text(
                         text = displayName.take(2).uppercase(Locale.getDefault()),
-                        color = Color.White,
+                        color = ChorevoTheme.colors.onAccent,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
                     )
@@ -376,7 +378,7 @@ private fun NotificationCard(
     cardColor: Color
 ) {
     Card(
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = cardColor)
     ) {
@@ -385,7 +387,7 @@ private fun NotificationCard(
                 Icon(
                     imageVector = Icons.Default.Notifications,
                     contentDescription = null,
-                    tint = Color.Black
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
@@ -503,7 +505,7 @@ private fun SettingToggle(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
+                checkedThumbColor = ChorevoTheme.colors.onAccent,
                 checkedTrackColor = brandTeal
             )
         )

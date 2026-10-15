@@ -1,5 +1,6 @@
 package com.example.chorevo.videouploads
 
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,12 +70,12 @@ fun VideoUploadsTab(
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
 
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val tealButtonColors = ButtonDefaults.buttonColors(
         containerColor = brandTeal,
-        contentColor = Color.White,
+        contentColor = ChorevoTheme.colors.onAccent,
         disabledContainerColor = brandTeal.copy(alpha = 0.5f),
-        disabledContentColor = Color.White.copy(alpha = 0.85f)
+        disabledContentColor = ChorevoTheme.colors.onAccent.copy(alpha = 0.85f)
     )
     val tealOutlinedButtonColors = ButtonDefaults.outlinedButtonColors(
         contentColor = brandTeal

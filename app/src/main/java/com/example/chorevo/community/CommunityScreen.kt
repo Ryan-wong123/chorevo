@@ -1,5 +1,6 @@
 package com.example.chorevo.community
 
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -65,7 +66,7 @@ fun CommunityScreen(
     val state by vm.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val colors = MaterialTheme.colorScheme
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val displayName = profile.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User"
     val selectedPost = state.selectedPostId?.let { id -> state.posts.firstOrNull { it.id == id } }
     var isCreatingPost by rememberSaveable { mutableStateOf(false) }
@@ -110,9 +111,9 @@ fun CommunityScreen(
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = brandTeal,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -228,7 +229,7 @@ private fun CreatePostEntryCard(
     onCreatePost: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         )
@@ -255,7 +256,7 @@ private fun CreatePostEntryCard(
                 onClick = onCreatePost,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = brandTeal,
-                    contentColor = Color.White
+                    contentColor = ChorevoTheme.colors.onAccent
                 )
             ) {
                 Icon(
@@ -286,7 +287,7 @@ private fun CreatePostPage(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Card(
-            shape = RoundedCornerShape(12.dp),
+            shape = MaterialTheme.shapes.medium,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
             )
@@ -334,7 +335,7 @@ private fun CreatePostPage(
                         enabled = title.isNotBlank() && body.isNotBlank() && !isPosting,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = brandTeal,
-                            contentColor = Color.White
+                            contentColor = ChorevoTheme.colors.onAccent
                         )
                     ) {
                         Icon(
@@ -378,7 +379,7 @@ private fun CommunityPostCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onOpenPost),
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         )
@@ -433,7 +434,7 @@ private fun PostDetailPage(
     ) {
         item {
             Card(
-                shape = RoundedCornerShape(12.dp),
+                shape = MaterialTheme.shapes.medium,
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                 )
@@ -507,7 +508,7 @@ private fun ReplyComposer(
     onReply: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         )
@@ -541,7 +542,7 @@ private fun ReplyComposer(
                     enabled = replyDraft.isNotBlank() && !isReplying,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = brandTeal,
-                        contentColor = Color.White
+                        contentColor = ChorevoTheme.colors.onAccent
                     )
                 ) {
                     Text(if (isReplying) "Replying" else "Reply")
@@ -557,7 +558,7 @@ private fun ReplyCard(
     brandTeal: Color
 ) {
     Card(
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
         )

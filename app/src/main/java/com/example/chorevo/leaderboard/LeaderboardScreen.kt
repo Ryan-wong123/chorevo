@@ -1,5 +1,6 @@
 package com.example.chorevo.leaderboard
 
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -63,7 +64,7 @@ fun LeaderboardScreen(
     val state = vm.uiState.collectAsStateWithLifecycle().value
     val colors = MaterialTheme.colorScheme
 
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val screenBg = colors.surface
     val cardBg = colors.surfaceVariant.copy(alpha = 0.35f)
     val myCardBg = brandTeal.copy(alpha = 0.12f)
@@ -79,10 +80,10 @@ fun LeaderboardScreen(
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = brandTeal,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White,
-                    actionIconContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -153,7 +154,7 @@ fun LeaderboardScreen(
             state.myEntry?.let { myEntry ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = MaterialTheme.shapes.medium,
                     colors = CardDefaults.cardColors(
                         containerColor = myCardBg
                     ),
@@ -222,7 +223,7 @@ fun LeaderboardScreen(
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(16.dp),
+                            shape = MaterialTheme.shapes.medium,
                             colors = CardDefaults.cardColors(
                                 containerColor = if (entry.isMe) myCardBg else cardBg
                             ),
