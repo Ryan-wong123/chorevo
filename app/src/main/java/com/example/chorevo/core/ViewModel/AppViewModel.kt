@@ -112,7 +112,7 @@ class AppViewModel @Inject constructor(
         Log.d("DeepLink", "fetchAndOpenDance started for id=$danceId")
         _uiState.update { it.copy(deepLinkLoading = true, deepLinkError = null) }
 
-        val result = danceLibraryRepository.getDanceById(danceId)
+        val result = danceLibraryRepository.getDanceById(danceId, _uiState.value.profile?.uid)
 
         result.fold(
             onSuccess = { dance ->

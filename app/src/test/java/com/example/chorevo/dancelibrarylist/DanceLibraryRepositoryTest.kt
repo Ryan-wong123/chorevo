@@ -209,4 +209,62 @@ class DanceLibraryRepositoryTest {
         coVerify(exactly = 1) { dao.markSynced("sess1") }
         verify(exactly = 1) { sessDoc.set(any<Map<String, Any?>>()) }
     }
+
+    // ── Video privacy ─────────────────────────────────────────────────────────
+
+    @Test
+    fun listEnabled_excludesPrivateVideos() = runTest {
+        val col = mockk<CollectionReference>()
+        val query = mockk<Query>()
+        val snap = mockk<QuerySnapshot>()
+        val publicDoc = mockk<DocumentSnapshot>()
+        val privateDoc = mockk<DocumentSnapshot>()
+
+        every { firestore.collection("danceLibrary") } returns col
+        every { col.whereEqualTo("enabled", true) } returns query
+        every { query.get() } returns Tasks.forResult(snap)
+        every { snap.documents } returns listOf(publicDoc, privateDoc)
+        every { publicDoc.toObject(DanceLibraryModel::class.java) } returns
+            DanceLibraryModel(danceId = "pub", educatorUid = "u1")
+        every { privateDoc.toObject(DanceLibraryModel::class.java) } returns
+            DanceLibraryModel(danceId = "priv", educatorUid = "u1", visibility = DanceLibraryModel.VISIBILITY_PRIVATE)
+
+        val list = repo.listEnabled().getOrThrow()
+
+        assertEquals(listOf("pub"), list.map { it.danceId })
+    }
+
+    private fun mockDanceDoc(model: DanceLibraryModel) {
+        val col = mockk<CollectionReference>()
+        val ref = mockk<DocumentReference>()
+        val doc = mockk<DocumentSnapshot>()
+        every { firestore.collection("danceLibrary") } returns col
+        every { col.document(model.danceId) } returns ref
+        every { ref.get() } returns Tasks.forResult(doc)
+        every { doc.exists() } returns true
+        every { doc.toObject(DanceLibraryModel::class.java) } returns model
+    }
+
+    @Test
+    fun getDanceById_privateVideo_isHiddenFromOtherUsers() = runTest {
+        mockDanceDoc(
+            DanceLibraryModel(danceId = "priv", educatorUid = "owner", visibility = DanceLibraryModel.VISIBILITY_PRIVATE)
+        )
+
+        val res = repo.getDanceById("priv", viewerUid = "someoneElse")
+
+        assertTrue(res.isFailure)
+        assertEquals("This video is private.", res.exceptionOrNull()?.message)
+    }
+
+    @Test
+    fun getDanceById_privateVideo_isVisibleToOwner() = runTest {
+        mockDanceDoc(
+            DanceLibraryModel(danceId = "priv", educatorUid = "owner", visibility = DanceLibraryModel.VISIBILITY_PRIVATE)
+        )
+
+        val res = repo.getDanceById("priv", viewerUid = "owner")
+
+        assertEquals("priv", res.getOrThrow().danceId)
+    }
 }

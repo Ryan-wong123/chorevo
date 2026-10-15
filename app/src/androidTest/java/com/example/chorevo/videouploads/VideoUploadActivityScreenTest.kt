@@ -127,7 +127,7 @@ class VideoUploadsViewModelTest {
         advanceUntilIdle()
 
         // Assert
-        coVerify(exactly = 0) { uploadsRepo.updateDance(any(), any(), any(), any()) }
+        coVerify(exactly = 0) { uploadsRepo.updateDance(any(), any(), any(), any(), any()) }
         assertFalse(vm.uiState.value.saving)
         assertNotNull(vm.uiState.value.editDraft)
     }
@@ -147,7 +147,8 @@ class VideoUploadsViewModelTest {
                 danceId = "d1",
                 title = any(),
                 danceType = any(),
-                description = any()
+                description = any(),
+                visibility = any()
             )
         } returns Result.success(Unit)
 
@@ -176,7 +177,8 @@ class VideoUploadsViewModelTest {
                 danceId = "d1",
                 title = "NewTitle",
                 danceType = "NewType",
-                description = "NewDesc"
+                description = "NewDesc",
+                visibility = any()
             )
         }
 

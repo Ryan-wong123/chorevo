@@ -30,10 +30,12 @@ function parseDanceId(urlPath) {
 
 /**
  * Renders the share landing page. `dance` is the Firestore danceLibrary
- * document data, or null when the dance is missing/unavailable.
+ * document data, or null when the dance is missing/unavailable. Private
+ * dances are treated as unavailable so their title and video never leak.
  */
 function renderDancePage(dance, url) {
-  const available = dance && dance.enabled !== false && dance.title;
+  const available =
+    dance && dance.enabled !== false && dance.visibility !== "private" && dance.title;
   const title = available ? String(dance.title) : DEFAULT_TITLE;
 
   let description = DEFAULT_DESCRIPTION;
