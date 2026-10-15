@@ -37,6 +37,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - A floating, translucent pill bottom bar with five destinations: Home, Score (leaderboard), a raised gradient "+" Upload button, Forum (community), and Profile.
 - The bar is hidden on the sign-in and practice screens and slides away while the user swipes between feed videos.
 - Settings and Weekly Challenges are sub-screens of Profile.
+- System back (button or gesture) goes to the parent screen: Practice, Upload, Forum, Score and Profile go back to Home; Settings and Weekly Challenges go back to Profile; on Home or sign-in it leaves the app. Back also closes an open forum post or the new-post editor, the liked-videos player, and steps back through the upload steps. The predictive back gesture is supported (Android 13+): while dragging, the screen shrinks with rounded corners to preview leaving.
+- Dark mode is the default. Settings has an Appearance choice of Dark, Light, or System (follow the phone); status and navigation bar icons follow the chosen theme.
 - The Chorevo design system: a fixed brand palette (teal primary, magenta accent) in dark and light variants that follow the system setting (dynamic colour is off), Sora and Plus Jakarta Sans fonts, and rounded shapes.
 - Motion and feedback: screens fade through when switching tabs and practice slides up over the feed; lists and grids show shimmering placeholders while loading instead of "Loading…" text or spinners; empty lists show an animated empty state (floating icon, title, hint); the phone gives a light haptic tick on likes and a stronger confirm on practice combos, the results grade reveal, and a finished publish. Haptics follow the system touch-feedback setting.
 
@@ -48,7 +50,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - The current user is restored on app startup before authenticated routes are shown.
 - Profile screen: name, settings and logout in the header; the profile photo inside a gradient streak ring (with a flame badge showing days practised this week); a stats row (Uploads, Liked, Streak days this week, Points); the weekly streak card, achievements level panel, and weekly challenges summary card; and icon tabs for Uploads (public uploads as a thumbnail grid), Private (private uploads, with lock badges), Liked, Activity (own analytics), and Learners (learners practising my uploads). Tapping an upload opens an action sheet: Play, Edit details, Make public/private, Delete.
 - The Liked tab is a three-column grid; tapping a video opens a full-screen vertical feed with like/unlike and Share. Private dances are hidden unless they belong to the viewer.
-- Settings (gear on Profile): profile header with name, email and photo editing (gallery upload to `profilePhotos/{uid}/profile.jpg`), a Notifications toggle, a reminder time picker, and Sign Out.
+- Settings (gear on Profile): profile header with name, email and photo editing (gallery upload to `profilePhotos/{uid}/profile.jpg`), an Appearance choice (Dark, Light, System; default Dark), a Notifications toggle, a reminder time picker, and Sign Out.
 
 ### Dance Library (Home Feed)
 
@@ -140,7 +142,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 ### Leaderboard
 
 - Global and Friends scopes, ranked by Sessions (total practice sessions), Similarity (average alignment score), or Active Days. Tied users share a rank.
-- Users add friends (+) from the Global list and remove them from the Friends list. The Friends view is the current user plus saved friends, taken from the global top 100 for the selected metric.
+- The top three stand on a podium (2nd left, 1st raised in the middle with a trophy, 3rd right) with gold, silver and bronze avatar rings, their metric value, and blocks that rise in on load. Everyone from 4th down is listed below with their rank. The user's own rank is pinned in a "Your position" card at the bottom of the screen.
+- Users add friends (+) from the Global board (podium or list) and remove them from the Friends board. The Friends view is the current user plus saved friends, taken from the global top 100 for the selected metric.
 - Stats in `leaderboardStats/{uid}` are recomputed on the client after each synced session.
 
 ### Reminders
@@ -301,7 +304,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 ### DataStore
 
-- `notification_preferences`: `push_enabled`, `notification_hour` (default 9), `notification_minute` (default 0).
+- `notification_preferences`: `push_enabled`, `notification_hour` (default 9), `notification_minute` (default 0), `theme_mode` (`dark`, `light` or `system`; missing means dark).
 
 ### Web (Firebase Hosting + Cloud Functions)
 

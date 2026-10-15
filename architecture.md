@@ -62,7 +62,8 @@ The manifest also declares a `<queries>` block so the share sheet can detect ins
 - wraps main content in `AppNavigationRoute` (floating bottom bar),
 - switches with `when (screen)` inside an `AnimatedContent` (practice slides up over the feed and back down; other screen changes fade through with a slight scale; the practice content keeps the last selected dance while it animates out) over the `Screen` enum: `AUTH`, `HOME`, `DANCE_PRACTICE`, `UPLOAD`, `COMMUNITY`, `LEADERBOARD`, and the profile section (`PROFILE`, `SETTINGS`, `WEEKLY_CHALLENGES`, all rendered by `ProfileSectionRoute`),
 - passes `AppUiState.sharedDance` to `HomeRoute` so a dance opened from a share link is pinned first in the feed,
-- shows share-link errors (missing, disabled, private, not ready) as a snackbar.
+- shows share-link errors (missing, disabled, private, not ready) as a snackbar,
+- handles system back with a `PredictiveBackHandler` (enabled when `Screen.backTarget` is non-null): drag progress scales the content down with rounded corners, and release calls `AppViewModel.navigateBack()` (Practice/Upload/Forum/Score/Profile → Home, Settings/Weekly Challenges → Profile; Home and Auth fall through so the system closes the app). `android:enableOnBackInvokedCallback="true"` is set in the manifest. Screens with inner states register their own `BackHandler`, which takes priority: upload steps, forum post/editor, and the profile's liked-videos player.
 
 ## 3. Layered Structure
 
@@ -77,7 +78,7 @@ Screens:
 - `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
 - `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
 - `AnalyticsDashboardView`: learner and creator analytics.
-- `LeaderboardScreen`: Global/Friends leaderboard.
+- `LeaderboardScreen`: Global/Friends leaderboard with a top-three `Podium` (medal rings, rising blocks, `podium_rank_N` test tags), ranks 4+ in a list, and the user's "Your position" card pinned at the bottom. Add/remove-friend buttons come from `friendActionFor` for both podium and list.
 - `CommunityScreen`: forum posts and replies.
 - `UserProfileScreen`: header, streak-ring avatar, stats row, streak card, level panel, weekly challenge summary, and icon tabs (Uploads and Private as thumbnail grids via `VideoUploadsTab(gridFilter = …)` with an action sheet, Liked, Activity, Learners), plus the full-screen liked-videos feed.
 - `SettingsScreen`: profile photo, notifications, reminder time, sign out.
@@ -150,6 +151,8 @@ Theme code lives in `ui/theme`:
 - `SegmentColors.kt`: good/ok/bad colours for scoring.
 
 Screens should read colours from `MaterialTheme.colorScheme` or `ChorevoTheme.colors` rather than hardcoding hex values; buttons on the accent use `onAccent` for text. Third-party brand colours in the share sheet are the exception.
+
+Theme choice: `MainActivity` reads `AppUiState.themeMode` (Dark by default, Light, or System) and passes `darkTheme` to `ChorevoTheme`; it re-calls `enableEdgeToEdge` with `SystemBarStyle.auto { darkTheme }` so status and navigation bar icons match the app theme rather than the phone's. Both `values` and `values-night` window backgrounds are dark so launch matches the default. Settings shows the choice in an Appearance card (`themeMode_dark|light|system` tags).
 
 Navigation chrome: `AppNavigationRoute` floats `AppBottomNavBar` (a 64dp translucent pill, 12dp above the system bar) over the content. Tabs are Home, Score (leaderboard), a raised gradient "+" Upload button, Forum (community), and Profile. The bar is hidden on `AUTH` and `DANCE_PRACTICE`. Regular screens receive extra bottom padding; the home feed is drawn full-bleed and reads `LocalFloatingBarInset` to keep its overlay above the bar, and sets `LocalFloatingBarState.hidden` while the pager is scrolling so the bar slides away. `res/values(-night)/themes.xml` set matching window backgrounds to avoid a white flash on launch.
 
@@ -233,7 +236,7 @@ Key fields:
 
 ### DataStore
 
-`NotificationPreferencesDataStore` (`notification_preferences`) stores `push_enabled`, `notification_hour` (default 9), and `notification_minute` (default 0). `AppViewModel` observes these flows and `ReminderScheduler` reschedules alarms when settings change.
+`NotificationPreferencesDataStore` (`notification_preferences`) stores `push_enabled`, `notification_hour` (default 9), `notification_minute` (default 0), and `theme_mode` (`ThemeMode` key; missing means dark). `AppViewModel` observes these flows (exposing `AppUiState.themeMode`) and `ReminderScheduler` reschedules alarms when settings change.
 
 ## 6. Key Flows
 
@@ -517,7 +520,7 @@ Test locations:
 Unit tests (`app/src/test`):
 
 - `analytics`: `AnalyticsDashboardViewModelTest`, `AnalyticsRepositoryTest`
-- `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link handling)
+- `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link handling, system back targets, and theme mode)
 - `dancelibrarylist`: `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` (including video privacy)
 - `firebase`: `FirebaseAuthRepositoryTest`
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`

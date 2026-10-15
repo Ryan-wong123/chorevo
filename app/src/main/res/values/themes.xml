@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Chorevo" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@color/chorevo_background_light</item>
+    <!-- Dark is the app's default look, so the launch window starts dark to avoid a flash. -->
+    <style name="Theme.Chorevo" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/chorevo_background_dark</item>
     </style>
 </resources>

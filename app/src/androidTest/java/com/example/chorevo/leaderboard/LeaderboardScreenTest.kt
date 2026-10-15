@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -174,14 +175,40 @@ class LeaderboardScreenTest {
 
         composeRule.onNodeWithText("Bob").assertIsDisplayed()
 
+        // Podium name + the pinned "Your position" card.
         composeRule.onAllNodesWithText("Alice (You)")
             .assertCountEquals(2)
 
+        // Top three stand on the podium; only the pinned card shows "#rank".
+        composeRule.onNodeWithTag("podium").assertIsDisplayed()
+        composeRule.onNodeWithTag("podium_rank_1").assertIsDisplayed()
+        composeRule.onNodeWithTag("podium_rank_2").assertIsDisplayed()
         composeRule.onAllNodesWithText("#1")
-            .assertCountEquals(2)
-
-        composeRule.onAllNodesWithText("#2")
             .assertCountEquals(1)
+    }
+
+    @Test
+    fun entriesBeyondTopThree_areListedBelowPodium_withRank() {
+        val entries = (1..5).map { rank ->
+            LeaderboardEntry(
+                rank = rank, uid = "uid$rank", displayName = "Dancer $rank", photoUrl = null,
+                totalPracticeSessions = 20 - rank, avgSimilarityScore = 0.5, totalActiveDays = 1,
+                isMe = false
+            )
+        }
+        every { repo.observeLeaderboard(any(), any(), any()) } returns flowOf(entries)
+        every { repo.observeFriendIds(any()) } returns flowOf(emptySet())
+        vm = LeaderboardViewModel(repo)
+
+        composeRule.setContent {
+            LeaderboardScreen(myUid = "someoneElse", vm = vm)
+        }
+
+        waitForTextExists("Dancer 5")
+        composeRule.onNodeWithTag("podium_rank_3").assertIsDisplayed()
+        composeRule.onNodeWithText("#4").assertIsDisplayed()
+        composeRule.onNodeWithText("#5").assertIsDisplayed()
+        composeRule.onAllNodesWithText("#1").assertCountEquals(0)
     }
 
     @Test
