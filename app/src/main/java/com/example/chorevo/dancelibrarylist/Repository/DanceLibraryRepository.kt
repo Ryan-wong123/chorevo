@@ -40,7 +40,8 @@ class DanceLibraryRepository @Inject constructor(
 
             val list = snap.documents
                 .mapNotNull { it.toObject(DanceLibraryModel::class.java) }
-                .filter { it.isTemplateReady }
+                // Private videos only appear in their uploader's profile, never the feed.
+                .filter { it.isTemplateReady && !it.isPrivate }
             Result.success(list)
         } catch (e: Exception) {
             Result.failure(e)
@@ -53,15 +54,17 @@ class DanceLibraryRepository @Inject constructor(
 
     /**
      * Fetches a single dance by its Firestore document ID.
-     * Used when the app is opened via a share link (https://chorevo.app/dance/<id>).
+     * Used when the app is opened via a share link. [viewerUid] is the signed-in
+     * user; a private dance is only returned to its uploader.
      *
      * Returns [Result.failure] when:
      * - the document does not exist (deleted or bad link)
      * - the dance is disabled
+     * - the dance is private and [viewerUid] is not its uploader
      * - the template is not yet ready
      * - any network / Firestore error occurs
      */
-    suspend fun getDanceById(danceId: String): Result<DanceLibraryModel> {
+    suspend fun getDanceById(danceId: String, viewerUid: String? = null): Result<DanceLibraryModel> {
         return try {
             val doc = firestore.collection("danceLibrary")
                 .document(danceId)
@@ -77,6 +80,10 @@ class DanceLibraryRepository @Inject constructor(
 
             if (!dance.enabled) {
                 return Result.failure(IllegalStateException("This dance is no longer available."))
+            }
+
+            if (!dance.isVisibleTo(viewerUid)) {
+                return Result.failure(IllegalStateException("This video is private."))
             }
 
             if (!dance.isTemplateReady) {
@@ -320,7 +327,9 @@ class DanceLibraryRepository @Inject constructor(
                     .get()
                     .await()
                 if (likeDoc.exists()) {
-                    doc.toObject(DanceLibraryModel::class.java)?.let { liked.add(it) }
+                    doc.toObject(DanceLibraryModel::class.java)
+                        ?.takeIf { it.isVisibleTo(uid) }
+                        ?.let { liked.add(it) }
                 }
             }
             Result.success(liked)

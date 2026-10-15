@@ -13,6 +13,8 @@ data class VideoUploadsUiState(
     val refreshing: Boolean = false,
     val saving: Boolean = false,
     val deleting: Boolean = false,
+    /** Uploads whose public/private setting is being saved. */
+    val updatingVisibilityIds: Set<String> = emptySet(),
 
     // Upload Progress
     val uploadProgress: Float? = null,
@@ -36,7 +38,8 @@ data class EditDraft(
     val item: DanceLibraryModel,
     val title: String = item.title,
     val danceType: String = item.danceType,
-    val description: String = item.description
+    val description: String = item.description,
+    val visibility: String = item.visibility
 ) {
     val canSave: Boolean
         get() = title.isNotBlank() && danceType.isNotBlank() && description.isNotBlank()
@@ -94,7 +97,8 @@ data class UploadDraft(
     val danceType: String = "",
     val description: String = "",
     val selectedVideoUri: Uri? = null,
-    val selectedVideoLabel: String? = null
+    val selectedVideoLabel: String? = null,
+    val visibility: String = DanceLibraryModel.VISIBILITY_PUBLIC
 ) {
     val canUpload: Boolean
         get() = title.isNotBlank() &&

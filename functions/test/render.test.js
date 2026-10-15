@@ -34,11 +34,13 @@ test("escapes user-provided text", () => {
   assert.match(html, /by A&amp;B/);
 });
 
-test("falls back to generic text for missing or disabled dances", () => {
-  for (const dance of [null, { title: "Hidden", enabled: false }]) {
+test("falls back to generic text for missing, disabled or private dances", () => {
+  const privateDance = { title: "Secret", enabled: true, visibility: "private", videoUrl: "https://x/s.mp4" };
+  for (const dance of [null, { title: "Hidden", enabled: false }, privateDance]) {
     const html = renderDancePage(dance, "https://chorevo-dea05.web.app/dance/x");
     assert.match(html, /og:title" content="Check out this dance on Chorevo"/);
     assert.doesNotMatch(html, /og:video/);
     assert.doesNotMatch(html, /<video/);
+    assert.doesNotMatch(html, /Secret|s\.mp4/);
   }
 });

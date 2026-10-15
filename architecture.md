@@ -14,6 +14,7 @@ Chorevo is a single-module native Android application:
 - Background work: WorkManager
 - Camera/video: CameraX and Media3
 - Pose analysis: MediaPipe Tasks Vision, using Pose Landmarker for body-only fallback flows and Holistic Landmarker for pose + hand/finger live practice plus hand-enabled uploaded-video template generation
+- Web share links: Firebase Hosting (`chorevo-dea05.web.app`) rewriting `/dance/**` to the `danceShare` Cloud Function in `functions/` (Node.js 22, `firebase-functions` v2 HTTPS, Admin SDK)
 
 The app starts in `Chorevo`, initializes Firebase/App Check, then `MainActivity` hosts the Compose tree and calls `AppRouter`.
 
@@ -35,7 +36,16 @@ The app starts in `Chorevo`, initializes Firebase/App Check, then `MainActivity`
 - enables edge-to-edge display,
 - applies `ChorevoTheme`,
 - hosts the root Compose `Surface`,
-- renders `AppRouter`.
+- renders `AppRouter`,
+- handles share-link intents in `onCreate` and `onNewIntent` (`launchMode="singleTask"`): `ShareLinks.parseDanceId` extracts the dance ID and passes it to `AppViewModel.openDanceById`.
+
+Supported links (declared as intent filters in `AndroidManifest.xml`):
+
+- `https://chorevo-dea05.web.app/dance/{danceId}` and `https://chorevo-dea05.firebaseapp.com/dance/{danceId}` (`autoVerify="true"`; App Links verification still needs `assetlinks.json`),
+- `https://chorevo.app/dance/{danceId}` (legacy links),
+- `chorevo://dance/{danceId}` (custom scheme used by the web page to hand off into the app).
+
+The manifest also declares a `<queries>` block so the share sheet can detect installed social apps and resolve send/SMS/email/browser intents on Android 11+.
 
 ### `AppRouter`
 
@@ -45,7 +55,9 @@ The app starts in `Chorevo`, initializes Firebase/App Check, then `MainActivity`
 - routes unauthenticated users to auth,
 - creates shared Hilt ViewModels for the dance library and uploads,
 - wraps main content in `AppNavigationRoute`,
-- switches between home, practice, upload, leaderboard, profile, settings, and auth screens.
+- switches between home, practice, upload, leaderboard, profile, settings, and auth screens,
+- passes `AppUiState.sharedDance` to `HomeRoute` so a dance opened from a share link is pinned first in the feed,
+- shows share-link errors (missing, disabled, private) as a snackbar.
 
 The app currently uses a simple `Screen` enum for top-level navigation rather than a full Navigation Compose graph for every screen.
 
@@ -65,14 +77,16 @@ Examples:
 - `LeaderboardScreen`
 - `UserProfileScreen`
 - `SettingsScreen`
+- `ShareBottomSheet` (`core/share/ShareSheet.kt`): shared share sheet used by the home feed and the profile liked-videos feed.
+- `VideoVisibilitySelector` (`videouploads/VideoVisibilitySelector.kt`): Public/Private chips used by the upload form and the Edit dialog.
 
 ### State and Coordination Layer
 
 ViewModels own screen state and user actions:
 
-- `AppViewModel`: global auth/profile, selected top-level screen, selected dance, reminder preferences.
+- `AppViewModel`: global auth/profile, selected top-level screen, selected dance, reminder preferences, and share-link handling (`openDanceById`, pending link while signed out, `sharedDance`, `deepLinkError`).
 - `DanceLibraryListViewModel`: library loading, template preparation, practice session submission.
-- `VideoUploadsViewModel`: upload draft, dancer analysis, upload progress, edit/delete flows.
+- `VideoUploadsViewModel`: upload draft (including visibility), dancer analysis, upload progress, edit/delete flows, and per-upload visibility toggles (`setVisibility`, `updatingVisibilityIds`).
 - `AnalyticsDashboardViewModel`: session list and selected session detail.
 - `LeaderboardViewModel`: leaderboard scope, metric, friend actions.
 - `AuthViewModel`, `ProfileViewModel`, `StreakViewModel`, `AchievementViewModel`: feature-specific state.
@@ -84,8 +98,8 @@ ViewModels expose read-only `StateFlow` and mutate immutable UI state data class
 Repositories isolate Firebase, Room, and Storage APIs:
 
 - `FirebaseAuthRepository`: sign up, sign in, sign out, profile restore, profile photo upload.
-- `DanceLibraryRepository`: library query, template download, local session insert, session upload.
-- `VideoUploadsRepository`: video compression/upload, dance metadata write, template queue, upload management.
+- `DanceLibraryRepository`: library query (excludes private dances), liked dances (excludes other users' private dances), `getDanceById(danceId, viewerUid)` for share links, template download, local session insert, session upload.
+- `VideoUploadsRepository`: video compression/upload, dance metadata write (including `visibility`), template queue, upload management, `updateDance` (optional visibility) and `setVisibility`.
 - `AnalyticsRepository`: learner and educator session listeners and Firestore mapping.
 - `LeaderboardRepository`: leaderboard stats, ranking, friend list management.
 - `FirebaseStreakRepository`, `AchievementRepository`, `PointsRepository`: progress and rewards.
@@ -100,6 +114,7 @@ Shared infrastructure includes:
 - Video player helpers under `core`.
 - Notification scheduling under `notification`.
 - Pose detection and scoring under `posedetection`.
+- `ShareLinks` under `core/share`: single source of truth for building and parsing share links.
 
 ## 4. Dependency Injection
 
@@ -123,12 +138,14 @@ Main collections:
 - `users/{uid}/friends/{friendUid}`: friend references.
 - `users/{uid}/achievements/current`: earned badges.
 - `users/{uid}/streaks/...` and `users/{uid}/streak/...`: streak data.
-- `danceLibrary/{danceId}`: uploaded dance metadata.
+- `danceLibrary/{danceId}`: uploaded dance metadata, including `visibility` (`"public"` or `"private"`; a missing field reads as `"public"` through the `DanceLibraryModel` default).
 - `leaderboardStats/{uid}`: aggregate leaderboard stats.
+
+`DanceLibraryModel` exposes `isPrivate` (annotated `@get:Exclude` so it is not written back to Firestore) and `isVisibleTo(viewerUid)`, which returns true for public dances and for private dances viewed by their uploader.
 
 Important query patterns:
 
-- Enabled library items: `danceLibrary where enabled == true`.
+- Enabled library items: `danceLibrary where enabled == true`, then filtered client-side to ready templates and non-private dances. The query does not filter on `visibility` because older documents have no such field.
 - Creator uploads: `danceLibrary where educatorUid == uid orderBy createdAt desc`.
 - Learner sessions: `users/{uid}/danceLearningSessions orderBy tsStart desc`.
 - Creator analytics: collection group `danceLearningSessions where analysis.educatorUid == uid`.
@@ -187,6 +204,43 @@ Key fields:
 7. If a confirmed template exists, JSON uploads to `danceTemplates/{danceId}.json` and status becomes `ready`.
 8. Otherwise, WorkManager enqueues `VideoTemplateGenerationWorker`.
 9. Worker downloads the uploaded video, generates a template, writes template JSON, and updates Firestore status.
+
+### Share Flow
+
+1. The user taps Share on a dance in the home feed or the profile liked-videos feed.
+2. `ShareBottomSheet` builds a `ShareContent` (dance ID, title, educator) and the link from `ShareLinks.danceLink`.
+3. On open, the sheet checks which social apps are installed (`PackageManager`) and loads their launcher icons.
+4. Tapping an installed app sends an `ACTION_SEND` intent targeted at that package (Facebook receives the bare link because it ignores free text).
+5. When the app is not installed, WhatsApp, Facebook, Telegram and X open their web share URLs; otherwise the system chooser is used.
+6. Copy link writes to the clipboard; SMS and Email use `ACTION_SENDTO`; More opens `Intent.createChooser`.
+
+### Share Link Open Flow
+
+In the app:
+
+1. `MainActivity` receives the link and calls `AppViewModel.openDanceById(danceId)`.
+2. If auth has not resolved or no one is signed in, the ID is parked and consumed after sign-in.
+3. `DanceLibraryRepository.getDanceById(danceId, viewerUid)` loads the dance and fails for missing, disabled, private-to-someone-else, or not-ready dances.
+4. On success, `AppUiState.sharedDance` is set and the screen becomes `HOME`; on failure, `deepLinkError` is shown as a snackbar.
+5. `DanceLibraryListView(pinnedDance = ...)` places the shared dance first and scrolls the pager to it. Practice is only entered through Start Practice.
+6. `AppViewModel.backToHome` and logout clear `sharedDance`.
+
+On the web:
+
+1. Firebase Hosting rewrites `/dance/**` to the `danceShare` function (`firebase.json`).
+2. `functions/index.js` parses the ID (`render.parseDanceId`) and reads `danceLibrary/{id}` with the Admin SDK.
+3. `functions/render.js` fills `functions/dance.html` with the dance title, description, video, Open Graph and Twitter tags. All values are HTML-escaped.
+4. Missing, disabled and private dances render generic text with no title or video.
+5. The page sets `Cache-Control: public, max-age=300, s-maxage=600`.
+6. In the browser, the page tries `intent://dance/{id}#Intent;scheme=chorevo;package=com.example.chorevo;...` on Android, with a fallback back to the page (`?app=missing`).
+
+### Video Visibility Flow
+
+1. The upload form's `VideoVisibilitySelector` updates `UploadDraft.visibility` (default `public`).
+2. `VideoUploadsRepository.uploadDance` writes it into the `danceLibrary/{danceId}` document.
+3. In the profile, each upload card shows its visibility and a Make private / Make public button that calls `VideoUploadsViewModel.setVisibility`, which merges `{visibility}` into the document and updates the listed item in place.
+4. The Edit dialog includes the same selector; `saveEdit` passes it to `updateDance`.
+5. Readers apply the rule: the feed hides all private dances, liked lists and share links use `isVisibleTo(viewerUid)`, and the web share page treats private dances as unavailable.
 
 ### Practice Flow
 
@@ -374,6 +428,12 @@ Storage rules enforce:
 - public reads for uploaded dance videos and thumbnails,
 - deny-by-default fallback.
 
+Video privacy:
+
+- Enforced in the app (`DanceLibraryRepository`, `DanceLibraryModel.isVisibleTo`) and in the `danceShare` function, not in Firestore rules. `danceLibrary` documents remain readable by any signed-in user, so a private dance's metadata can still be read directly through the Firebase API.
+- Video files stay at token-protected Storage download URLs; making a dance private does not revoke an existing URL.
+- The `danceShare` function uses the Admin SDK (bypasses rules) and only renders public, enabled dances.
+
 ## 9. Testing and CI
 
 Test locations:
@@ -390,7 +450,10 @@ Current coverage includes:
 - pose template JSON and multi-person tracking tests,
 - video upload tests,
 - Room DAO tests,
-- Compose screen tests for auth, library, upload, AR practice, analytics, and leaderboard.
+- Compose screen tests for auth, library, upload, AR practice, analytics, and leaderboard,
+- share-link handling in `AppViewModelTest`,
+- video privacy in `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` and `VideoUploadTest`,
+- share page rendering in `functions/test/render.test.js` (run with `npm test` in `functions/`; not part of GitHub Actions).
 
 GitHub Actions runs:
 
@@ -398,6 +461,16 @@ GitHub Actions runs:
 - `connectedDebugAndroidTest` on an API 29 emulator
 - `assembleDebug assembleRelease`
 - debug APK upload as a CI artifact
+
+CI notes:
+
+- `android-actions/setup-android` installs only `platform-tools`; the action's default also requests the removed legacy `tools` package, which fails.
+- The emulator job frees runner disk space (removes .NET, GHC, Boost and CodeQL) and caps the AVD disk at 2 GB so the emulator can create its userdata partition.
+
+Deployment:
+
+- Hosting and the share function are deployed manually with `cd functions && npm install && cd .. && firebase deploy --only functions,hosting`. The project must be on the Blaze plan.
+- The functions artifact repository has a cleanup policy that deletes old build images.
 
 ## 10. Known Architectural Considerations
 
@@ -407,6 +480,9 @@ GitHub Actions runs:
 - Some official leaderboard values are client-written; high-trust ranking would need server-side verification.
 - Template generation can be compute-heavy and should remain isolated from UI recomposition and main-thread work.
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
+- Video privacy is client-enforced; rules-level enforcement needs a `visibility` backfill and a `visibility == "public"` feed query.
+- App Links are declared with `autoVerify` but not verified until `/.well-known/assetlinks.json` is hosted. The `firebase.json` hosting `ignore` rule `**/.*` would also skip a `.well-known` folder and must be adjusted first.
+- The share function and Hosting are not deployed by CI, so web changes must be deployed manually after merging.
 
 ## 11. Multi-Dancer AI Upgrade Architecture
 

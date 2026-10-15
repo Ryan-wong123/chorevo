@@ -297,7 +297,7 @@ class AppViewModelTest {
         every { Log.d(any(), any()) } returns 0
         val dance = makeDanceItem(danceId = "shared1")
         coEvery { authRepository.getCurrentUserProfile() } returns makeProfile()
-        coEvery { danceLibraryRepository.getDanceById("shared1") } returns Result.success(dance)
+        coEvery { danceLibraryRepository.getDanceById("shared1", "uid1") } returns Result.success(dance)
         vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
         advanceUntilIdle()
 
@@ -315,7 +315,7 @@ class AppViewModelTest {
         mockkStatic(Log::class)
         every { Log.d(any(), any()) } returns 0
         coEvery { authRepository.getCurrentUserProfile() } returns makeProfile()
-        coEvery { danceLibraryRepository.getDanceById(any()) } returns Result.success(makeDanceItem())
+        coEvery { danceLibraryRepository.getDanceById(any(), any()) } returns Result.success(makeDanceItem())
         vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
         advanceUntilIdle()
         vm.openDanceById("d1")
