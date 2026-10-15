@@ -36,6 +36,7 @@ data class DanceLibraryModel(
         const val VISIBILITY_PRIVATE = "private"
     }
 
+    @get:Exclude
     val isTemplateReady: Boolean
         get() = templateGenerationStatus.equals("ready", ignoreCase = true)
 }

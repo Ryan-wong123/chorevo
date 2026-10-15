@@ -137,6 +137,14 @@ class VideoUploadsRepository @Inject constructor(
             // 4) Save Firestore doc immediately, then build template in background.
             onStageChanged?.invoke("Saving details")
             onProgress?.invoke(0.98f)
+            val initialStatus = when {
+                confirmedTemplate != null -> "saving"
+                generateTemplate -> "queued"
+                else -> "skipped"
+            }
+            val reviewStatus = if (confirmedTemplate != null) "confirmed" else ""
+            // The real status goes into the first write. DanceLibraryModel defaults
+            // to "ready", which would briefly make the dance show up in the feed.
             val doc = DanceLibraryModel(
                 danceId = danceId,
                 title = title.trim(),
@@ -146,6 +154,8 @@ class VideoUploadsRepository @Inject constructor(
                 educatorName = educatorName.trim(),
                 videoUrl = videoUrl,
                 enabled = true,
+                templateGenerationStatus = initialStatus,
+                templateReviewStatus = reviewStatus,
                 visibility = visibility
             )
 
@@ -167,12 +177,8 @@ class VideoUploadsRepository @Inject constructor(
                         "uploadedSizeBytes" to uploadedSize,
                         "wasCompressed" to useCompressed,
                         "storagePath" to storagePath,
-                        "templateGenerationStatus" to when {
-                            confirmedTemplate != null -> "saving"
-                            generateTemplate -> "queued"
-                            else -> "skipped"
-                        },
-                        "templateReviewStatus" to if (confirmedTemplate != null) "confirmed" else ""
+                        "templateGenerationStatus" to initialStatus,
+                        "templateReviewStatus" to reviewStatus
                     ),
                     SetOptions.merge()
                 )

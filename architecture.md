@@ -128,7 +128,7 @@ Shared infrastructure includes:
 
 - `AppDb` and `DanceSessionDao` for Room.
 - Hilt modules under `core/Database/di`.
-- `AutoRetryUploaderService` (`firebase`): a plain injected class (not an Android `Service`) that re-uploads unsynced sessions.
+- `AutoRetryUploaderService` (`firebase`): a plain injected class (not an Android `Service`) that re-uploads an account's unsynced sessions.
 - Camera helpers (`CameraPreview`, `CameraBinder`, `CameraUseCaseFactory`) and video player helpers (`FeedPlayerFactory`, `VideoPlayerCache`, `SharedPlayerView`) under `core`.
 - `VideoTemplateGenerationWorker` and `VideoCompressor` under `videouploads`.
 - Notification scheduling under `notification` (`ReminderScheduler`, `ReminderReceiver`, `BootReceiver`, `NotificationChannels`, `NotificationPreferencesDataStore`).
@@ -179,13 +179,13 @@ Main collections:
 - `communityPosts/{postId}` and `communityPosts/{postId}/replies/{replyId}`: forum posts and replies.
 - `leaderboardStats/{uid}`: aggregate leaderboard stats (totalPracticeSessions, avgSimilarityScore, totalActiveDays, legacy streakDays, displayName, photoUrl, updatedAt).
 
-`DanceLibraryModel` exposes `isPrivate` (annotated `@get:Exclude` so it is not written back to Firestore) and `isVisibleTo(viewerUid)`, which returns true for public dances and for private dances viewed by their uploader. `isTemplateReady` is not excluded, so a `templateReady` field is also written.
+`DanceLibraryModel` exposes `isPrivate` (annotated `@get:Exclude` so it is not written back to Firestore) and `isVisibleTo(viewerUid)`, which returns true for public dances and for private dances viewed by their uploader. `isTemplateReady` is also excluded.
 
 Important query patterns:
 
 - Enabled library items: `danceLibrary where enabled == true`, then filtered client-side to ready templates and non-private dances. The query does not filter on `visibility` because older documents have no such field.
 - Liked dances: the enabled-library query, then one `likes/{uid}` read per dance.
-- Comments: `orderBy createdAt desc limit 20`; "Load more" uses `orderBy createdAt asc startAfter(cursor)`.
+- Comments: `orderBy createdAt desc limit 20`; "Load more" continues with the same order and `startAfter(cursor)`.
 - Creator uploads: `danceLibrary where educatorUid == uid orderBy createdAt desc`.
 - Learner sessions: `users/{uid}/danceLearningSessions orderBy tsStart desc limit 30`.
 - Creator analytics: collection group `danceLearningSessions where analysis.educatorUid == uid`, optionally also `analysis.danceId`.
@@ -200,7 +200,7 @@ Important query patterns:
 Main paths:
 
 - `danceVideos/{uid}/{danceId}.mp4`
-- `danceTemplates/{danceId}.json`
+- `danceTemplates/{uid}/{danceId}.json` (built by `PoseTemplateStorage.jsonPath`; older templates live at `danceTemplates/{danceId}.json`)
 - `profilePhotos/{uid}/profile.jpg`
 - `danceThumbnails/{uid}/{fileName}` (allowed by the rules; not used by the app yet)
 
@@ -208,7 +208,7 @@ Storage rules validate content type and file size, and owner writes for videos, 
 
 ### Room
 
-Room database `app.db` (version 5, `exportSchema = false`, destructive migration) stores `DanceSessionEntity` in `dance_sessions`.
+Room database `app.db` (version 6, `exportSchema = false`) stores `DanceSessionEntity` in `dance_sessions`. `AppDb.MIGRATION_5_6` adds the `ownerUid` column; other schema changes fall back to destructive migration.
 
 Key fields:
 
@@ -219,8 +219,9 @@ Key fields:
 - `qualityFlag`
 - `analysisJson`
 - `synced`
+- `ownerUid` (account that saved the session; blank for sessions saved before v6)
 
-`DanceSessionDao` provides `insert` (replace on conflict), `latestFlow()`, `sinceFlow(sinceTs)`, `unsynced()`, and `markSynced(id)`. Production code uses `insert`, `unsynced`, and `markSynced`.
+`DanceSessionDao` provides `insert` (replace on conflict), `latestFlow()`, `sinceFlow(sinceTs)`, `unsynced()`, `unsyncedFor(uid)` (that account's sessions plus legacy ones with no owner), and `markSynced(id)`. Production code uses `insert`, `unsyncedFor`, and `markSynced`.
 
 ### DataStore
 
@@ -246,7 +247,7 @@ Key fields:
 4. `VideoUploadsRepository` compresses the video (720p, up to 24 fps) and uploads the smaller of the original and compressed files.
 5. Video uploads to `danceVideos/{uid}/{danceId}.mp4`.
 6. Metadata writes to `danceLibrary/{danceId}`, then status fields are written (`saving`, `queued` or `skipped`, and `templateReviewStatus`).
-7. "Upload Confirmed Dance": the confirmed template (filtered to the selected dancers and hand tracks) uploads to `danceTemplates/{danceId}.json`, and the status becomes `ready` with `templateReviewStatus = "confirmed"` and `dancerCount`.
+7. "Upload Confirmed Dance": the confirmed template (filtered to the selected dancers and hand tracks) uploads to `danceTemplates/{uid}/{danceId}.json`, and the status becomes `ready` with `templateReviewStatus = "confirmed"` and `dancerCount`.
 8. "Upload and analyze in background": WorkManager enqueues `VideoTemplateGenerationWorker` (network required; inputs `dance_id`, `storage_path`, `template_fps`, `collect_hand_landmarks`).
 9. The worker sets `processing`, downloads the video, generates a template with the standard profile, uploads the JSON, and writes `ready` with `templateStoragePath` and `dancerCount` (removing any legacy inline `template` field). It retries up to three attempts, then writes `failed` with `templateGenerationError`.
 
@@ -303,7 +304,7 @@ On the web:
 6. On submit, a `DanceSessionEntity` and analysis payload are created (body-only scores; hand feedback is included in the feedback messages).
 7. `DanceLibraryListViewModel.saveSessionAndUpload` inserts the session locally, uploads it to Firestore, and marks it synced. On success, streak and leaderboard stats refresh.
 8. In parallel, without waiting for the upload, `AchievementViewModel.processCompletedSession` awards points (`users/{uid}/points/current`) and badges (`achievements/current`), and `WeeklyChallengeViewModel.recordCompletedSession` updates weekly challenges. A results dialog shows points, level-ups, and badges.
-9. On upload failure, the local session remains unsynced. `AutoRetryUploaderService.retryUnsyncedSessions`, called from `AppViewModel` after a session restore at launch, re-uploads it, updates the streak, refreshes leaderboard stats, and marks it synced.
+9. On upload failure, the local session remains unsynced. `AutoRetryUploaderService.retryUnsyncedSessions(uid)`, called from `AppViewModel` after a session restore at launch and after every sign-in (`onAuthed`), re-uploads that account's sessions (`unsyncedFor`), updates the streak, refreshes leaderboard stats, and marks them synced.
 
 ### Weekly Challenge Flow
 
@@ -393,7 +394,7 @@ Rules:
 - Hand landmark arrays use the same flattened `x, y, z, visibility` format as pose arrays. MediaPipe hand landmarks have no visibility, so it is filled with 1.0.
 - Left and right hands each contain 21 MediaPipe hand landmarks when detected; a missing hand is an empty list.
 - Frames where neither hand is detected are left out of the hand track.
-- Hand-track IDs are matched to pose-track IDs by string (see section 11.9).
+- Hand frames are attached to dancer tracks by `HandTrackAssigner`, which matches each hand observation to the template frame with the same timestamp and the closest body pose.
 - There are no face fields in the template.
 
 ### Template Generation
@@ -402,7 +403,7 @@ Rules:
 
 - reads frames with `MediaMetadataRetriever` (up to 120 seconds of video; at least 5 fps for the standard profile and 8 fps for high-recall),
 - runs full-frame MediaPipe in VIDEO mode; per-crop inference uses IMAGE mode,
-- **standard profile** (background worker): Pose Landmarker lite, plus full-frame Holistic (single person) when hands are requested. Holistic's pose becomes the frame's detection and hands are stored under `track_1`. If Holistic cannot initialize, a `handExtractionPartial` warning is added and generation continues body-only.
+- **standard profile** (background worker): Pose Landmarker lite, plus full-frame Holistic (single person) when hands are requested. Holistic's pose becomes the frame's detection, and its hands are attached to that pose. If Holistic cannot initialize, a `handExtractionPartial` warning is added and generation continues body-only.
 - **high-recall profile** (on-device "Analyze Dancers"): low-light preprocessing, YOLO person detection (enabled automatically when hands are requested), same-frame duplicate removal, ByteTrack tracking, per-dancer padded crops through Holistic (falling back per dancer to body-only pose), remapping of pose and hand landmarks to full-frame coordinates, track fragment merging, and short-gap interpolation. Fixed-region crop passes run only for high-recall body-only generation, which the app does not currently request.
 - ignores all face landmarks even if the Holistic result contains them,
 - merges duplicate detections,
@@ -481,13 +482,14 @@ Firestore rules (`firestore.rules`, matching the deployed ruleset) enforce:
 - `leaderboardStats/{uid}`: readable by any signed-in user, written only by the owner, no deletes,
 - `communityPosts/{postId}` and `replies/{replyId}`: readable by signed-in users; create validated (allowed fields only, author is the caller, title ≤ 120, body ≤ 1,500, reply ≤ 500, replies only on existing posts); no updates; delete only by the author.
 
-There are no rules for `danceLibrary/{danceId}/likes` or `danceLibrary/{danceId}/comments`, so Firestore denies them by default.
+- `danceLibrary/{danceId}/likes/{uid}`: readable by signed-in users; users like (`{liked: true}` only) and unlike only as themselves; the dance owner may delete likes on their dance.
+- `danceLibrary/{danceId}/comments/{commentId}`: readable by signed-in users; create validated (allowed fields only, author is the caller, ID matches, text 1–1,000 characters); no updates; delete by the author or the dance owner.
 
 Storage rules enforce:
 
 - owner-only writes for `danceVideos/{uid}/` (video, < 200 MB), `danceThumbnails/{uid}/` (image, < 10 MB), and `profilePhotos/{uid}/` (image, < 10 MB),
 - public reads for dance videos and thumbnails, and authenticated reads for profile photos and templates,
-- `danceTemplates/{fileName}`: any signed-in user may create, update, or delete (JSON, < 20 MB); there is no ownership check,
+- `danceTemplates/{userId}/{fileName}`: written and deleted only by that user (JSON, < 20 MB); legacy `danceTemplates/{fileName}` files are read-only. (This version of `storage.rules` is pending deployment until the updated app is installed; the deployed version still allows any signed-in user to write or delete templates.)
 - deny-by-default fallback.
 
 Video privacy:
@@ -511,7 +513,7 @@ Unit tests (`app/src/test`):
 - `dancelibrarylist`: `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` (including video privacy)
 - `firebase`: `FirebaseAuthRepositoryTest`
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`
-- `posedetection`: `ByteTrackDancerTrackerTest`, `ConservativeFramePreprocessorTest`, `CropPoseGeometryTest`, `HandSimilarityEvaluatorTest`, `HolisticFrameLandmarksTest`, `HolisticFrameSelectorTest`, `MissingLandmarkInterpolatorTest`, `MultiPersonPoseTrackerTest`, `PersonDetectorFactoryTest`, `PoseDetectionMergerTest`, `PoseSimilarityEvaluatorTest`, `PoseTemplateJsonTest`, `TrackFragmentMergerTest`, `YoloPersonDetectionParserTest`
+- `posedetection`: `ByteTrackDancerTrackerTest`, `ConservativeFramePreprocessorTest`, `CropPoseGeometryTest`, `HandSimilarityEvaluatorTest`, `HandTrackAssignerTest`, `HolisticFrameLandmarksTest`, `HolisticFrameSelectorTest`, `MissingLandmarkInterpolatorTest`, `MultiPersonPoseTrackerTest`, `PersonDetectorFactoryTest`, `PoseDetectionMergerTest`, `PoseSimilarityEvaluatorTest`, `PoseTemplateJsonTest`, `TrackFragmentMergerTest`, `YoloPersonDetectionParserTest`
 - `videouploads`: `VideoUploadTest` (upload ViewModel, dancer review, confirmed templates, visibility)
 - `weeklychallenge`: `WeeklyChallengeEngineTest`, `WeeklyChallengeViewModelTest`
 
@@ -543,12 +545,11 @@ Deployment:
 - Navigation is a custom state machine (`AppUiState.screen` plus `when` in `AppRouter`); the Navigation Compose dependencies are declared but unused. This may become hard to scale if nested flows grow.
 - Package segments `ViewModel`, `Repository` and `Database` are mixed-case, `videouploads/repository` is lowercase, and the router files declare `package com.routes`. New packages should be lowercase and match their folders.
 - `RepositoryModule` imports the wrong `@Provides` annotation and is ignored by Hilt; repositories rely on `@Inject` constructors instead.
-- Room has `exportSchema = false` and destructive migration, which is convenient for prototype speed but loses unsynced sessions on schema changes. `dance_sessions` has no user column, so unsynced sessions are not scoped to an account.
+- Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).
 - Leaderboard values are client-written; high-trust ranking would need server-side verification.
 - Template generation is compute-heavy and runs off the main thread (`Dispatchers.Default` or WorkManager).
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
 - Video privacy is client-enforced; rules-level enforcement needs a `visibility` backfill and a `visibility == "public"` feed query.
-- Likes and comments have no Firestore rules and are denied by default.
 - App Links are declared with `autoVerify`. `public/.well-known/assetlinks.json` exists, but the `firebase.json` hosting `ignore` rule `**/.*` excludes it from deploys, so links are not verified. A copy in `app/src/main/assets/assetlinks.json` is bundled in the APK and serves no purpose.
 - The share function and Hosting are not deployed by CI, so web changes must be deployed manually after merging.
 - `PoseEstimator`/`NoOpPoseEstimator` and `PoseTemplateRepository` in `posedetection` are unused scaffolding.
@@ -588,7 +589,7 @@ Creator reviews and confirms dancers
 ↓
 PoseTemplateJson serialization with handTracks
 ↓
-Firebase Storage upload to danceTemplates/{danceId}.json
+Firebase Storage upload to danceTemplates/{uid}/{danceId}.json
 ```
 
 Fallbacks:
@@ -611,6 +612,7 @@ Implemented classes:
 - `CropPoseGeometry`: crop padding, clamping, and remapping.
 - `PoseDetectionMerger`: removes same-frame duplicate boxes and landmark detections.
 - `MultiPersonPoseTracker`: assigns template track IDs and builds quality warnings.
+- `HandTrackAssigner`: attaches hand observations to template tracks by matching the body pose each hand was detected with (same timestamp, closest pose).
 - `TrackFragmentMerger`: merges split tracks after the video has been processed.
 - `MissingLandmarkInterpolator`: fills short gaps only when confidence and timing make it safe.
 
@@ -752,7 +754,6 @@ If the YOLO model is missing, unsupported, or fails at runtime:
 
 Known limitations:
 
-- Template pose-track IDs come from `MultiPersonPoseTracker`, while hand frames are keyed by ByteTrack IDs. `withHandTracks` matches them by string only, so a hand track can attach to the wrong dancer or be dropped. The standard path hardcodes `track_1`.
 - The standard background profile is effectively single-dancer when hands are requested.
 - Live practice does not fall back to Pose Landmarker when Holistic returns an empty pose.
 

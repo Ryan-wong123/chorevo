@@ -683,7 +683,8 @@ fun DanceARPracticeScreen(
             timingConsistencyScore = timingConsistencyScore,
             alignmentScore = alignmentScore,
             qualityFlag = if (alignmentScore >= 0.75) "GOOD" else "DONE",
-            analysisJson = analysisPayload.toJson()
+            analysisJson = analysisPayload.toJson(),
+            ownerUid = uid
         )
 
         status = "Submitting practice result..."

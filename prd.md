@@ -89,7 +89,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
   - **High-recall** (the "Analyze Dancers" button, on device, 8 fps): YOLO person detection (`person_detector_yolo.tflite`), ByteTrack tracking, low-light preprocessing, per-dancer crops through `holistic_landmarker.task` for pose + left/right hands, track fragment merging and short-gap interpolation. `pose_landmarker_full.task` is the body-only fallback (or `pose_landmarker_lite.task` if the full model is missing).
   - **Standard** (background WorkManager job): full-frame Holistic Landmarker for one dancer's pose + hands, with `pose_landmarker_lite.task` for body pose and as the fallback. No YOLO, preprocessing, or track cleanup.
 - Face output is discarded and never stored.
-- Generated templates are serialized to JSON and stored under `danceTemplates/{danceId}.json`.
+- Generated templates are serialized to JSON and stored under `danceTemplates/{uid}/{danceId}.json` (templates created before this change remain at `danceTemplates/{danceId}.json`).
 - The background worker retries failed generation up to three attempts, then marks the template `failed`.
 
 ### AR Practice and Scoring
@@ -147,7 +147,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 - Dance sessions are inserted into Room before upload.
 - Unsynced sessions are identified through the `synced` flag.
-- When a signed-in session is restored at app launch, unsynced sessions are retried (upload, streak update, leaderboard refresh, mark synced).
+- Each session records the account that saved it. When a session is restored at app launch, and after every sign-in, that account's unsynced sessions are retried (upload, streak update, leaderboard refresh, mark synced). Sessions saved before ownership was recorded are retried by whichever account signs in.
 - Failed submissions preserve local session data and report the upload failure to the UI.
 
 ## 5. Out of Scope for the Current App
@@ -244,7 +244,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Firestore rules must enforce owner-only writes for profiles, points, achievements, streaks, weekly challenges, friends, sessions, and uploads.
 - Learner session reads must be limited to the owner or the educator linked in the analysis payload.
 - Any signed-in user can read any `users/{uid}` profile document, including its email.
-- Storage rules must enforce owner-only writes and content-type/size limits. Exception: `danceTemplates/` can be written and deleted by any signed-in user (no owner check).
+- Storage rules must enforce owner-only writes and content-type/size limits, including for pose templates (`danceTemplates/{uid}/…`).
 - App Check debug provider is installed only for debug builds.
 - Video privacy is enforced by the app and the share Cloud Function, not by Firestore rules; any signed-in user can still read a private dance document directly through the Firebase API.
 - The share Cloud Function reads Firestore with the Admin SDK and must never expose private or disabled dances.
@@ -286,12 +286,12 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 - `danceVideos/{uid}/{danceId}.mp4`: uploaded reference videos (video, under 200 MB).
 - `danceThumbnails/{uid}/{fileName}`: reserved by the rules (image, under 10 MB); not used by the app yet.
-- `danceTemplates/{danceId}.json`: generated pose templates (JSON, under 20 MB).
+- `danceTemplates/{uid}/{danceId}.json`: generated pose templates (JSON, under 20 MB), writable only by the uploader. Older templates at `danceTemplates/{danceId}.json` are read-only.
 - `profilePhotos/{uid}/profile.jpg`: profile pictures (image, under 10 MB).
 
 ### Room
 
-- Database `app.db` (version 5, destructive migration on schema change) with one table, `dance_sessions`: local practice session records (sessionId, timestamps, activity, duration, scores, qualityFlag, analysisJson) with a `synced` flag.
+- Database `app.db` (version 6; the 5→6 migration adds `ownerUid`, other schema changes fall back to destructive migration) with one table, `dance_sessions`: local practice session records (sessionId, timestamps, activity, duration, scores, qualityFlag, analysisJson) with a `synced` flag and the `ownerUid` of the account that saved it.
 
 ### DataStore
 
@@ -350,16 +350,8 @@ These are product targets. They are not instrumented yet: the Firebase Analytics
 
 ### Known Issues
 
-- Firestore rules have no rules for `danceLibrary/{id}/likes` or `danceLibrary/{id}/comments`, so likes, comments and the Liked tab are denied by default in the deployed project.
-- `danceTemplates/` in Storage can be overwritten or deleted by any signed-in user.
-- Comment paging: the first page is ordered newest first, but "Load more" continues in oldest-first order from the same cursor.
-- After the first reminder fires, the next one is rescheduled for 09:09 instead of the chosen time (the receiver reads time extras the scheduler never sets).
-- Email sign-in and session restore merge-write `displayName` and `photoUrl` as null when they are not available from the auth provider, which can blank a user's saved name and photo.
-- New uploads are briefly written with `templateGenerationStatus = "ready"` before the real status is set.
-- Unsynced Room sessions are not tied to a user, so a retry after switching accounts could upload another account's pending sessions.
-- Retry of unsynced sessions only runs on session restore at app launch, not after an interactive sign-in.
+- The owner-only Storage rule for `danceTemplates/` is written but not yet deployed: older app versions still write templates to `danceTemplates/{danceId}.json`, so the rule must be deployed only after the updated app is installed. Until then, the deployed rule still lets any signed-in user overwrite or delete templates.
 - The Friends leaderboard only shows friends who are in the global top 100 for the selected metric.
-- Deleting a dance leaves its likes and comments subcollections behind.
 
 ## 12. Pose + Hands Holistic Practice (Implemented)
 
@@ -499,6 +491,5 @@ Only `dancerCount` is recorded today. These targets need manual measurement or f
 
 ### 13.9 Known Limitations
 
-- Hand tracks may attach to the wrong dancer: hand frames are keyed by ByteTrack IDs, while the template's pose tracks get IDs from a separate tracker, and the two are matched only by ID string.
 - The standard background profile is effectively single-dancer when hands are requested.
 - Live practice does not fall back to Pose Landmarker when Holistic returns an empty pose; it only falls back when Holistic fails or throws.

@@ -96,6 +96,30 @@ class DanceSessionDaoTest {
     }
 
     @Test
+    fun unsyncedFor_returnsOnlyThatAccountsAndLegacySessions() = runTest {
+        fun session(id: String, owner: String) = DanceSessionEntity(
+            sessionId = id,
+            tsStart = 0,
+            tsEnd = 10,
+            activityName = "A",
+            activityType = "T",
+            durationMs = 10,
+            smoothnessScore = 0.1,
+            balanceScore = 0.2,
+            timingConsistencyScore = 0.3,
+            qualityFlag = "OK",
+            ownerUid = owner
+        )
+        dao.insert(session("mine", "alice"))
+        dao.insert(session("theirs", "bob"))
+        dao.insert(session("legacy", ""))
+
+        val ids = dao.unsyncedFor("alice").map { it.sessionId }.toSet()
+
+        assertEquals(setOf("mine", "legacy"), ids)
+    }
+
+    @Test
     fun sinceFlow_returnsSessionsWithTsEndAfterSinceTs() = runTest {
         val s1 = DanceSessionEntity(
             sessionId = "s1",

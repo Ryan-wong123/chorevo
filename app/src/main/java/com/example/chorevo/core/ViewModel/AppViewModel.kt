@@ -204,6 +204,8 @@ class AppViewModel @Inject constructor(
     /** Stores the authenticated user and sends the app to the home screen. */
     fun onAuthed(profile: UserProfile) {
         _uiState.update { it.copy(profile = profile, screen = Screen.HOME) }
+        // Upload any sessions this account saved offline before signing out.
+        viewModelScope.launch { runCatching { retryUploader.retryUnsyncedSessions(profile.uid) } }
         // Consume any deep link that arrived before the user logged in.
         pendingDeepLinkDanceId?.let { id ->
             pendingDeepLinkDanceId = null

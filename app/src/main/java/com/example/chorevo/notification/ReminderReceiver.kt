@@ -90,8 +90,10 @@ class ReminderReceiver : BroadcastReceiver() {
 
         when {
             type == "daily" -> {
-                val hour = intent?.getIntExtra("hour", 9) ?: 9
-                val minute = intent?.getIntExtra("minute", 9) ?: 9
+                val hour = intent?.getIntExtra(ReminderScheduler.EXTRA_HOUR, ReminderScheduler.DEFAULT_HOUR)
+                    ?: ReminderScheduler.DEFAULT_HOUR
+                val minute = intent?.getIntExtra(ReminderScheduler.EXTRA_MINUTE, ReminderScheduler.DEFAULT_MINUTE)
+                    ?: ReminderScheduler.DEFAULT_MINUTE
 
                 scheduler.scheduleNextDaily(hour, minute)
             }

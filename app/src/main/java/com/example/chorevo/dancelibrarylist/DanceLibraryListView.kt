@@ -1,5 +1,6 @@
 package com.example.chorevo.dancelibrarylist
 
+import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -49,6 +50,7 @@ import com.example.chorevo.core.createCachedFeedExoPlayer
 import com.example.chorevo.core.share.ShareBottomSheet
 import com.example.chorevo.core.share.ShareContent
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceSocialState
+import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -509,7 +511,7 @@ private fun TikTokVideoPage(
                 ) {
                     OutlinedTextField(
                         value         = commentText,
-                        onValueChange = { commentText = it },
+                        onValueChange = { commentText = it.take(DanceLibraryRepository.MAX_COMMENT_LENGTH) },
                         placeholder   = { Text("Add a comment...") },
                         modifier      = Modifier.weight(1f),
                         shape         = RoundedCornerShape(14.dp),
@@ -526,7 +528,7 @@ private fun TikTokVideoPage(
                         shape  = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = accentColor,
-                            contentColor   = Color.White
+                            contentColor   = ChorevoTheme.colors.onAccent
                         )
                     ) {
                         Text("Post", fontWeight = FontWeight.SemiBold)
@@ -602,10 +604,10 @@ private fun PracticeDock(
                 .fillMaxWidth()
                 .height(50.dp)
                 .testTag("practiceButton"),
-            shape  = RoundedCornerShape(14.dp),
+            shape  = PillShape,
             colors = ButtonDefaults.buttonColors(
                 containerColor = accentColor,
-                contentColor   = Color.White
+                contentColor   = ChorevoTheme.colors.onAccent
             ),
             elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
         ) {

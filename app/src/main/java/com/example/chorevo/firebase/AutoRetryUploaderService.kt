@@ -19,7 +19,7 @@ class AutoRetryUploaderService @Inject constructor(
 ) {
     /** Retries unsynced sessions. */
     suspend fun retryUnsyncedSessions(uid: String) = withContext(io) {
-        val pending = dao.unsynced()
+        val pending = dao.unsyncedFor(uid)
         if (pending.isEmpty()) return@withContext
 
         for (s in pending) {
