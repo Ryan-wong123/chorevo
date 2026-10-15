@@ -26,6 +26,18 @@ class NotificationPreferencesDataStore @Inject constructor(
         val NOTIFICATION_HOUR = intPreferencesKey("notification_hour")
         val NOTIFICATION_MINUTE = intPreferencesKey("notification_minute")
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val ONBOARDING_SEEN = booleanPreferencesKey("onboarding_seen")
+    }
+
+    /** True once the welcome carousel has been finished or skipped on this device. */
+    val onboardingSeenFlow: Flow<Boolean> =
+        context.notificationPrefsDataStore.data.map { prefs -> prefs[Keys.ONBOARDING_SEEN] ?: false }
+
+    /** Remembers that the welcome carousel was shown. */
+    suspend fun setOnboardingSeen() {
+        context.notificationPrefsDataStore.edit { prefs ->
+            prefs[Keys.ONBOARDING_SEEN] = true
+        }
     }
 
     /** Stored theme key ("dark", "light" or "system"); null until the user picks one. */

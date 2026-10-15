@@ -58,6 +58,8 @@ data class AppUiState(
     val sharedDance: DanceLibraryModel? = null,
     /** Light/dark choice from Settings; loaded from DataStore. */
     val themeMode: ThemeMode = ThemeMode.DARK,
+    /** Whether the welcome carousel was already shown; null until loaded. */
+    val onboardingSeen: Boolean? = null,
 ) {
     val displayName: String =
         profile?.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User"

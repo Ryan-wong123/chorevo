@@ -66,6 +66,7 @@ class AppViewModelTest {
         every { settings.pushEnabledFlow } returns flowOf(false)
         every { settings.notificationTimeFlow } returns flowOf(9 to 0)
         every { settings.themeModeFlow } returns flowOf(null)
+        every { settings.onboardingSeenFlow } returns flowOf(false)
 
         vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
     }
@@ -408,5 +409,24 @@ class AppViewModelTest {
         assertEquals(ThemeMode.DARK, ThemeMode.fromKey(null))
         assertEquals(ThemeMode.DARK, ThemeMode.fromKey("purple"))
         assertEquals(ThemeMode.LIGHT, ThemeMode.fromKey("light"))
+    }
+
+    // ── Onboarding ────────────────────────────────────────────────────────────
+
+    @Test
+    fun onboarding_notSeen_isLoadedAsFalse() = runTest {
+        advanceUntilIdle()
+        assertEquals(false, vm.uiState.value.onboardingSeen)
+    }
+
+    @Test
+    fun completeOnboarding_marksSeen_andSaves() = runTest {
+        advanceUntilIdle()
+
+        vm.completeOnboarding()
+        advanceUntilIdle()
+
+        assertEquals(true, vm.uiState.value.onboardingSeen)
+        coVerify { settings.setOnboardingSeen() }
     }
 }

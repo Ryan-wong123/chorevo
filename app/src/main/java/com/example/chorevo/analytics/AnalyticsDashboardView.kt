@@ -55,7 +55,9 @@ fun AnalyticsDashboardView(
     title: String = "Sessions",
     emptyText: String = "No sessions found.",
     vm: AnalyticsDashboardViewModel,
-    embeddedInParentScroll: Boolean = false
+    embeddedInParentScroll: Boolean = false,
+    /** Shows tiles, trend, activity heatmap and body diagram above the list. */
+    showOverview: Boolean = false
 ) {
     val sessions by vm.sessions.collectAsStateWithLifecycle()
     val detail by vm.selectedDetail.collectAsStateWithLifecycle()
@@ -87,6 +89,11 @@ fun AnalyticsDashboardView(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        if (showOverview && sessions.isNotEmpty()) {
+            AnalyticsOverview(sessions = sessions)
+            Spacer(Modifier.height(4.dp))
+        }
+
         Text(title, style = MaterialTheme.typography.titleMedium)
 
         ExpandableAnalyticsList(

@@ -1,6 +1,8 @@
 package com.routes
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.Crossfade
+import com.example.chorevo.firebase.OnboardingScreen
 import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -80,10 +82,15 @@ fun AppRouter(
         }
 
         // After auth check, if no signed-in profile exists, force auth
+        // First launch shows the welcome carousel, then sign-in.
         if (state.profile == null) {
-            AuthRoute(
-                onAuthed = appViewModel::onAuthed
-            )
+            Crossfade(targetState = state.onboardingSeen, label = "onboarding") { seen ->
+                when (seen) {
+                    null -> StartupLoadingRoute()
+                    false -> OnboardingScreen(onFinish = appViewModel::completeOnboarding)
+                    true -> AuthRoute(onAuthed = appViewModel::onAuthed)
+                }
+            }
             return@Scaffold
         }
 

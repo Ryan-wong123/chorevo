@@ -69,6 +69,12 @@ class AppViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            settings.onboardingSeenFlow.collect { seen ->
+                _uiState.update { it.copy(onboardingSeen = seen) }
+            }
+        }
+
+        viewModelScope.launch {
             settings.themeModeFlow.collect { key ->
                 _uiState.update { it.copy(themeMode = ThemeMode.fromKey(key)) }
             }
@@ -259,6 +265,12 @@ class AppViewModel @Inject constructor(
             else -> return false
         }
         return true
+    }
+
+    /** Called when the welcome carousel is finished or skipped; it won't show again. */
+    fun completeOnboarding() {
+        _uiState.update { it.copy(onboardingSeen = true) }
+        viewModelScope.launch { settings.setOnboardingSeen() }
     }
 
     /** Saves the light/dark choice from Settings. */

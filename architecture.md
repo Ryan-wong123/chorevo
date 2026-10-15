@@ -73,11 +73,13 @@ Compose screens and routes live in feature packages. They observe ViewModel stat
 
 Screens:
 
-- `AuthScreen`: email/password and "Continue with Google".
+- `OnboardingScreen` (`firebase`): first-launch welcome carousel (`HorizontalPager`, page dots, Skip / Next / Get started). `AppRouter` shows it instead of `AuthRoute` while `AppUiState.onboardingSeen == false` (null while loading shows the startup route); `AppViewModel.completeOnboarding` saves `onboarding_seen`.
+- `AuthScreen`: email/password and "Continue with Google" on the stage background with the animated dancer and gradient wordmark; `systemBarsPadding`, `imePadding` and vertical scroll keep the form above the keyboard.
+- `DancingFigure` / `StageBackground` (`core/DancingFigure.kt`): a pose skeleton looping through keyframed poses (smoothstep interpolation, brand-gradient bones with a glow) and a dark background with two drifting brand glows; used by onboarding and sign-in.
 - `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet.
 - `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
 - `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
-- `AnalyticsDashboardView`: learner and creator analytics.
+- `AnalyticsDashboardView`: learner and creator analytics. With `showOverview = true` (the profile's Activity and Learners tabs) it renders `AnalyticsOverview` above the list: stat tiles with a sparkline, a draw-in trend chart, an 8-week activity heatmap, and a body diagram. The numbers come from `computeOverviewStats` and the body focus from `bodyFocusFromFeedback` (`analytics/AnalyticsStats.kt`, plain Kotlin, unit tested), which counts corrections per `BodyArea` in each session's stored feedback messages.
 - `LeaderboardScreen`: Global/Friends leaderboard with a top-three `Podium` (medal rings, rising blocks, `podium_rank_N` test tags), ranks 4+ in a list, and the user's "Your position" card pinned at the bottom. Add/remove-friend buttons come from `friendActionFor` for both podium and list.
 - `CommunityScreen`: forum posts and replies.
 - `UserProfileScreen`: header, streak-ring avatar, stats row, streak card, level panel, weekly challenge summary, and icon tabs (Uploads and Private as thumbnail grids via `VideoUploadsTab(gridFilter = …)` with an action sheet, Liked, Activity, Learners), plus the full-screen liked-videos feed.
@@ -148,7 +150,7 @@ Theme code lives in `ui/theme`:
 - `Theme.kt`: `ChorevoTheme { }` applies fixed dark and light colour schemes (dynamic colour is off by default so the brand looks the same on every device), the type scale and shapes. `ChorevoTheme.colors` exposes brand tokens Material has no slot for: `accent`/`onAccent` (teal), `like` (magenta), `success`, `gradientStart`/`gradientEnd`/`onGradient` and the teal-to-magenta `brandGradient`, frosted `glass`/`glassBorder`, and `onMedia` for content over video.
 - `Type.kt`: Sora for display, headline and `titleLarge` styles; Plus Jakarta Sans for `titleMedium`/`titleSmall`, body and labels. Both are bundled in `res/font` under the SIL Open Font License (`licenses/`).
 - `Shape.kt`: rounded `ChorevoShapes` (10–28dp), `PillShape` for buttons and the bottom bar, and a 4dp-grid `Spacing` scale.
-- `SegmentColors.kt`: good/ok/bad colours for scoring.
+- `SegmentColors.kt`: good/ok/bad colours for scoring, picking the light or dark shade from the app theme (surface luminance) rather than the phone setting.
 
 Screens should read colours from `MaterialTheme.colorScheme` or `ChorevoTheme.colors` rather than hardcoding hex values; buttons on the accent use `onAccent` for text. Third-party brand colours in the share sheet are the exception.
 
@@ -236,7 +238,7 @@ Key fields:
 
 ### DataStore
 
-`NotificationPreferencesDataStore` (`notification_preferences`) stores `push_enabled`, `notification_hour` (default 9), `notification_minute` (default 0), and `theme_mode` (`ThemeMode` key; missing means dark). `AppViewModel` observes these flows (exposing `AppUiState.themeMode`) and `ReminderScheduler` reschedules alarms when settings change.
+`NotificationPreferencesDataStore` (`notification_preferences`) stores `push_enabled`, `notification_hour` (default 9), `notification_minute` (default 0), and `theme_mode` (`ThemeMode` key; missing means dark), and `onboarding_seen`. `AppViewModel` observes these flows (exposing `AppUiState.themeMode`) and `ReminderScheduler` reschedules alarms when settings change.
 
 ## 6. Key Flows
 
@@ -332,7 +334,7 @@ On the web:
 
 1. `AnalyticsDashboardViewModel.setArgs` sets learner (`MY_DANCE`) or creator (`OTHER_ANALYTICS`) mode.
 2. `AnalyticsRepository.observeSessions` chooses the appropriate Firestore listener.
-3. Session documents are mapped into `DanceSessionSummary` (keys use `sessionId||docPath`); creator mode also reads learner display names from `users/{uid}`.
+3. Session documents are mapped into `DanceSessionSummary` (keys use `sessionId||docPath`), including `bodyFocus` counted from `analysis.feedbackMessages`; creator mode also reads learner display names from `users/{uid}`. Learner mode lists the latest 60 sessions.
 4. Selecting a session observes detail by session ID or document path, and checks `danceLibrary/{danceId}` for reference video availability.
 5. Nested `analysis` maps are parsed into `AnalysisData`.
 6. UI renders summary metrics, video context, timeline points, and performance segments.
@@ -519,8 +521,8 @@ Test locations:
 
 Unit tests (`app/src/test`):
 
-- `analytics`: `AnalyticsDashboardViewModelTest`, `AnalyticsRepositoryTest`
-- `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link handling, system back targets, and theme mode)
+- `analytics`: `AnalyticsDashboardViewModelTest`, `AnalyticsRepositoryTest`, `AnalyticsStatsTest` (overview numbers, trend, heatmap days, body focus)
+- `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link handling, system back targets, theme mode, and onboarding)
 - `dancelibrarylist`: `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` (including video privacy)
 - `firebase`: `FirebaseAuthRepositoryTest`
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`
@@ -528,7 +530,7 @@ Unit tests (`app/src/test`):
 - `videouploads`: `VideoUploadTest` (upload ViewModel, dancer review, confirmed templates, visibility, cover frame)
 - `weeklychallenge`: `WeeklyChallengeEngineTest`, `WeeklyChallengeViewModelTest`
 
-Instrumented tests (`app/src/androidTest`): `AnalyticsDashboardViewTest`, `DanceARPracticeScreenTest`, `DanceSessionDaoTest` (Room DAO), `DanceLibraryListViewTest`, `AuthScreenTest`, `LeaderboardScreenTest`, `VideoUploadActivityScreenTest`.
+Instrumented tests (`app/src/androidTest`): `AnalyticsDashboardViewTest`, `DanceARPracticeScreenTest`, `DanceSessionDaoTest` (Room DAO), `DanceLibraryListViewTest`, `AuthScreenTest`, `OnboardingScreenTest`, `LeaderboardScreenTest`, `VideoUploadActivityScreenTest`.
 
 Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances), run with `npm test` in `functions/`. They are not part of GitHub Actions.
 
