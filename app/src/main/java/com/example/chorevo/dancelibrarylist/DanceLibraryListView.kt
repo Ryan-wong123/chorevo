@@ -1,5 +1,6 @@
 package com.example.chorevo.dancelibrarylist
 
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -41,6 +42,8 @@ import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import com.example.chorevo.core.LocalFloatingBarInset
+import com.example.chorevo.core.LocalFloatingBarState
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.createCachedFeedExoPlayer
 import com.example.chorevo.core.share.ShareBottomSheet
@@ -103,6 +106,15 @@ fun DanceLibraryListView(
         initialPage = 0,
         pageCount = { items.size }
     )
+
+    // Tuck the floating bottom bar away while the user swipes between videos.
+    val floatingBar = LocalFloatingBarState.current
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.isScrollInProgress }.collect { floatingBar.hidden = it }
+    }
+    DisposableEffect(floatingBar) {
+        onDispose { floatingBar.hidden = false }
+    }
 
     // A link tapped while the feed is already open jumps back to the shared video.
     LaunchedEffect(pinnedDance?.danceId) {
@@ -212,7 +224,7 @@ fun DanceLibraryListView(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CircularProgressIndicator(color = Color(0xFF00B8C8))
+                    CircularProgressIndicator(color = ChorevoTheme.colors.accent)
                     Text(
                         text = if (openingDanceId != null) "Loading reference template..." else "Submitting result...",
                         color = Color.White
@@ -235,7 +247,9 @@ private fun TikTokVideoPage(
     vm: DanceLibraryListViewModel,
     onStartPractice: () -> Unit
 ) {
-    val accentColor = Color(0xFF00B8C8)
+    val accentColor = ChorevoTheme.colors.accent
+    // Keeps the title and dock above the floating bottom bar.
+    val barInset = LocalFloatingBarInset.current
     val scope = rememberCoroutineScope()
 
     val socialCache by vm.socialCache.collectAsStateWithLifecycle()
@@ -305,7 +319,7 @@ private fun TikTokVideoPage(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, bottom = 172.dp),
+                .padding(start = 16.dp, end = 16.dp, bottom = 172.dp + barInset),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
@@ -342,7 +356,7 @@ private fun TikTokVideoPage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(180.dp)
+                .height(180.dp + barInset)
                 .align(Alignment.BottomCenter)
                 .background(
                     Brush.verticalGradient(
@@ -355,7 +369,7 @@ private fun TikTokVideoPage(
         PracticeDock(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(horizontal = 16.dp, vertical = 24.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 24.dp + barInset),
             likeCount    = likeCount,
             isLiked      = isLiked,
             commentCount = comments.size,
@@ -560,7 +574,7 @@ private fun PracticeDock(
             DockAction(
                 icon    = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                 label   = if (likeCount > 0) likeCount.toString() else "Like",
-                tint    = if (isLiked) Color(0xFFFF4466) else Color.White,
+                tint    = if (isLiked) ChorevoTheme.colors.like else Color.White,
                 onClick = onLike,
                 testTag = "likeButton"
             )
@@ -671,7 +685,7 @@ private fun HeartBurst(offset: Offset) {
         Icon(
             imageVector        = Icons.Filled.Favorite,
             contentDescription = null,
-            tint               = Color(0xFFFF4466).copy(alpha = alpha.value),
+            tint               = ChorevoTheme.colors.like.copy(alpha = alpha.value),
             modifier           = Modifier
                 .size(72.dp)
                 .offset {

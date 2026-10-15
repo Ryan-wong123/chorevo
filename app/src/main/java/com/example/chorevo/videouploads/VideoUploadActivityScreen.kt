@@ -1,5 +1,7 @@
 package com.example.chorevo.videouploads
 
+import com.example.chorevo.ui.theme.PillShape
+import com.example.chorevo.ui.theme.ChorevoTheme
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -123,15 +125,15 @@ fun VideoUploadActivityScreen(
     val uploading = uiState.saving
     val status = uiState.statusMessage
 
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val surfaceColor = MaterialTheme.colorScheme.surface
     val secondaryText = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
 
     val tealButtonColors = ButtonDefaults.buttonColors(
         containerColor = brandTeal,
-        contentColor = Color.White,
+        contentColor = ChorevoTheme.colors.onAccent,
         disabledContainerColor = brandTeal.copy(alpha = 0.4f),
-        disabledContentColor = Color.White.copy(alpha = 0.6f)
+        disabledContentColor = ChorevoTheme.colors.onAccent.copy(alpha = 0.6f)
     )
 
     fun startLiveRecording() {
@@ -153,9 +155,9 @@ fun VideoUploadActivityScreen(
             TopAppBar(
                 title = { Text("Upload Dance", fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = brandTeal,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -279,7 +281,7 @@ fun VideoUploadActivityScreen(
             AnimatedVisibility(visible = status != null, enter = fadeIn(), exit = fadeOut()) {
                 status?.let {
                     Card(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.medium,
                         colors = CardDefaults.cardColors(
                             containerColor = brandTeal.copy(alpha = 0.1f)
                         )
@@ -331,7 +333,7 @@ fun VideoUploadActivityScreen(
                     .fillMaxWidth()
                     .height(54.dp)
                     .testTag("uploadButton"),
-                shape = RoundedCornerShape(16.dp),
+                shape = PillShape,
                 colors = tealButtonColors
             ) {
                 if (uploading) {
@@ -342,7 +344,7 @@ fun VideoUploadActivityScreen(
                         CircularProgressIndicator(
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp,
-                            color = Color.White
+                            color = ChorevoTheme.colors.onAccent
                         )
                         Text("Uploading...", style = MaterialTheme.typography.titleMedium)
                     }
@@ -421,7 +423,7 @@ private fun UploadFormField(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(testTag),
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.small,
         singleLine = singleLine,
         minLines = minLines,
         colors = OutlinedTextFieldDefaults.colors(
@@ -552,7 +554,7 @@ private fun DancerReviewPanel(
     )
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = if (confirmed) brandTeal.copy(alpha = 0.08f)
             else MaterialTheme.colorScheme.surfaceVariant
@@ -619,10 +621,10 @@ private fun DancerReviewPanel(
                 Button(
                     onClick = onAnalyze,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = PillShape,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = brandTeal,
-                        contentColor = Color.White
+                        contentColor = ChorevoTheme.colors.onAccent
                     )
                 ) {
                     Text("Analyze Dancers")
@@ -665,10 +667,10 @@ private fun DancerReviewPanel(
                         onClick = onConfirm,
                         enabled = previewableSelectedTrackIds.isNotEmpty() && !confirmed,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = PillShape,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = brandTeal,
-                            contentColor = Color.White
+                            contentColor = ChorevoTheme.colors.onAccent
                         )
                     ) {
                         Text("Confirm Dancers")
@@ -875,7 +877,7 @@ private fun VideoSourceOption(
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.medium,
         color = brandTeal.copy(alpha = 0.08f)
     ) {
         Row(

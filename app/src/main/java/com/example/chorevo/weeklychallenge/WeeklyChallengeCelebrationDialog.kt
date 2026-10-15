@@ -1,5 +1,6 @@
 package com.example.chorevo.weeklychallenge
 
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -36,13 +37,13 @@ fun WeeklyChallengeCelebrationDialog(
     bonusRewardPoints: Int,
     onDismiss: () -> Unit
 ) {
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val totalPoints = newlyCompleted.sumOf { it.rewardPoints } +
         if (bonusNewlyUnlocked) bonusRewardPoints else 0
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.large,
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -89,7 +90,7 @@ fun WeeklyChallengeCelebrationDialog(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = brandTeal,
-                        contentColor = Color.White
+                        contentColor = ChorevoTheme.colors.onAccent
                     )
                 ) {
                     Text("Awesome!", fontWeight = FontWeight.SemiBold)

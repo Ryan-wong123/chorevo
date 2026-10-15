@@ -1,5 +1,7 @@
 package com.example.chorevo.weeklychallenge
 
+import androidx.compose.runtime.ReadOnlyComposable
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.chorevo.ui.theme.SegmentColors
 
-private val brandTeal = Color(0xFF00B8C8)
+private val brandTeal: Color
+    @Composable @ReadOnlyComposable get() = ChorevoTheme.colors.accent
 
 /**
  * Compact "AI Focus Quests" preview shown on [com.example.chorevo.firebase.UserProfileScreen],
@@ -40,7 +43,7 @@ fun WeeklyChallengeSummaryCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(6.dp)
     ) {

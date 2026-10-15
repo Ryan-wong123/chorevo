@@ -1,5 +1,6 @@
 package com.example.chorevo.analytics
 
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -561,15 +562,15 @@ fun VideoUnavailablePanel(
 @Composable
 fun StatCard(label: String, value: String, modifier: Modifier = Modifier) {
 
-    val blue = Color(0xFF2196F3)
-    val blueLight = Color(0xFFBBDEFB)
+    val blue = MaterialTheme.colorScheme.onPrimaryContainer
+    val blueLight = MaterialTheme.colorScheme.primaryContainer
 
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
             containerColor = blueLight
         ),
-        shape = RoundedCornerShape(12.dp)
+        shape = MaterialTheme.shapes.medium
     ) {
         Column(
             modifier = Modifier
@@ -710,7 +711,7 @@ fun TimelineChart(
     currentMs: Long,
     onSeek: (Long) -> Unit
 ) {
-    val primary = Color(0xFF2196F3)
+    val primary = ChorevoTheme.colors.accent
     val pointerColor = MaterialTheme.colorScheme.onSurface
     val axisColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
     val goodBand = SegmentColors.good.copy(alpha = 0.07f)
@@ -884,7 +885,7 @@ fun SegmentScoreChip(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(10.dp),
+        shape = MaterialTheme.shapes.medium,
         color = bgColor
     ) {
         Column(

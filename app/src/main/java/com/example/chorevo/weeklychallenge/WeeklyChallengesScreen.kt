@@ -1,5 +1,7 @@
 package com.example.chorevo.weeklychallenge
 
+import androidx.compose.runtime.ReadOnlyComposable
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,7 +43,8 @@ import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-private val brandTeal = Color(0xFF00B8C8)
+private val brandTeal: Color
+    @Composable @ReadOnlyComposable get() = ChorevoTheme.colors.accent
 
 /**
  * Full-screen view of this week's three personalized "AI Focus Quest" challenges.
@@ -121,7 +124,7 @@ private fun WeeklyChallengesTopBar(onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(brandTeal)
+            .background(MaterialTheme.colorScheme.surface)
             .statusBarsPadding()
             .height(64.dp)
             .padding(horizontal = 8.dp),
@@ -131,13 +134,13 @@ private fun WeeklyChallengesTopBar(onBack: () -> Unit) {
             Icon(
                 imageVector = Icons.Default.ArrowBack,
                 contentDescription = "Back",
-                tint = Color.White
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
 
         Text(
             text = "Weekly Challenges",
-            color = Color.White,
+            color = MaterialTheme.colorScheme.onSurface,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(start = 4.dp)
@@ -158,7 +161,7 @@ private fun WeeklyChallengeHeaderCard(
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(containerColor = cardBg)
     ) {
         Column(Modifier.padding(16.dp)) {
@@ -210,7 +213,7 @@ private fun WeeklyChallengeCard(challenge: WeeklyChallenge, cardBg: Color) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = if (challenge.completed) brandTeal.copy(alpha = 0.10f) else cardBg
         )

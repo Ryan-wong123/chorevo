@@ -116,6 +116,20 @@ Shared infrastructure includes:
 - Pose detection and scoring under `posedetection`.
 - `ShareLinks` under `core/share`: single source of truth for building and parsing share links.
 
+## 3a. Design System
+
+Theme code lives in `ui/theme`:
+
+- `Color.kt`: the Chorevo "stage" palette (brand teal primary, magenta accent, violet tertiary, dark ink and light mist surfaces).
+- `Theme.kt`: `ChorevoTheme { }` applies fixed dark and light colour schemes (dynamic colour is off by default so the brand looks the same on every device), the type scale and shapes. `ChorevoTheme.colors` exposes brand tokens Material has no slot for: `accent`/`onAccent`, `like`, `success`, the teal-to-magenta `brandGradient`, frosted `glass`/`glassBorder`, and `onMedia` for content over video.
+- `Type.kt`: Sora (headings, titles, numbers) and Plus Jakarta Sans (body, labels), bundled in `res/font` under the SIL Open Font License (`licenses/`).
+- `Shape.kt`: rounded `ChorevoShapes` (10–28dp), `PillShape` for buttons and the bottom bar, and a 4dp-grid `Spacing` scale.
+- `SegmentColors.kt`: good/ok/bad colours for scoring.
+
+Screens should read colours from `MaterialTheme.colorScheme` or `ChorevoTheme.colors` rather than hardcoding hex values; buttons on the accent use `onAccent` for text. Third-party brand colours in the share sheet are the exception.
+
+Navigation chrome: `AppNavigationRoute` floats `AppBottomNavBar` (a translucent pill with a raised gradient Upload button) over the content. Regular screens receive extra bottom padding; the home feed is drawn full-bleed and reads `LocalFloatingBarInset` to keep its overlay above the bar, and sets `LocalFloatingBarState.hidden` while the pager is scrolling so the bar slides away. `res/values(-night)/themes.xml` set matching window backgrounds to avoid a white flash on launch.
+
 ## 4. Dependency Injection
 
 Hilt provides repositories and infrastructure from modules under `core/Database/di`:

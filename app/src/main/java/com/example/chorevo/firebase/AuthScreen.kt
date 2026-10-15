@@ -1,5 +1,7 @@
 package com.example.chorevo.firebase
 
+import com.example.chorevo.ui.theme.PillShape
+import com.example.chorevo.ui.theme.ChorevoTheme
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -74,16 +76,16 @@ fun AuthScreen(
         }
     }
 
-    val primaryTeal = Color(0xFF00B8C8)
+    val primaryTeal = ChorevoTheme.colors.accent
 
     val authTextFieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = Color.Black,
-        unfocusedTextColor = Color.Black,
-        focusedLabelColor = Color.Black,
-        unfocusedLabelColor = Color.Black,
-        cursorColor = Color.Black,
-        focusedBorderColor = Color.Black,
-        unfocusedBorderColor = Color.Black,
+        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+        focusedLabelColor = primaryTeal,
+        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        cursorColor = primaryTeal,
+        focusedBorderColor = primaryTeal,
+        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
     )
 
     Box(
@@ -92,8 +94,8 @@ fun AuthScreen(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFFF2F5F8),
-                        Color(0xFFFFFFFF)
+                        MaterialTheme.colorScheme.surfaceContainerLow,
+                        MaterialTheme.colorScheme.background
                     )
                 )
             )
@@ -102,7 +104,7 @@ fun AuthScreen(
         Text(
             text = if (s.mode == AuthMode.LOGIN) "Login" else "Sign Up",
             style = MaterialTheme.typography.bodySmall,
-            color = Color(0xFF8A8A8A),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(top = 10.dp)
@@ -133,7 +135,7 @@ fun AuthScreen(
                 shape = RoundedCornerShape(28.dp),
                 tonalElevation = 2.dp,
                 shadowElevation = 2.dp,
-                color = Color.White
+                color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Column(
                     modifier = Modifier.padding(18.dp),
@@ -142,7 +144,7 @@ fun AuthScreen(
                     Text(
                         text = "Welcome",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color(0xFF111111),
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.padding(bottom = 4.dp)
                     )
 
@@ -152,7 +154,7 @@ fun AuthScreen(
                             value = s.displayName,
                             onValueChange = vm::setDisplayName,
                             singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
+                            shape = MaterialTheme.shapes.small,
                             label = { Text("Display Name") },
                             colors = authTextFieldColors
                         )
@@ -163,7 +165,7 @@ fun AuthScreen(
                         value = s.email,
                         onValueChange = vm::setEmail,
                         singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.small,
                         label = { Text(if (s.mode == AuthMode.LOGIN) "Username / Email" else "Enter your Email") },
                         colors = authTextFieldColors
                     )
@@ -173,7 +175,7 @@ fun AuthScreen(
                         value = s.password,
                         onValueChange = vm::setPassword,
                         singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.small,
                         label = { Text("Enter your password") },
                         visualTransformation =
                             if (s.passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -197,11 +199,11 @@ fun AuthScreen(
                         enabled = !s.loading,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = primaryTeal,
-                            contentColor = Color.White,
+                            contentColor = ChorevoTheme.colors.onAccent,
                             disabledContainerColor = primaryTeal.copy(alpha = 0.5f),
-                            disabledContentColor = Color.White
+                            disabledContentColor = ChorevoTheme.colors.onAccent
                         ),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = PillShape,
                         onClick = vm::submit
                     ) {
                         Text(if (s.mode == AuthMode.LOGIN) "Login" else "Create Account")
@@ -212,13 +214,13 @@ fun AuthScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE1E6EA))
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
                         Text(
                             text = "or continue with",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF6B7280)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFE1E6EA))
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
                     }
 
                     OutlinedButton(
@@ -226,8 +228,8 @@ fun AuthScreen(
                             .fillMaxWidth()
                             .height(48.dp),
                         enabled = !s.loading,
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, Color(0xFFD5DCE2)),
+                        shape = PillShape,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
                         onClick = vm::requestGoogleSignIn
                     ) {
                         Text(
@@ -236,7 +238,7 @@ fun AuthScreen(
                             } else {
                                 "Continue with Google"
                             },
-                            color = Color(0xFF111111)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
 
@@ -254,7 +256,7 @@ fun AuthScreen(
                     ) {
                         Text(
                             text = if (s.mode == AuthMode.LOGIN) "Sign up here" else "Login here",
-                            color = Color(0xFF2D2D2D)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }

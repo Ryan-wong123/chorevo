@@ -1,5 +1,7 @@
 package com.example.chorevo.danceactivity
 
+import com.example.chorevo.ui.theme.PillShape
+import com.example.chorevo.ui.theme.ChorevoTheme
 import android.Manifest
 import android.content.Context
 import android.content.res.AssetManager
@@ -717,12 +719,12 @@ fun DanceARPracticeScreen(
         }
     }
 
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val tealButtonColors = ButtonDefaults.buttonColors(
         containerColor = brandTeal,
-        contentColor = Color.White,
+        contentColor = ChorevoTheme.colors.onAccent,
         disabledContainerColor = brandTeal.copy(alpha = 0.5f),
-        disabledContentColor = Color.White.copy(alpha = 0.85f)
+        disabledContentColor = ChorevoTheme.colors.onAccent.copy(alpha = 0.85f)
     )
     val tealOutlinedButtonColors = ButtonDefaults.outlinedButtonColors(
         contentColor = brandTeal
@@ -936,7 +938,7 @@ fun DanceARPracticeScreen(
                     .padding(12.dp)
                     .fillMaxWidth(0.92f)
                     .heightIn(max = if (isPracticeFocused) 96.dp else 228.dp),
-                shape = RoundedCornerShape(18.dp),
+                shape = MaterialTheme.shapes.large,
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
                 )
@@ -1121,7 +1123,7 @@ private fun FloatingPracticeBackButton(
 ) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
         )
@@ -1154,7 +1156,7 @@ private fun StepPracticeCard(
         modifier = modifier
             .fillMaxWidth()
             .testTag("stepPracticeCard"),
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
         )
@@ -1190,7 +1192,7 @@ private fun StepPracticeCard(
                     enabled = practiceMode != PracticeMode.STEP_BY_STEP,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = brandTeal,
-                        contentColor = Color.White
+                        contentColor = ChorevoTheme.colors.onAccent
                     )
                 ) {
                     Text("Step-by-Step")
@@ -1213,7 +1215,7 @@ private fun StepPracticeCard(
 
                 if (loopPlayer != null) {
                     Card(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.medium,
                         colors = CardDefaults.cardColors(containerColor = Color.Black)
                     ) {
                         SharedPlayerView(
@@ -1349,7 +1351,7 @@ private fun ReferenceDancerSelectorCard(
 
     Card(
         modifier = modifier.testTag("dancerSelectorCard"),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
         )
@@ -1375,11 +1377,11 @@ private fun ReferenceDancerSelectorCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("dancerChip_${track.trackId}"),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = PillShape,
                         contentPadding = PaddingValues(vertical = 10.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = brandTeal,
-                            contentColor = Color.White
+                            contentColor = ChorevoTheme.colors.onAccent
                         )
                     ) {
                         if (thumbnail != null) {
@@ -1403,7 +1405,7 @@ private fun ReferenceDancerSelectorCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("dancerChip_${track.trackId}"),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = PillShape,
                         contentPadding = PaddingValues(vertical = 10.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.onSurface
@@ -1544,7 +1546,7 @@ private fun AchievementSummaryDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
-            shape = RoundedCornerShape(24.dp),
+            shape = MaterialTheme.shapes.large,
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surface
             ),
@@ -1673,7 +1675,7 @@ private fun AchievementSummaryDialog(
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = brandTeal,
-                        contentColor = Color.White
+                        contentColor = ChorevoTheme.colors.onAccent
                     )
                 ) {
                     Text("Awesome!", fontWeight = FontWeight.SemiBold)

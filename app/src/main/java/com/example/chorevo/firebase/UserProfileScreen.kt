@@ -1,5 +1,6 @@
 package com.example.chorevo.firebase
 
+import com.example.chorevo.ui.theme.ChorevoTheme
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -92,7 +93,7 @@ fun UserProfileScreen(
     danceLibraryVm: DanceLibraryListViewModel,
     weeklyChallengeVm: WeeklyChallengeViewModel
 ) {
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val surfaceColor = MaterialTheme.colorScheme.surface
     val secondaryTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     val avatarBgColor = MaterialTheme.colorScheme.surfaceVariant
@@ -194,7 +195,7 @@ fun UserProfileScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .offset(y = (-28).dp),
-                shape = RoundedCornerShape(20.dp),
+                shape = MaterialTheme.shapes.large,
                 colors = CardDefaults.cardColors(containerColor = surfaceColor),
                 elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
             ) {
@@ -444,7 +445,7 @@ private fun VideoThumbnailCell(
         Box(
             modifier = Modifier
                 .aspectRatio(9f / 16f)
-                .background(Color(0xFF1A1A1A)),
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
             contentAlignment = Alignment.Center
         ) {
             if (bitmap != null) {
@@ -456,7 +457,7 @@ private fun VideoThumbnailCell(
                 )
             } else {
                 Box(
-                    modifier = Modifier.fillMaxSize().background(Color(0xFF2A2A2A)),
+                    modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceContainerHighest),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(
@@ -632,7 +633,7 @@ private fun LikedVideoPage(
             Icon(
                 imageVector = Icons.Filled.Favorite,
                 contentDescription = null,
-                tint = Color(0xFFFF4466).copy(alpha = 0.9f),
+                tint = ChorevoTheme.colors.like.copy(alpha = 0.9f),
                 modifier = Modifier.align(Alignment.Center).size(80.dp)
             )
         }
@@ -679,7 +680,7 @@ private fun LikedVideoPage(
                     Icon(
                         imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = "Like",
-                        tint = if (isLiked) Color(0xFFFF4466) else Color.White,
+                        tint = if (isLiked) ChorevoTheme.colors.like else Color.White,
                         modifier = Modifier.size(30.dp)
                     )
                 }
@@ -704,7 +705,7 @@ private fun WeeklyStreakCard(daysMask: Int, totalStreakActivities: Int, modifier
     val days = listOf("Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun")
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(6.dp)
     ) {
@@ -717,7 +718,7 @@ private fun WeeklyStreakCard(daysMask: Int, totalStreakActivities: Int, modifier
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier.size(40.dp).clip(CircleShape)
-                                .background(if (done) Color(0xFF16A34A) else MaterialTheme.colorScheme.surfaceVariant),
+                                .background(if (done) ChorevoTheme.colors.success else MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center
                         ) {
                             if (done) Text("✓", color = Color.White, fontWeight = FontWeight.Bold)
@@ -743,7 +744,7 @@ private fun AchievementPanel(currentLevel: AchievementLevel, nextLevel: Achievem
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(6.dp)
     ) {
@@ -765,8 +766,8 @@ private fun AchievementPanel(currentLevel: AchievementLevel, nextLevel: Achievem
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier.fillMaxWidth().height(8.dp),
-                color = Color(0xFF00B8C8),
-                trackColor = Color(0xFF00B8C8).copy(alpha = 0.2f)
+                color = ChorevoTheme.colors.accent,
+                trackColor = ChorevoTheme.colors.accent.copy(alpha = 0.2f)
             )
         }
     }
