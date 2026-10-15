@@ -318,7 +318,10 @@ class PoseTemplateJsonTest {
 
     @Test
     fun jsonPath_preservesDanceTemplateStorageLocation() {
-        assertEquals("danceTemplates/dance123.json", PoseTemplateStorage.jsonPath("dance123"))
+        assertEquals("danceTemplates/uid1/dance123.json", PoseTemplateStorage.jsonPath("uid1", "dance123"))
+        assertEquals("danceTemplates/dance123.json", PoseTemplateStorage.legacyJsonPath("dance123"))
+        assertEquals("uid1", PoseTemplateStorage.ownerUidFromVideoPath("danceVideos/uid1/dance123.mp4"))
+        assertEquals(null, PoseTemplateStorage.ownerUidFromVideoPath("other/uid1/dance123.mp4"))
     }
 
     private fun assertFloatListEquals(expected: List<Float>, actual: List<Float>) {

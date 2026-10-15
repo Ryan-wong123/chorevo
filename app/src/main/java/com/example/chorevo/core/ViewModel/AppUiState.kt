@@ -4,7 +4,29 @@ import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.UserProfile
 
 enum class Screen {
-    AUTH, HOME, DANCE_PRACTICE, UPLOAD, COMMUNITY, PROFILE, LEADERBOARD, SETTINGS, WEEKLY_CHALLENGES
+    AUTH, HOME, DANCE_PRACTICE, UPLOAD, COMMUNITY, PROFILE, LEADERBOARD, SETTINGS, WEEKLY_CHALLENGES;
+
+    /**
+     * Where the system back gesture goes from this screen, or null when back
+     * should leave the app (home and sign-in are the roots).
+     */
+    val backTarget: Screen?
+        get() = when (this) {
+            DANCE_PRACTICE, UPLOAD, COMMUNITY, LEADERBOARD, PROFILE -> HOME
+            SETTINGS, WEEKLY_CHALLENGES -> PROFILE
+            AUTH, HOME -> null
+        }
+}
+
+/** App colour scheme choice. Dark is the default look. */
+enum class ThemeMode(val key: String, val label: String) {
+    DARK("dark", "Dark"),
+    LIGHT("light", "Light"),
+    SYSTEM("system", "System");
+
+    companion object {
+        fun fromKey(key: String?): ThemeMode = entries.firstOrNull { it.key == key } ?: DARK
+    }
 }
 
 /**
@@ -34,6 +56,10 @@ data class AppUiState(
      * the way TikTok/Instagram open a shared post.
      */
     val sharedDance: DanceLibraryModel? = null,
+    /** Light/dark choice from Settings; loaded from DataStore. */
+    val themeMode: ThemeMode = ThemeMode.DARK,
+    /** Whether the welcome carousel was already shown; null until loaded. */
+    val onboardingSeen: Boolean? = null,
 ) {
     val displayName: String =
         profile?.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User"

@@ -5,6 +5,7 @@ import android.content.Context
 import android.util.Log
 import com.example.chorevo.core.ViewModel.AppViewModel
 import com.example.chorevo.core.ViewModel.Screen
+import com.example.chorevo.core.ViewModel.ThemeMode
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.firebase.AutoRetryUploaderService
@@ -12,6 +13,7 @@ import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.notification.NotificationPreferencesDataStore
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -63,6 +65,8 @@ class AppViewModelTest {
         coEvery { authRepository.getCurrentUserProfile() } returns null
         every { settings.pushEnabledFlow } returns flowOf(false)
         every { settings.notificationTimeFlow } returns flowOf(9 to 0)
+        every { settings.themeModeFlow } returns flowOf(null)
+        every { settings.onboardingSeenFlow } returns flowOf(false)
 
         vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
     }
@@ -324,5 +328,105 @@ class AppViewModelTest {
         vm.backToHome()
 
         assertNull(vm.uiState.value.sharedDance)
+    }
+
+    // ── navigateBack (system back gesture) ────────────────────────────────────
+
+    @Test
+    fun navigateBack_fromPractice_goesHome_andClearsDance() {
+        vm.onAuthed(makeProfile())
+        vm.pickDance(makeDanceItem())
+
+        assertTrue(vm.navigateBack())
+
+        assertEquals(Screen.HOME, vm.uiState.value.screen)
+        assertNull(vm.uiState.value.selectedDanceItem)
+    }
+
+    @Test
+    fun navigateBack_fromTabs_goesHome() {
+        vm.onAuthed(makeProfile())
+        listOf<() -> Unit>(vm::openUpload, vm::openCommunity, vm::openLeaderboard, vm::openProfile).forEach { open ->
+            open()
+            assertTrue(vm.navigateBack())
+            assertEquals(Screen.HOME, vm.uiState.value.screen)
+        }
+    }
+
+    @Test
+    fun navigateBack_fromSettingsAndChallenges_goesToProfile() {
+        vm.onAuthed(makeProfile())
+
+        vm.openSettings()
+        assertTrue(vm.navigateBack())
+        assertEquals(Screen.PROFILE, vm.uiState.value.screen)
+
+        vm.openWeeklyChallenges()
+        assertTrue(vm.navigateBack())
+        assertEquals(Screen.PROFILE, vm.uiState.value.screen)
+    }
+
+    @Test
+    fun navigateBack_onHomeOrAuth_returnsFalse_soSystemCanExit() {
+        vm.onAuthed(makeProfile())
+        assertFalse(vm.navigateBack())
+        assertEquals(Screen.HOME, vm.uiState.value.screen)
+
+        vm.logout()
+        assertFalse(vm.navigateBack())
+        assertEquals(Screen.AUTH, vm.uiState.value.screen)
+    }
+
+    // ── Theme ─────────────────────────────────────────────────────────────────
+
+    @Test
+    fun themeMode_defaultsToDark_whenNothingSaved() = runTest {
+        advanceUntilIdle()
+        assertEquals(ThemeMode.DARK, vm.uiState.value.themeMode)
+    }
+
+    @Test
+    fun themeMode_loadsSavedChoice() = runTest {
+        every { settings.themeModeFlow } returns flowOf("light")
+
+        val newVm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        advanceUntilIdle()
+
+        assertEquals(ThemeMode.LIGHT, newVm.uiState.value.themeMode)
+    }
+
+    @Test
+    fun setThemeMode_updatesState_andSaves() = runTest {
+        vm.setThemeMode(ThemeMode.SYSTEM)
+        advanceUntilIdle()
+
+        assertEquals(ThemeMode.SYSTEM, vm.uiState.value.themeMode)
+        coVerify { settings.setThemeMode("system") }
+    }
+
+    @Test
+    fun themeMode_fromKey_unknownFallsBackToDark() {
+        assertEquals(ThemeMode.DARK, ThemeMode.fromKey(null))
+        assertEquals(ThemeMode.DARK, ThemeMode.fromKey("purple"))
+        assertEquals(ThemeMode.LIGHT, ThemeMode.fromKey("light"))
+    }
+
+    // ── Onboarding ────────────────────────────────────────────────────────────
+
+    @Test
+    fun onboarding_notSeen_isLoadedAsFalse() = runTest {
+        advanceUntilIdle()
+        assertEquals(false, vm.uiState.value.onboardingSeen)
+    }
+
+    @Test
+    fun completeOnboarding_marksSeen_andSaves() = runTest {
+        advanceUntilIdle()
+
+        vm.completeOnboarding()
+        advanceUntilIdle()
+
+        assertEquals(true, vm.uiState.value.onboardingSeen)
+        coVerify { settings.setOnboardingSeen() }
     }
 }

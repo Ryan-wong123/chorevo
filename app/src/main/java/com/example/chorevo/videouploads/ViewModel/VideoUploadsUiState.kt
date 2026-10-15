@@ -98,7 +98,8 @@ data class UploadDraft(
     val description: String = "",
     val selectedVideoUri: Uri? = null,
     val selectedVideoLabel: String? = null,
-    val visibility: String = DanceLibraryModel.VISIBILITY_PUBLIC
+    val visibility: String = DanceLibraryModel.VISIBILITY_PUBLIC,
+    val coverFrameMs: Long = DanceLibraryModel.DEFAULT_COVER_FRAME_MS
 ) {
     val canUpload: Boolean
         get() = title.isNotBlank() &&

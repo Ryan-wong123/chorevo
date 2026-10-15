@@ -1,5 +1,17 @@
 package com.example.chorevo.videouploads
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Checkbox
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.AnimatedContent
+import com.example.chorevo.core.rememberHaptics
+import com.example.chorevo.ui.theme.PillShape
+import com.example.chorevo.ui.theme.ChorevoTheme
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
@@ -123,15 +135,31 @@ fun VideoUploadActivityScreen(
     val uploading = uiState.saving
     val status = uiState.statusMessage
 
-    val brandTeal = Color(0xFF00B8C8)
+    var step by rememberSaveable { mutableStateOf(UploadStep.VIDEO) }
+    var analyzeInBackground by rememberSaveable { mutableStateOf(false) }
+    val haptics = rememberHaptics()
+    // System back walks back through the steps before leaving the screen.
+    BackHandler(enabled = step != UploadStep.VIDEO && !uploading) {
+        step = step.previous()
+    }
+    // A successful upload clears the draft; start the next upload from step 1.
+    LaunchedEffect(uploadDraft.selectedVideoUri, uploading) {
+        if (uploadDraft.selectedVideoUri == null && !uploading) {
+            if (step == UploadStep.PUBLISH) haptics.success()
+            step = UploadStep.VIDEO
+            analyzeInBackground = false
+        }
+    }
+
+    val brandTeal = ChorevoTheme.colors.accent
     val surfaceColor = MaterialTheme.colorScheme.surface
     val secondaryText = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
 
     val tealButtonColors = ButtonDefaults.buttonColors(
         containerColor = brandTeal,
-        contentColor = Color.White,
+        contentColor = ChorevoTheme.colors.onAccent,
         disabledContainerColor = brandTeal.copy(alpha = 0.4f),
-        disabledContentColor = Color.White.copy(alpha = 0.6f)
+        disabledContentColor = ChorevoTheme.colors.onAccent.copy(alpha = 0.6f)
     )
 
     fun startLiveRecording() {
@@ -153,9 +181,9 @@ fun VideoUploadActivityScreen(
             TopAppBar(
                 title = { Text("Upload Dance", fontWeight = FontWeight.SemiBold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = brandTeal,
-                    titleContentColor = Color.White,
-                    navigationIconContentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -165,209 +193,324 @@ fun VideoUploadActivityScreen(
                 .padding(pad)
                 .fillMaxSize()
                 .background(surfaceColor)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            UploadFormField(
-                value = uploadDraft.title,
-                onValueChange = videoUploadVm::uploadTitleChanged,
-                label = "Title",
-                placeholder = "e.g. Beginner Hip Hop Routine",
-                icon = Icons.Outlined.Title,
-                testTag = "titleField",
-                brandTeal = brandTeal
-            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                UploadStepIndicator(current = step)
 
-            UploadFormField(
-                value = uploadDraft.danceType,
-                onValueChange = videoUploadVm::uploadDanceTypeChanged,
-                label = "Dance Type",
-                placeholder = "e.g. Hip Hop, Salsa, Ballet",
-                icon = Icons.Outlined.MusicNote,
-                testTag = "danceTypeField",
-                brandTeal = brandTeal
-            )
+                AnimatedContent(
+                    targetState = step,
+                    transitionSpec = {
+                        val forward = targetState.ordinal > initialState.ordinal
+                        (slideInHorizontally { if (forward) it / 3 else -it / 3 } + fadeIn()) togetherWith
+                            (slideOutHorizontally { if (forward) -it / 3 else it / 3 } + fadeOut())
+                    },
+                    label = "uploadStep"
+                ) { currentStep ->
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        when (currentStep) {
+                            UploadStep.VIDEO -> {
+                                Text("Choose your dance video", style = MaterialTheme.typography.titleLarge)
+                                if (showPickButton) {
+                                    VideoPicker(
+                                        selectedUri = uploadDraft.selectedVideoUri,
+                                        selectedVideoLabel = uploadDraft.selectedVideoLabel,
+                                        uploading = uploading,
+                                        brandTeal = brandTeal,
+                                        onPick = videoUploadVm::openVideoSourceDialog
+                                    )
+                                }
+                                uploadDraft.selectedVideoUri?.let { uri ->
+                                    LocalVideoFrame(
+                                        videoUri = uri,
+                                        frameMs = uploadDraft.coverFrameMs,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(320.dp)
+                                    )
+                                }
+                            }
 
-            UploadFormField(
-                value = uploadDraft.description,
-                onValueChange = videoUploadVm::uploadDescriptionChanged,
-                label = "Description",
-                placeholder = "Describe the moves, difficulty level, or style...",
-                icon = Icons.Outlined.Description,
-                testTag = "descriptionField",
-                brandTeal = brandTeal,
-                minLines = 4,
-                singleLine = false
-            )
+                            UploadStep.COVER -> uploadDraft.selectedVideoUri?.let { uri ->
+                                CoverFramePicker(
+                                    videoUri = uri,
+                                    coverFrameMs = uploadDraft.coverFrameMs,
+                                    onCoverFrameChange = videoUploadVm::uploadCoverFrameChanged
+                                )
+                            }
 
-            VideoVisibilitySelector(
-                visibility = uploadDraft.visibility,
-                onVisibilityChange = videoUploadVm::uploadVisibilityChanged,
-                accentColor = brandTeal,
-                enabled = !uploading
-            )
+                            UploadStep.DETAILS -> {
+                                Text("Describe your dance", style = MaterialTheme.typography.titleLarge)
+                                UploadFormField(
+                                    value = uploadDraft.title,
+                                    onValueChange = videoUploadVm::uploadTitleChanged,
+                                    label = "Title",
+                                    placeholder = "e.g. Beginner Hip Hop Routine",
+                                    icon = Icons.Outlined.Title,
+                                    testTag = "titleField",
+                                    brandTeal = brandTeal
+                                )
+                                UploadFormField(
+                                    value = uploadDraft.danceType,
+                                    onValueChange = videoUploadVm::uploadDanceTypeChanged,
+                                    label = "Dance Type",
+                                    placeholder = "e.g. Hip Hop, Salsa, Ballet",
+                                    icon = Icons.Outlined.MusicNote,
+                                    testTag = "danceTypeField",
+                                    brandTeal = brandTeal
+                                )
+                                UploadFormField(
+                                    value = uploadDraft.description,
+                                    onValueChange = videoUploadVm::uploadDescriptionChanged,
+                                    label = "Description",
+                                    placeholder = "Describe the moves, difficulty level, or style...",
+                                    icon = Icons.Outlined.Description,
+                                    testTag = "descriptionField",
+                                    brandTeal = brandTeal,
+                                    minLines = 4,
+                                    singleLine = false
+                                )
+                            }
 
-            if (showPickButton) {
-                VideoPicker(
-                    selectedUri = uploadDraft.selectedVideoUri,
-                    selectedVideoLabel = uploadDraft.selectedVideoLabel,
-                    uploading = uploading,
-                    brandTeal = brandTeal,
-                    onPick = videoUploadVm::openVideoSourceDialog
-                )
-            }
+                            UploadStep.DANCERS -> {
+                                Text("Confirm the dancers", style = MaterialTheme.typography.titleLarge)
+                                uploadDraft.selectedVideoUri?.let { selectedVideoUri ->
+                                    DancerReviewPanel(
+                                        videoUri = selectedVideoUri,
+                                        tracks = uiState.dancerReview.template?.availableTracks().orEmpty(),
+                                        detectedDancerCount = uiState.dancerReview.detectedCount,
+                                        selectionPreview = uiState.dancerReview.template?.selectionPreview,
+                                        selectedTrackIds = uiState.dancerReview.selectedTrackIds,
+                                        defaultTrackId = uiState.dancerReview.defaultTrackId,
+                                        confirmed = uiState.dancerReview.confirmed,
+                                        isAnalyzing = uiState.dancerReview.isAnalyzing,
+                                        progress = uiState.dancerReview.progress,
+                                        errorMessage = uiState.dancerReview.errorMessage,
+                                        warningMessages = uiState.dancerReview.warningMessages,
+                                        brandTeal = brandTeal,
+                                        onAnalyze = { videoUploadVm.analyzeDancers(context = context, fps = 8) },
+                                        onToggleTrack = videoUploadVm::toggleDetectedDancer,
+                                        onSelectDefaultTrack = videoUploadVm::selectDefaultDancerTrack,
+                                        onConfirm = videoUploadVm::confirmDancerReview,
+                                        onReset = videoUploadVm::clearDancerReview
+                                    )
+                                }
+                                if (!uiState.dancerReview.confirmed) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(MaterialTheme.shapes.medium)
+                                            .clickable(enabled = !uiState.dancerReview.isAnalyzing) {
+                                                analyzeInBackground = !analyzeInBackground
+                                            }
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = analyzeInBackground,
+                                            onCheckedChange = { analyzeInBackground = it },
+                                            enabled = !uiState.dancerReview.isAnalyzing,
+                                            modifier = Modifier.testTag("analyzeInBackgroundCheckbox")
+                                        )
+                                        Text(
+                                            "Skip review and analyze in the background after upload",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                }
+                            }
 
-            uploadDraft.selectedVideoUri?.let { selectedVideoUri ->
-                DancerReviewPanel(
-                    videoUri = selectedVideoUri,
-                    tracks = uiState.dancerReview.template?.availableTracks().orEmpty(),
-                    detectedDancerCount = uiState.dancerReview.detectedCount,
-                    selectionPreview = uiState.dancerReview.template?.selectionPreview,
-                    selectedTrackIds = uiState.dancerReview.selectedTrackIds,
-                    defaultTrackId = uiState.dancerReview.defaultTrackId,
-                    confirmed = uiState.dancerReview.confirmed,
-                    isAnalyzing = uiState.dancerReview.isAnalyzing,
-                    progress = uiState.dancerReview.progress,
-                    errorMessage = uiState.dancerReview.errorMessage,
-                    warningMessages = uiState.dancerReview.warningMessages,
-                    brandTeal = brandTeal,
-                    onAnalyze = { videoUploadVm.analyzeDancers(context = context, fps = 8) },
-                    onToggleTrack = videoUploadVm::toggleDetectedDancer,
-                    onSelectDefaultTrack = videoUploadVm::selectDefaultDancerTrack,
-                    onConfirm = videoUploadVm::confirmDancerReview,
-                    onReset = videoUploadVm::clearDancerReview
-                )
-            }
-
-            AnimatedVisibility(visible = uploading, enter = fadeIn(), exit = fadeOut()) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val p = uiState.uploadProgress
-                    if (p == null) {
-                        LinearProgressIndicator(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(4.dp)),
-                            color = brandTeal,
-                            trackColor = brandTeal.copy(alpha = 0.2f)
-                        )
-                    } else {
-                        LinearProgressIndicator(
-                            progress = { p.coerceIn(0f, 1f) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(4.dp)),
-                            color = brandTeal,
-                            trackColor = brandTeal.copy(alpha = 0.2f)
-                        )
-                        Text(
-                            "${(p * 100).toInt()}% complete",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = secondaryText
-                        )
-                        uiState.uploadStageLabel?.let { stage ->
-                            Text(
-                                stage,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = secondaryText
-                            )
+                            UploadStep.PUBLISH -> {
+                                Text("Ready to publish", style = MaterialTheme.typography.titleLarge)
+                                uploadDraft.selectedVideoUri?.let { uri ->
+                                    PublishSummary(
+                                        videoUri = uri,
+                                        coverFrameMs = uploadDraft.coverFrameMs,
+                                        title = uploadDraft.title,
+                                        danceType = uploadDraft.danceType,
+                                        dancersLabel = if (uiState.dancerReview.confirmed) {
+                                            "${uiState.dancerReview.selectedCount} confirmed"
+                                        } else {
+                                            "Analyzed in the background"
+                                        },
+                                        visibility = uploadDraft.visibility
+                                    )
+                                }
+                                VideoVisibilitySelector(
+                                    visibility = uploadDraft.visibility,
+                                    onVisibilityChange = videoUploadVm::uploadVisibilityChanged,
+                                    accentColor = brandTeal,
+                                    enabled = !uploading
+                                )
+                                AnimatedVisibility(visible = uploading, enter = fadeIn(), exit = fadeOut()) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        val p = uiState.uploadProgress
+                                        if (p == null) {
+                                            LinearProgressIndicator(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(4.dp)),
+                                                color = brandTeal,
+                                                trackColor = brandTeal.copy(alpha = 0.2f)
+                                            )
+                                        } else {
+                                            LinearProgressIndicator(
+                                                progress = { p.coerceIn(0f, 1f) },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(4.dp)),
+                                                color = brandTeal,
+                                                trackColor = brandTeal.copy(alpha = 0.2f)
+                                            )
+                                            Text(
+                                                "${(p * 100).toInt()}% complete",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = secondaryText
+                                            )
+                                            uiState.uploadStageLabel?.let { stage ->
+                                                Text(
+                                                    stage,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = secondaryText
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            }
 
-            AnimatedVisibility(visible = status != null, enter = fadeIn(), exit = fadeOut()) {
-                status?.let {
-                    Card(
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = brandTeal.copy(alpha = 0.1f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                AnimatedVisibility(visible = status != null, enter = fadeIn(), exit = fadeOut()) {
+                    status?.let {
+                        Card(
+                            shape = MaterialTheme.shapes.medium,
+                            colors = CardDefaults.cardColors(
+                                containerColor = brandTeal.copy(alpha = 0.1f)
+                            )
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.CheckCircle,
-                                contentDescription = null,
-                                tint = brandTeal,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = it,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.weight(1f)
-                            )
-                            TextButton(
-                                onClick = { videoUploadVm.clearStatus() },
-                                colors = ButtonDefaults.textButtonColors(contentColor = brandTeal),
-                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Text("Dismiss", fontSize = 12.sp)
+                                Icon(
+                                    imageVector = Icons.Outlined.CheckCircle,
+                                    contentDescription = null,
+                                    tint = brandTeal,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = { videoUploadVm.clearStatus() },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = brandTeal),
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Text("Dismiss", fontSize = 12.sp)
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(4.dp))
-
-            Button(
-                enabled = !uploading && uploadDraft.canUpload && uiState.dancerReview.confirmed,
-                onClick = {
-                    videoUploadVm.uploadDance(
-                        context = context,
-                        generateTemplate = false,
-                        fps = 15,
-                        continueWithoutTemplateOnFailure = true
-                    )
-                },
+            // ── Back / Next (or Publish) ──────────────────────────────────────
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp)
-                    .testTag("uploadButton"),
-                shape = RoundedCornerShape(16.dp),
-                colors = tealButtonColors
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (uploading) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                if (step != UploadStep.VIDEO) {
+                    OutlinedButton(
+                        onClick = { step = step.previous() },
+                        enabled = !uploading,
+                        shape = PillShape,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .testTag("uploadBackButton")
                     ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = Color.White
-                        )
-                        Text("Uploading...", style = MaterialTheme.typography.titleMedium)
+                        Text("Back")
+                    }
+                }
+                if (step != UploadStep.PUBLISH) {
+                    val canContinue = when (step) {
+                        UploadStep.VIDEO -> uploadDraft.selectedVideoUri != null
+                        UploadStep.COVER -> true
+                        UploadStep.DETAILS -> uploadDraft.title.isNotBlank() &&
+                                uploadDraft.danceType.isNotBlank() &&
+                                uploadDraft.description.isNotBlank()
+                        UploadStep.DANCERS -> uiState.dancerReview.confirmed || analyzeInBackground
+                        UploadStep.PUBLISH -> false
+                    }
+                    Button(
+                        onClick = { step = step.next() },
+                        enabled = canContinue && !uploading,
+                        shape = PillShape,
+                        colors = tealButtonColors,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .testTag("uploadNextButton")
+                    ) {
+                        Text("Next")
                     }
                 } else {
-                    Text("Upload Confirmed Dance", style = MaterialTheme.typography.titleMedium)
-                }
-            }
-
-            if (!uiState.dancerReview.confirmed) {
-                TextButton(
-                    enabled = !uploading &&
-                            uploadDraft.canUpload &&
-                            !uiState.dancerReview.isAnalyzing,
-                    onClick = {
-                        videoUploadVm.uploadDance(
-                            context = context,
-                            generateTemplate = true,
-                            fps = 8,
-                            continueWithoutTemplateOnFailure = true
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.textButtonColors(contentColor = brandTeal)
-                ) {
-                    Text("Upload and analyze in background")
+                    val readyToPublish = uploadDraft.canUpload &&
+                            (uiState.dancerReview.confirmed || analyzeInBackground)
+                    Button(
+                        enabled = !uploading && readyToPublish,
+                        onClick = {
+                            if (uiState.dancerReview.confirmed) {
+                                videoUploadVm.uploadDance(
+                                    context = context,
+                                    generateTemplate = false,
+                                    fps = 15,
+                                    continueWithoutTemplateOnFailure = true
+                                )
+                            } else {
+                                videoUploadVm.uploadDance(
+                                    context = context,
+                                    generateTemplate = true,
+                                    fps = 8,
+                                    continueWithoutTemplateOnFailure = true
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(52.dp)
+                            .testTag("uploadButton"),
+                        shape = PillShape,
+                        colors = tealButtonColors
+                    ) {
+                        if (uploading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = ChorevoTheme.colors.onAccent
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text("Publishing...")
+                        } else {
+                            Text("Publish")
+                        }
+                    }
                 }
             }
         }
@@ -421,7 +564,7 @@ private fun UploadFormField(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(testTag),
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.small,
         singleLine = singleLine,
         minLines = minLines,
         colors = OutlinedTextFieldDefaults.colors(
@@ -552,7 +695,7 @@ private fun DancerReviewPanel(
     )
 
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = MaterialTheme.shapes.medium,
         colors = CardDefaults.cardColors(
             containerColor = if (confirmed) brandTeal.copy(alpha = 0.08f)
             else MaterialTheme.colorScheme.surfaceVariant
@@ -619,10 +762,10 @@ private fun DancerReviewPanel(
                 Button(
                     onClick = onAnalyze,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(14.dp),
+                    shape = PillShape,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = brandTeal,
-                        contentColor = Color.White
+                        contentColor = ChorevoTheme.colors.onAccent
                     )
                 ) {
                     Text("Analyze Dancers")
@@ -665,10 +808,10 @@ private fun DancerReviewPanel(
                         onClick = onConfirm,
                         enabled = previewableSelectedTrackIds.isNotEmpty() && !confirmed,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = PillShape,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = brandTeal,
-                            contentColor = Color.White
+                            contentColor = ChorevoTheme.colors.onAccent
                         )
                     ) {
                         Text("Confirm Dancers")
@@ -875,7 +1018,7 @@ private fun VideoSourceOption(
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
+        shape = MaterialTheme.shapes.medium,
         color = brandTeal.copy(alpha = 0.08f)
     ) {
         Row(

@@ -32,7 +32,7 @@ class ReminderScheduler(
     /** Handles schedule next daily. */
     fun scheduleNextDaily(hour: Int, minute: Int) {
         val triggerAt = computeNextTrigger(hour, minute)
-        val pi = dailyPendingIntent()
+        val pi = dailyPendingIntent(hour, minute)
 
         Log.d("ReminderScheduler", "canExact=${canUseExactAlarms()}")
 
@@ -119,10 +119,16 @@ class ReminderScheduler(
         cancelRepeatingTestAlarms()
     }
 
-    /** Handles daily pending intent. */
-    private fun dailyPendingIntent(): PendingIntent {
+    /**
+     * Daily reminder intent. The chosen time travels with the alarm so the
+     * receiver can re-arm the next day at the same time. Extras do not affect
+     * PendingIntent matching, so [cancelDaily] still cancels it.
+     */
+    private fun dailyPendingIntent(hour: Int = DEFAULT_HOUR, minute: Int = DEFAULT_MINUTE): PendingIntent {
         val intent = Intent(context, ReminderReceiver::class.java).apply {
             putExtra("notification_type", "daily")
+            putExtra(EXTRA_HOUR, hour)
+            putExtra(EXTRA_MINUTE, minute)
         }
         return PendingIntent.getBroadcast(
             context,
@@ -168,5 +174,12 @@ class ReminderScheduler(
             next.add(Calendar.DAY_OF_YEAR, 1)
         }
         return next.timeInMillis
+    }
+
+    companion object {
+        const val EXTRA_HOUR = "hour"
+        const val EXTRA_MINUTE = "minute"
+        const val DEFAULT_HOUR = 9
+        const val DEFAULT_MINUTE = 0
     }
 }

@@ -69,6 +69,18 @@ class AppViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            settings.onboardingSeenFlow.collect { seen ->
+                _uiState.update { it.copy(onboardingSeen = seen) }
+            }
+        }
+
+        viewModelScope.launch {
+            settings.themeModeFlow.collect { key ->
+                _uiState.update { it.copy(themeMode = ThemeMode.fromKey(key)) }
+            }
+        }
+
+        viewModelScope.launch {
             settings.notificationTimeFlow.collect { (hour, minute) ->
                 _uiState.update {
                     it.copy(
@@ -204,6 +216,8 @@ class AppViewModel @Inject constructor(
     /** Stores the authenticated user and sends the app to the home screen. */
     fun onAuthed(profile: UserProfile) {
         _uiState.update { it.copy(profile = profile, screen = Screen.HOME) }
+        // Upload any sessions this account saved offline before signing out.
+        viewModelScope.launch { runCatching { retryUploader.retryUnsyncedSessions(profile.uid) } }
         // Consume any deep link that arrived before the user logged in.
         pendingDeepLinkDanceId?.let { id ->
             pendingDeepLinkDanceId = null
@@ -238,6 +252,31 @@ class AppViewModel @Inject constructor(
     /** Returns to the home feed and clears any selected practice dance. */
     fun backToHome() {
         _uiState.update { it.copy(screen = Screen.HOME, selectedDanceItem = null, sharedDance = null) }
+    }
+
+    /**
+     * Handles the system back gesture: goes to [Screen.backTarget].
+     * Returns false on root screens so the system can close the app.
+     */
+    fun navigateBack(): Boolean {
+        when (_uiState.value.screen.backTarget) {
+            Screen.HOME -> backToHome()
+            Screen.PROFILE -> openProfile()
+            else -> return false
+        }
+        return true
+    }
+
+    /** Called when the welcome carousel is finished or skipped; it won't show again. */
+    fun completeOnboarding() {
+        _uiState.update { it.copy(onboardingSeen = true) }
+        viewModelScope.launch { settings.setOnboardingSeen() }
+    }
+
+    /** Saves the light/dark choice from Settings. */
+    fun setThemeMode(mode: ThemeMode) {
+        _uiState.update { it.copy(themeMode = mode) }
+        viewModelScope.launch { settings.setThemeMode(mode.key) }
     }
 
     /** Opens the upload screen for submitting a new dance video. */

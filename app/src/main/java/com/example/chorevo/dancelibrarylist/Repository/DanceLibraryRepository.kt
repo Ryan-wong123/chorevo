@@ -28,6 +28,8 @@ class DanceLibraryRepository @Inject constructor(
     companion object {
         private const val MAX_TEMPLATE_DOWNLOAD_BYTES = 20L * 1024L * 1024L
         const val COMMENTS_PAGE_SIZE = 20L
+        /** Matches the Firestore rule limit for comment text. */
+        const val MAX_COMMENT_LENGTH = 1000
     }
 
     /** Handles list enabled. */
@@ -296,7 +298,8 @@ class DanceLibraryRepository @Inject constructor(
         return try {
             val snap = firestore.collection("danceLibrary")
                 .document(danceId).collection("comments")
-                .orderBy("createdAt", Query.Direction.ASCENDING)
+                // Same order as the first page so "Load more" continues to older comments.
+                .orderBy("createdAt", Query.Direction.DESCENDING)
                 .startAfter(after)
                 .limit(COMMENTS_PAGE_SIZE)
                 .get().await()

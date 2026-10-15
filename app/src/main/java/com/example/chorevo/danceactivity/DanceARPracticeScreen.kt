@@ -1,5 +1,8 @@
 package com.example.chorevo.danceactivity
 
+import com.example.chorevo.core.rememberHaptics
+import com.example.chorevo.ui.theme.PillShape
+import com.example.chorevo.ui.theme.ChorevoTheme
 import android.Manifest
 import android.content.Context
 import android.content.res.AssetManager
@@ -10,6 +13,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
@@ -161,6 +173,19 @@ fun DanceARPracticeScreen(
     var frameCount by remember { mutableIntStateOf(if (testMode) 42 else 0) }
     var wordFeedback by remember { mutableStateOf(if (testMode) "Nice match. Keep the timing steady." else null) }
     var handFeedback by remember { mutableStateOf<String?>(null) }
+    // Live HUD: fast-reacting score and seconds of continuous good matching.
+    var liveScore by remember { mutableStateOf<Double?>(if (testMode) 0.82 else null) }
+    var comboStartMs by remember { mutableStateOf<Long?>(null) }
+    var comboSeconds by remember { mutableIntStateOf(0) }
+    // Buzz when a combo starts and again at every 5-second milestone.
+    val haptics = rememberHaptics()
+    val comboTier = if (comboSeconds >= COMBO_MIN_SECONDS) 1 + comboSeconds / 5 else 0
+    LaunchedEffect(comboTier) {
+        if (comboTier > 0) haptics.success()
+    }
+    // Scores of the last submitted session, for the results screen.
+    var lastResult by remember { mutableStateOf<PracticeResult?>(null) }
+    val personalBests = remember(context) { PersonalBestStore(context) }
 
     var latestTimelinePoints by remember { mutableStateOf<List<TimelinePoint>>(emptyList()) }
     var latestSegments by remember { mutableStateOf<List<PerformanceSegment>>(emptyList()) }
@@ -427,6 +452,9 @@ fun DanceARPracticeScreen(
         timingConsistencyScore = if (testMode) 0.91 else 1.0
         smoothnessScore = if (testMode) 0.88 else 1.0
         handScore = null
+        liveScore = if (testMode) 0.82 else null
+        comboStartMs = null
+        comboSeconds = 0
         combinedPracticeScore = if (testMode) 0.82 else 0.0
         avgPoseError = if (testMode) 0.1234 else 0.0
         frameCount = if (testMode) 42 else 0
@@ -453,6 +481,9 @@ fun DanceARPracticeScreen(
         timingConsistencyScore = if (testMode) 0.91 else 1.0
         smoothnessScore = if (testMode) 0.88 else 1.0
         handScore = null
+        liveScore = if (testMode) 0.82 else null
+        comboStartMs = null
+        comboSeconds = 0
         combinedPracticeScore = if (testMode) 0.82 else 0.0
         avgPoseError = if (testMode) 0.1234 else 0.0
         frameCount = if (testMode) 42 else 0
@@ -594,6 +625,15 @@ fun DanceARPracticeScreen(
                         } else {
                             frameCount += 1
                         }
+                        val live = snap?.liveScore
+                        liveScore = live
+                        if (live != null && live >= LIVE_GOOD_SCORE) {
+                            val start = comboStartMs ?: currentPracticeTimeMs.also { comboStartMs = it }
+                            comboSeconds = ((currentPracticeTimeMs - start) / 1000L).toInt()
+                        } else {
+                            comboStartMs = null
+                            comboSeconds = 0
+                        }
                         handScore = handSnap?.handScore
                         combinedPracticeScore = HandSimilarityEvaluator.combineWithBodyScore(
                             bodyScore = bodyScoreForCombined,
@@ -681,7 +721,17 @@ fun DanceARPracticeScreen(
             timingConsistencyScore = timingConsistencyScore,
             alignmentScore = alignmentScore,
             qualityFlag = if (alignmentScore >= 0.75) "GOOD" else "DONE",
-            analysisJson = analysisPayload.toJson()
+            analysisJson = analysisPayload.toJson(),
+            ownerUid = uid
+        )
+
+        lastResult = PracticeResult(
+            danceId = item.danceId,
+            danceTitle = item.title,
+            alignment = alignmentScore,
+            timing = timingConsistencyScore,
+            smoothness = smoothnessScore,
+            isPersonalBest = personalBests.recordIfBest(uid, item.danceId, alignmentScore)
         )
 
         status = "Submitting practice result..."
@@ -717,12 +767,12 @@ fun DanceARPracticeScreen(
         }
     }
 
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val tealButtonColors = ButtonDefaults.buttonColors(
         containerColor = brandTeal,
-        contentColor = Color.White,
+        contentColor = ChorevoTheme.colors.onAccent,
         disabledContainerColor = brandTeal.copy(alpha = 0.5f),
-        disabledContentColor = Color.White.copy(alpha = 0.85f)
+        disabledContentColor = ChorevoTheme.colors.onAccent.copy(alpha = 0.85f)
     )
     val tealOutlinedButtonColors = ButtonDefaults.outlinedButtonColors(
         contentColor = brandTeal
@@ -736,14 +786,14 @@ fun DanceARPracticeScreen(
             onDismiss = { weeklyChallengeVm.dismissCelebrationDialog() }
         )
     } else if (achievementState.showAchievementDialog) {
-        AchievementSummaryDialog(
+        PracticeResultDialog(
+            result = lastResult,
             sessionPoints = achievementState.sessionPoints,
             totalPoints = achievementState.totalPoints,
             currentLevel = achievementState.currentLevel,
             leveledUp = achievementState.leveledUp,
             previousLevel = achievementState.previousLevel,
             newBadges = achievementState.newlyUnlocked,
-            brandTeal = brandTeal,
             onDismiss = {
                 achievementVm.dismissAchievementDialog()
                 onNavigateToProfile()
@@ -808,7 +858,7 @@ fun DanceARPracticeScreen(
                         learnerLandmarks?.let {
                             PoseDrawSpec(
                                 landmarks = it,
-                                color = Color.Green,
+                                color = liveAccuracyColor(liveScore),
                                 alpha = 0.95f,
                                 jointRadius = 7f,
                                 boneWidth = 6f
@@ -895,71 +945,75 @@ fun DanceARPracticeScreen(
                 }
             }
 
-            if (isCountdownActive) {
-                Card(
+            // ── Live score ring + combo (top-right) ───────────────────────────
+            if (!isCountdownActive && (isPracticeActive || testMode)) {
+                Column(
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .testTag("practiceStartCountdown"),
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
-                    )
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 32.dp, vertical = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    val ringScore = if (handScore != null) combinedPracticeScore else (liveScore ?: alignmentScore)
+                    LiveScoreRing(score = ringScore)
+                    AnimatedVisibility(
+                        visible = comboSeconds >= COMBO_MIN_SECONDS,
+                        enter = scaleIn() + fadeIn(),
+                        exit = fadeOut()
                     ) {
-                        Text(
-                            text = "Get Ready",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "${countdownSecondsRemaining ?: 0}",
-                            fontSize = 52.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = brandTeal
-                        )
-                        Text(
-                            text = "Session starts in",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                        )
+                        ComboBadge(seconds = comboSeconds)
                     }
                 }
             }
 
-            Card(
+            // ── 3-2-1 countdown ───────────────────────────────────────────────
+            if (isCountdownActive) {
+                PracticeCountdown(
+                    secondsRemaining = countdownSecondsRemaining ?: 0,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .testTag("practiceStartCountdown")
+                )
+            }
+
+            // ── Frosted-glass controls (fade while dancing) ───────────────────
+            val chorevoColors = ChorevoTheme.colors
+            val controlsAlpha by animateFloatAsState(
+                targetValue = if (isPracticeFocused) 0.55f else 1f,
+                animationSpec = tween(400),
+                label = "practiceControlsAlpha"
+            )
+            Surface(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(12.dp)
-                    .fillMaxWidth(0.92f)
-                    .heightIn(max = if (isPracticeFocused) 96.dp else 228.dp),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
-                )
+                    .fillMaxWidth(0.94f)
+                    .heightIn(max = if (isPracticeFocused) 96.dp else 248.dp)
+                    .graphicsLayer { alpha = controlsAlpha },
+                shape = MaterialTheme.shapes.extraLarge,
+                color = chorevoColors.glass,
+                border = BorderStroke(1.dp, chorevoColors.glassBorder)
             ) {
                 Column(
                     modifier = Modifier
                         .verticalScroll(rememberScrollState())
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     if (!isPracticeFocused) {
-                        Text(
-                            if (practiceMode == PracticeMode.STEP_BY_STEP) "Step Analytics" else "Live Analytics",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-
-                        selectedReferenceTrack?.takeIf { availableReferenceTracks.size > 1 }?.let { track ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "Reference: ${track.label}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = brandTeal
+                                if (practiceMode == PracticeMode.STEP_BY_STEP) "Step Analytics" else "Live Analytics",
+                                style = MaterialTheme.typography.titleSmall,
+                                modifier = Modifier.weight(1f)
                             )
+                            selectedReferenceTrack?.takeIf { availableReferenceTracks.size > 1 }?.let { track ->
+                                Text(
+                                    text = track.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = brandTeal
+                                )
+                            }
                         }
 
                         currentPracticeSegment?.let { segment ->
@@ -972,41 +1026,18 @@ fun DanceARPracticeScreen(
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                "Align ${(alignmentScore * 100).toInt()}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                "Timing ${(timingConsistencyScore * 100).toInt()}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                "Smooth ${(smoothnessScore * 100).toInt()}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            StatPill("Align", alignmentScore, Modifier.weight(1f))
+                            StatPill("Timing", timingConsistencyScore, Modifier.weight(1f))
+                            StatPill("Smooth", smoothnessScore, Modifier.weight(1f))
+                            handScore?.let { score -> StatPill("Hands", score, Modifier.weight(1f)) }
                         }
-
-                        handScore?.let { score ->
-                            Text(
-                                text = "Overall ${(combinedPracticeScore * 100).toInt()} - Hands ${(score * 100).toInt()}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = brandTeal
-                            )
-                        }
-
-                        Text(
-                            text = "Err ${"%.4f".format(avgPoseError)} • Frames $frameCount • ${practiceTimeMs}ms",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f)
-                        )
 
                         wordFeedback?.takeIf { it.isNotBlank() }?.let {
                             Text(
                                 text = it,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
+                                style = MaterialTheme.typography.titleSmall,
                                 color = brandTeal,
                                 modifier = Modifier.testTag("wordFeedback")
                             )
@@ -1022,6 +1053,12 @@ fun DanceARPracticeScreen(
                             )
                         }
 
+                        Text(
+                            text = "Err ${"%.4f".format(avgPoseError)} • Frames $frameCount • ${practiceTimeMs}ms",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
                         status?.let {
                             Text(it, style = MaterialTheme.typography.bodySmall)
                         }
@@ -1035,7 +1072,8 @@ fun DanceARPracticeScreen(
                             OutlinedButton(
                                 modifier = Modifier.weight(1f),
                                 onClick = { doReset(message = "Practice reset. Tap Start Practice when ready.") },
-                                contentPadding = PaddingValues(vertical = 8.dp),
+                                contentPadding = PaddingValues(vertical = 10.dp),
+                                shape = PillShape,
                                 colors = tealOutlinedButtonColors
                             ) {
                                 Text("Reset", style = MaterialTheme.typography.bodyMedium)
@@ -1050,7 +1088,8 @@ fun DanceARPracticeScreen(
                                         doSubmit()
                                     }
                                 },
-                                contentPadding = PaddingValues(vertical = 8.dp),
+                                contentPadding = PaddingValues(vertical = 10.dp),
+                                shape = PillShape,
                                 colors = tealButtonColors
                             ) {
                                 Text(
@@ -1063,7 +1102,8 @@ fun DanceARPracticeScreen(
                                 modifier = Modifier.weight(1f),
                                 onClick = { startPracticeCountdown() },
                                 enabled = !isCountdownActive,
-                                contentPadding = PaddingValues(vertical = 8.dp),
+                                contentPadding = PaddingValues(vertical = 10.dp),
+                                shape = PillShape,
                                 colors = tealButtonColors
                             ) {
                                 Text(
@@ -1093,7 +1133,8 @@ fun DanceARPracticeScreen(
                                 } else {
                                     frameCount > 0
                                 },
-                                contentPadding = PaddingValues(vertical = 8.dp),
+                                contentPadding = PaddingValues(vertical = 10.dp),
+                                shape = PillShape,
                                 colors = tealOutlinedButtonColors
                             ) {
                                 Text(
@@ -1121,7 +1162,7 @@ private fun FloatingPracticeBackButton(
 ) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f)
         )
@@ -1154,7 +1195,7 @@ private fun StepPracticeCard(
         modifier = modifier
             .fillMaxWidth()
             .testTag("stepPracticeCard"),
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
         )
@@ -1190,7 +1231,7 @@ private fun StepPracticeCard(
                     enabled = practiceMode != PracticeMode.STEP_BY_STEP,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = brandTeal,
-                        contentColor = Color.White
+                        contentColor = ChorevoTheme.colors.onAccent
                     )
                 ) {
                     Text("Step-by-Step")
@@ -1213,7 +1254,7 @@ private fun StepPracticeCard(
 
                 if (loopPlayer != null) {
                     Card(
-                        shape = RoundedCornerShape(12.dp),
+                        shape = MaterialTheme.shapes.medium,
                         colors = CardDefaults.cardColors(containerColor = Color.Black)
                     ) {
                         SharedPlayerView(
@@ -1349,7 +1390,7 @@ private fun ReferenceDancerSelectorCard(
 
     Card(
         modifier = modifier.testTag("dancerSelectorCard"),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
         )
@@ -1375,11 +1416,11 @@ private fun ReferenceDancerSelectorCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("dancerChip_${track.trackId}"),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = PillShape,
                         contentPadding = PaddingValues(vertical = 10.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = brandTeal,
-                            contentColor = Color.White
+                            contentColor = ChorevoTheme.colors.onAccent
                         )
                     ) {
                         if (thumbnail != null) {
@@ -1403,7 +1444,7 @@ private fun ReferenceDancerSelectorCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("dancerChip_${track.trackId}"),
-                        shape = RoundedCornerShape(14.dp),
+                        shape = PillShape,
                         contentPadding = PaddingValues(vertical = 10.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.onSurface
@@ -1520,167 +1561,6 @@ private fun AssetManager.assetExists(assetPath: String): Boolean {
     return runCatching {
         open(assetPath).use { true }
     }.getOrDefault(false)
-}
-
-@Composable
-private fun AchievementSummaryDialog(
-    sessionPoints: Int,
-    totalPoints: Int,
-    currentLevel: AchievementLevel,
-    leveledUp: Boolean,
-    previousLevel: AchievementLevel,
-    newBadges: List<BadgeDefinition>,
-    brandTeal: Color,
-    onDismiss: () -> Unit
-) {
-    val nextLevel = nextLevelForPoints(totalPoints)
-    val progressToNext = if (nextLevel != null) {
-        val range = nextLevel.pointsRequired - currentLevel.pointsRequired
-        val soFar = totalPoints - currentLevel.pointsRequired
-        (soFar.toFloat() / range.toFloat()).coerceIn(0f, 1f)
-    } else {
-        1f
-    }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                if (leveledUp) {
-                    Text("Level Up!", fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        "${previousLevel.emoji} ${previousLevel.title} -> ${currentLevel.emoji} ${currentLevel.title}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = brandTeal,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                } else {
-                    Text(
-                        "${currentLevel.emoji} ${currentLevel.title}",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                HorizontalDivider()
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "+$sessionPoints pts",
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = brandTeal
-                    )
-                    Text(
-                        "this session",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "$totalPoints total points",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            currentLevel.title,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                        Text(
-                            nextLevel?.title ?: "Max Level",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    LinearProgressIndicator(
-                        progress = { progressToNext },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp),
-                        color = brandTeal,
-                        trackColor = brandTeal.copy(alpha = 0.2f)
-                    )
-                    if (nextLevel != null) {
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            "${nextLevel.pointsRequired - totalPoints} pts to ${nextLevel.title}",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.fillMaxWidth(),
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                        )
-                    }
-                }
-
-                if (newBadges.isNotEmpty()) {
-                    HorizontalDivider()
-                    Text(
-                        "New Badges Unlocked!",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        newBadges.forEach { badge ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(
-                                        color = brandTeal.copy(alpha = 0.08f),
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Text(badge.emoji, fontSize = 24.sp)
-                                Column {
-                                    Text(
-                                        badge.name,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        badge.description,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = brandTeal,
-                        contentColor = Color.White
-                    )
-                ) {
-                    Text("Awesome!", fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-    }
 }
 
 private fun ImageProxy.toBitmapFrontCamera(): Bitmap {

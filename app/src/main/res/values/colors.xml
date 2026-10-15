@@ -7,4 +7,7 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Chorevo window backgrounds; match background in ui/theme/Theme.kt. -->
+    <color name="chorevo_background_light">#FFF7F7FB</color>
+    <color name="chorevo_background_dark">#FF0A0A10</color>
 </resources>

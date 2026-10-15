@@ -20,7 +20,9 @@ data class DanceLibraryModel(
     val dancerCount: Int = 0,
     val templateReviewStatus: String = "",
     /** [VISIBILITY_PUBLIC] or [VISIBILITY_PRIVATE]; older uploads have no value and stay public. */
-    val visibility: String = VISIBILITY_PUBLIC
+    val visibility: String = VISIBILITY_PUBLIC,
+    /** Position (ms) of the frame used as the video's cover thumbnail. */
+    val coverFrameMs: Long = DEFAULT_COVER_FRAME_MS
 ) {
     /** Private videos are only visible to their uploader. */
     @get:Exclude
@@ -34,8 +36,10 @@ data class DanceLibraryModel(
     companion object {
         const val VISIBILITY_PUBLIC = "public"
         const val VISIBILITY_PRIVATE = "private"
+        const val DEFAULT_COVER_FRAME_MS = 1_000L
     }
 
+    @get:Exclude
     val isTemplateReady: Boolean
         get() = templateGenerationStatus.equals("ready", ignoreCase = true)
 }

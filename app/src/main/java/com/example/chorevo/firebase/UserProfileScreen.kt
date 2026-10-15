@@ -1,5 +1,18 @@
 package com.example.chorevo.firebase
 
+import com.example.chorevo.core.AnimatedEmptyState
+import com.example.chorevo.core.ShimmerGrid
+import com.example.chorevo.videouploads.UploadsGridFilter
+import com.example.chorevo.core.VideoThumbnailTile
+import androidx.activity.compose.BackHandler
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.GridView
+import com.example.chorevo.ui.theme.ChorevoTheme
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -71,11 +84,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class ProfileTab(val title: String) {
-    MY_DANCE("Activity History"),
-    MY_UPLOADS("My Videos"),
-    LIKED_VIDEOS("Liked"),
-    OTHER_ANALYTICS("Other Dance Analytics")
+private enum class ProfileTab(val title: String, val icon: ImageVector) {
+    UPLOADS("Uploads", Icons.Outlined.GridView),
+    PRIVATE("Private", Icons.Outlined.Lock),
+    LIKED_VIDEOS("Liked", Icons.Outlined.FavoriteBorder),
+    MY_DANCE("Activity", Icons.Outlined.Insights),
+    OTHER_ANALYTICS("Learners", Icons.Outlined.Groups)
 }
 
 /** Displays the user profile screen. */
@@ -92,14 +106,14 @@ fun UserProfileScreen(
     danceLibraryVm: DanceLibraryListViewModel,
     weeklyChallengeVm: WeeklyChallengeViewModel
 ) {
-    val brandTeal = Color(0xFF00B8C8)
+    val brandTeal = ChorevoTheme.colors.accent
     val surfaceColor = MaterialTheme.colorScheme.surface
     val secondaryTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
     val avatarBgColor = MaterialTheme.colorScheme.surfaceVariant
     val avatarIconColor = MaterialTheme.colorScheme.onSurfaceVariant
     val dividerColor = MaterialTheme.colorScheme.outlineVariant
 
-    var tab by remember { mutableStateOf(ProfileTab.MY_DANCE) }
+    var tab by remember { mutableStateOf(ProfileTab.UPLOADS) }
     var status by remember { mutableStateOf<String?>(null) }
     var refreshTick by remember { mutableIntStateOf(0) }
 
@@ -109,6 +123,7 @@ fun UserProfileScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val uiState by profileVm.uiState.collectAsStateWithLifecycle()
     val weeklyChallengeState by weeklyChallengeVm.uiState.collectAsStateWithLifecycle()
+    val uploadsState by videoUploadsVm.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(profile.uid) {
         profileVm.refresh(profile.uid)
@@ -136,6 +151,9 @@ fun UserProfileScreen(
     val currentLevel = levelForPoints(uiState.points.totalPoints)
     val nextLevel = nextLevelForPoints(uiState.points.totalPoints)
 
+    // System back closes the liked-videos player before leaving the profile.
+    BackHandler(enabled = likedPlayerStartIndex != null) { likedPlayerStartIndex = null }
+
     // Fullscreen liked video player — slides over everything
     likedPlayerStartIndex?.let { startIndex ->
         LikedVideosFeed(
@@ -156,77 +174,70 @@ fun UserProfileScreen(
             .background(surfaceColor),
         contentPadding = PaddingValues(bottom = 24.dp)
     ) {
-        // ── Header bar ────────────────────────────────────────────────────
+        // ── Header ────────────────────────────────────────────────────────
         item {
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(100.dp)
-                    .background(brandTeal)
+                    .padding(start = 16.dp, end = 4.dp, top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Profile",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White)
-                    }
-                    TextButton(onClick = onLogout) {
-                        Text("Logout", color = Color.White, fontWeight = FontWeight.Medium)
-                    }
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.headlineSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings")
+                }
+                TextButton(onClick = onLogout) {
+                    Text("Logout", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
-        // ── Profile card ──────────────────────────────────────────────────
+        // ── Avatar with streak ring, email and stats ──────────────────────
         item {
-            Card(
+            val activeDays = Integer.bitCount(uiState.streak.daysMask and 0x7F)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .offset(y = (-28).dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = surfaceColor),
-                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier.size(64.dp).clip(CircleShape).background(avatarBgColor),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (!profile.photoUrl.isNullOrBlank()) {
-                            AsyncImage(
-                                model = profile.photoUrl,
-                                contentDescription = "Profile photo",
-                                modifier = Modifier.fillMaxSize().clip(CircleShape)
-                            )
-                        } else {
-                            Icon(Icons.Outlined.Person, contentDescription = null, tint = avatarIconColor, modifier = Modifier.size(34.dp))
-                        }
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Spacer(Modifier.height(2.dp))
-                        Text(text = email, style = MaterialTheme.typography.bodyMedium, color = secondaryTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        if (uiState.isLoading) {
-                            Spacer(Modifier.height(6.dp))
-                            Text("Refreshing profile…", style = MaterialTheme.typography.bodySmall, color = secondaryTextColor)
-                        }
-                        status?.let {
-                            Spacer(Modifier.height(6.dp))
-                            Text(it, style = MaterialTheme.typography.bodySmall, color = secondaryTextColor)
-                        }
-                    }
+                StreakRingAvatar(
+                    photoUrl = profile.photoUrl,
+                    activeDays = activeDays,
+                    placeholderBg = avatarBgColor,
+                    placeholderTint = avatarIconColor
+                )
+                Text(
+                    text = email,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = secondaryTextColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (uiState.isLoading) {
+                    Text("Refreshing profile…", style = MaterialTheme.typography.bodySmall, color = secondaryTextColor)
+                }
+                status?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = secondaryTextColor)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                        .testTag("profileStats"),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    ProfileStat(value = uploadsState.myUploads.size.toString(), label = "Uploads")
+                    ProfileStat(value = uiState.likedDances.size.toString(), label = "Liked")
+                    ProfileStat(value = "$activeDays/7", label = "Streak")
+                    ProfileStat(value = uiState.points.totalPoints.toString(), label = "Points")
                 }
             }
         }
@@ -235,7 +246,7 @@ fun UserProfileScreen(
             WeeklyStreakCard(
                 daysMask = uiState.streak.daysMask,
                 totalStreakActivities = uiState.streak.totalStreakActivities,
-                modifier = Modifier.padding(horizontal = 16.dp).offset(y = (-16).dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
         }
 
@@ -244,7 +255,7 @@ fun UserProfileScreen(
                 currentLevel = currentLevel,
                 nextLevel = nextLevel,
                 totalPoints = uiState.points.totalPoints,
-                modifier = Modifier.padding(horizontal = 16.dp).offset(y = (-10).dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
         }
 
@@ -253,7 +264,7 @@ fun UserProfileScreen(
                 challenges = weeklyChallengeState.challenges,
                 completedCount = weeklyChallengeState.completedCount,
                 onViewAll = onOpenWeeklyChallenges,
-                modifier = Modifier.padding(horizontal = 16.dp).offset(y = (-6).dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
         }
 
@@ -273,16 +284,24 @@ fun UserProfileScreen(
                 divider = { HorizontalDivider(color = dividerColor) }
             ) {
                 ProfileTab.entries.forEachIndexed { index, t ->
+                    val selected = tab.ordinal == index
                     Tab(
-                        selected = tab.ordinal == index,
+                        selected = selected,
                         onClick = { tab = t },
+                        modifier = Modifier.testTag("profileTab_${t.name}"),
+                        icon = {
+                            Icon(
+                                imageVector = t.icon,
+                                contentDescription = null,
+                                tint = if (selected) brandTeal else secondaryTextColor
+                            )
+                        },
                         text = {
                             Text(
                                 text = t.title,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontWeight = if (tab.ordinal == index) FontWeight.SemiBold else FontWeight.Normal,
-                                color = if (tab.ordinal == index) brandTeal else secondaryTextColor
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (selected) brandTeal else secondaryTextColor
                             )
                         }
                     )
@@ -300,16 +319,18 @@ fun UserProfileScreen(
                     title = "My Dance Sessions",
                     vm = analyticsVm,
                     modifier = Modifier.fillMaxWidth(),
-                    embeddedInParentScroll = true
+                    embeddedInParentScroll = true,
+                    showOverview = true
                 )
-                ProfileTab.MY_UPLOADS -> VideoUploadsTab(
+                ProfileTab.UPLOADS, ProfileTab.PRIVATE -> VideoUploadsTab(
                     onUploadDanceDemo = { },
                     embedded = true,
                     onStatus = { status = it },
                     vm = videoUploadsVm,
                     refreshKey = refreshTick,
                     modifier = Modifier.fillMaxWidth(),
-                    embeddedInParentScroll = true
+                    embeddedInParentScroll = true,
+                    gridFilter = if (tab == ProfileTab.PRIVATE) UploadsGridFilter.PRIVATE else UploadsGridFilter.PUBLIC
                 )
                 ProfileTab.OTHER_ANALYTICS -> AnalyticsDashboardView(
                     args = DanceDashboardArgs(
@@ -320,7 +341,8 @@ fun UserProfileScreen(
                     title = "Others Dancing to My Uploads",
                     vm = analyticsVm,
                     modifier = Modifier.fillMaxWidth(),
-                    embeddedInParentScroll = true
+                    embeddedInParentScroll = true,
+                    showOverview = true
                 )
                 ProfileTab.LIKED_VIDEOS -> {
                     LikedVideosGrid(
@@ -351,39 +373,16 @@ private fun LikedVideosGrid(
     modifier: Modifier = Modifier
 ) {
     when {
-        isLoading -> {
-            Box(
-                modifier = modifier.fillMaxWidth().height(200.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = accentColor)
-            }
-        }
+        isLoading -> ShimmerGrid(cells = 6, modifier = modifier)
 
         dances.isEmpty() -> {
-            Column(
-                modifier = modifier.fillMaxWidth().padding(vertical = 48.dp, horizontal = 32.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Favorite,
-                    contentDescription = null,
-                    tint = accentColor.copy(alpha = 0.3f),
-                    modifier = Modifier.size(48.dp)
-                )
-                Text(
-                    "No liked videos yet",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                Text(
-                    "Heart a dance in the feed and it'll appear here",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
-                )
-            }
+            AnimatedEmptyState(
+                icon = Icons.Filled.Favorite,
+                title = "No liked videos yet",
+                message = "Heart a dance in the feed and it'll appear here",
+                accent = accentColor,
+                modifier = modifier
+            )
         }
 
         else -> {
@@ -405,7 +404,8 @@ private fun LikedVideosGrid(
                 userScrollEnabled = false   // parent LazyColumn handles scrolling
             ) {
                 itemsIndexed(dances) { index, dance ->
-                    VideoThumbnailCell(
+                    VideoThumbnailTile(
+                        frameTimeMs = dance.coverFrameMs,
                         videoUrl = dance.videoUrl,
                         title = dance.title,
                         onClick = { onTap(index) }
@@ -413,80 +413,6 @@ private fun LikedVideosGrid(
                 }
             }
         }
-    }
-}
-
-/** Single thumbnail cell — extracts a frame from the video, overlays a play icon, shows title below. */
-@Composable
-private fun VideoThumbnailCell(
-    videoUrl: String,
-    title: String,
-    onClick: () -> Unit
-) {
-    var bitmap by remember(videoUrl) { mutableStateOf<Bitmap?>(null) }
-
-    LaunchedEffect(videoUrl) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching {
-                val retriever = MediaMetadataRetriever()
-                retriever.setDataSource(videoUrl, emptyMap())
-                val frame = retriever.getFrameAtTime(
-                    1_000_000L, // 1 second in microseconds
-                    MediaMetadataRetriever.OPTION_CLOSEST_SYNC
-                )
-                retriever.release()
-                frame
-            }.getOrNull()
-        }
-    }
-
-    Column(modifier = Modifier.clickable(onClick = onClick)) {
-        Box(
-            modifier = Modifier
-                .aspectRatio(9f / 16f)
-                .background(Color(0xFF1A1A1A)),
-            contentAlignment = Alignment.Center
-        ) {
-            if (bitmap != null) {
-                androidx.compose.foundation.Image(
-                    bitmap = bitmap!!.asImageBitmap(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Box(
-                    modifier = Modifier.fillMaxSize().background(Color(0xFF2A2A2A)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                        color = Color.White.copy(alpha = 0.4f)
-                    )
-                }
-            }
-
-            Icon(
-                imageVector = Icons.Filled.PlayArrow,
-                contentDescription = null,
-                tint = Color.White.copy(alpha = 0.75f),
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(6.dp)
-                    .size(18.dp)
-            )
-        }
-
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
-        )
     }
 }
 
@@ -632,7 +558,7 @@ private fun LikedVideoPage(
             Icon(
                 imageVector = Icons.Filled.Favorite,
                 contentDescription = null,
-                tint = Color(0xFFFF4466).copy(alpha = 0.9f),
+                tint = ChorevoTheme.colors.like.copy(alpha = 0.9f),
                 modifier = Modifier.align(Alignment.Center).size(80.dp)
             )
         }
@@ -679,7 +605,7 @@ private fun LikedVideoPage(
                     Icon(
                         imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = "Like",
-                        tint = if (isLiked) Color(0xFFFF4466) else Color.White,
+                        tint = if (isLiked) ChorevoTheme.colors.like else Color.White,
                         modifier = Modifier.size(30.dp)
                     )
                 }
@@ -704,7 +630,7 @@ private fun WeeklyStreakCard(daysMask: Int, totalStreakActivities: Int, modifier
     val days = listOf("Mon", "Tues", "Wed", "Thurs", "Fri", "Sat", "Sun")
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(6.dp)
     ) {
@@ -717,7 +643,7 @@ private fun WeeklyStreakCard(daysMask: Int, totalStreakActivities: Int, modifier
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
                             modifier = Modifier.size(40.dp).clip(CircleShape)
-                                .background(if (done) Color(0xFF16A34A) else MaterialTheme.colorScheme.surfaceVariant),
+                                .background(if (done) ChorevoTheme.colors.success else MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center
                         ) {
                             if (done) Text("✓", color = Color.White, fontWeight = FontWeight.Bold)
@@ -743,7 +669,7 @@ private fun AchievementPanel(currentLevel: AchievementLevel, nextLevel: Achievem
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(6.dp)
     ) {
@@ -765,9 +691,82 @@ private fun AchievementPanel(currentLevel: AchievementLevel, nextLevel: Achievem
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier.fillMaxWidth().height(8.dp),
-                color = Color(0xFF00B8C8),
-                trackColor = Color(0xFF00B8C8).copy(alpha = 0.2f)
+                color = ChorevoTheme.colors.accent,
+                trackColor = ChorevoTheme.colors.accent.copy(alpha = 0.2f)
             )
         }
     }
 }
+
+/** Profile photo inside a brand-gradient ring when the user practised this week. */
+@Composable
+private fun StreakRingAvatar(
+    photoUrl: String?,
+    activeDays: Int,
+    placeholderBg: Color,
+    placeholderTint: Color
+) {
+    val colors = ChorevoTheme.colors
+    val ring = if (activeDays > 0) colors.brandGradient else Brush.linearGradient(
+        listOf(MaterialTheme.colorScheme.outline, MaterialTheme.colorScheme.outline)
+    )
+    Box(contentAlignment = Alignment.BottomCenter) {
+        Box(
+            modifier = Modifier
+                .size(104.dp)
+                .clip(CircleShape)
+                .background(ring)
+                .padding(4.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(3.dp)
+                .clip(CircleShape)
+                .background(placeholderBg)
+                .testTag("streakRingAvatar"),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!photoUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = photoUrl,
+                    contentDescription = "Profile photo",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                )
+            } else {
+                Icon(Icons.Outlined.Person, contentDescription = null, tint = placeholderTint, modifier = Modifier.size(48.dp))
+            }
+        }
+        if (activeDays > 0) {
+            Row(
+                modifier = Modifier
+                    .offset(y = 8.dp)
+                    .clip(CircleShape)
+                    .background(colors.brandGradient)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Filled.LocalFireDepartment,
+                    contentDescription = null,
+                    tint = colors.onGradient,
+                    modifier = Modifier.size(14.dp)
+                )
+                Text(
+                    "$activeDays",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onGradient
+                )
+            }
+        }
+    }
+}
+
+/** One number + label in the profile stats row. */
+@Composable
+private fun ProfileStat(value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, style = MaterialTheme.typography.titleLarge)
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+

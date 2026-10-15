@@ -51,7 +51,9 @@ data class DanceSessionSummary(
     val smoothnessScore: Double,
     val timingConsistencyScore: Double,
     val avgPoseError: Double?,
-    val frames: Int?
+    val frames: Int?,
+    /** Corrections per body area from this session's feedback (see [bodyFocusFromFeedback]). */
+    val bodyFocus: Map<BodyArea, Int> = emptyMap()
 )
 
 data class PerformanceSegment(
