@@ -4,12 +4,13 @@
 
 Chorevo is a native Android dance-learning app that helps learners practise dance routines with AI-assisted body pose and optional hand/finger feedback. The product combines a vertical dance video library, creator uploads, live camera practice, MediaPipe pose detection, post-session analytics, streaks, achievements, reminders, profiles, and leaderboards.
 
-The current implementation is a single-module Kotlin Android app using Jetpack Compose, Hilt, Firebase Authentication, Firestore, Firebase Storage, CameraX, Media3, Room, WorkManager, DataStore, and MediaPipe Tasks Vision.
+The current implementation is a single-module Kotlin Android app using Jetpack Compose, Hilt, Firebase Authentication, Firestore, Firebase Storage, CameraX, Media3, Room, WorkManager, DataStore, and MediaPipe Tasks Vision. Shareable dance links are served by Firebase Hosting and a Cloud Function (`functions/`).
 
 ## 2. Product Goals
 
 - Let learners discover dance routines and start practice quickly.
-- Let creators upload reference dance videos and manage their own uploads.
+- Let creators upload reference dance videos, choose whether each is public or private, and manage their own uploads.
+- Let users share dances to other apps with a link that opens the dance video in Chorevo (or on the web when the app is not installed).
 - Generate pose templates from uploaded reference videos.
 - Compare learner pose landmarks against reference templates during practice.
 - Save completed practice sessions locally first, then sync them to Firebase.
@@ -40,10 +41,23 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 ### Dance Library
 
 - Firestore-backed library from the `danceLibrary` collection.
-- Only enabled dances with ready pose templates are shown in the learner feed.
+- Only enabled, public dances with ready pose templates are shown in the learner feed. Private dances appear only in their uploader's profile.
 - Vertical video-first browsing experience.
 - Dance metadata includes title, description, dance type, educator UID/name, video URL, template status, dancer count, and review status.
 - Practice route prepares the selected dance by loading its pose template from Firebase Storage.
+- Practice only starts when the user taps Start Practice; opening a dance (including from a share link) shows its video first.
+
+### Sharing
+
+- Each dance in the home feed and the profile liked-videos feed has a Share button.
+- Share opens an in-app share sheet (TikTok/Instagram style) with:
+  - social apps: WhatsApp, Instagram, Facebook, Messenger, Telegram, X, Snapchat, LINE (installed apps show their real icons; WhatsApp, Facebook, Telegram and X fall back to their web share pages when not installed; the rest are hidden when not installed),
+  - utilities: Copy link, SMS, Email, and More (the Android system share sheet).
+- Share links use the format `https://chorevo-dea05.web.app/dance/{danceId}`.
+- Opening a link in the app shows the home feed with the shared dance's video pinned first; the rest of the feed follows.
+- Opening a link without the app shows a web landing page with the dance title, educator, description and video, plus Open in Chorevo and Copy link buttons. On Android the page tries to open the app automatically.
+- Link previews in chat/social apps show the dance's own title and description (Open Graph/Twitter tags rendered server-side).
+- Legacy `https://chorevo.app/dance/{danceId}` links still open in the app.
 
 ### Creator Uploads
 
@@ -53,6 +67,9 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 - Dance metadata is written to `danceLibrary/{danceId}`.
 - Uploads may include a confirmed pose template or enqueue background template generation.
 - Users can list, preview, edit, and delete their own uploads.
+- Uploaders choose Public or Private for each upload (default Public).
+- Visibility can be changed later from the profile's uploaded videos list (one-tap Make private / Make public, or in the Edit dialog).
+- Uploads created before visibility existed have no `visibility` field and are treated as public.
 
 ### Pose Template Generation
 
@@ -117,7 +134,7 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 
 ### Dance Discovery
 
-- The app must fetch enabled library dances from Firestore.
+- The app must fetch enabled library dances from Firestore and exclude private dances from the feed.
 - Dances without a ready template must not be presented as practice-ready.
 - Selecting a dance must load its pose template before entering practice.
 - Template loading failures must surface a clear user-facing message.
@@ -129,6 +146,16 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 - The app must track template generation states: queued, processing, ready, failed, skipped, or saving.
 - A creator must be able to update title, dance type, and description for their own uploads.
 - A creator must be able to delete their own upload metadata, video object, and template object.
+- A creator must be able to set an upload's visibility to public or private when uploading and change it later from their profile.
+- A private dance must only be visible to its uploader: hidden from the feed, from other users' liked videos, from share links opened by other users, and from the web share page.
+
+### Sharing
+
+- Users must be able to share a dance through the in-app share sheet to installed social apps, SMS, email, the clipboard, or the system share sheet.
+- Share links must open the shared dance's video (not the practice screen) in the app.
+- Share links opened before sign-in must be kept and opened once the user signs in.
+- The web share page must render the dance's own title, description and video for public dances, and generic text for missing, disabled or private dances.
+- Invalid, deleted, disabled or private links must show a clear message in the app instead of failing silently.
 
 ### Practice Session
 
@@ -177,6 +204,8 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 - Learner session reads must be limited to the owner or the educator linked in the analysis payload.
 - Storage rules must enforce owner-only writes and content-type/size limits.
 - App Check debug provider is installed only for debug builds.
+- Video privacy is currently enforced by the app and the share Cloud Function, not by Firestore rules; any signed-in user can still read a private dance document directly through the Firebase API. Rules-level enforcement is a roadmap item.
+- The share Cloud Function reads Firestore with the Admin SDK and must never expose private or disabled dances.
 
 ### Maintainability
 
@@ -200,7 +229,7 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 - `users/{uid}/friends/{friendUid}`: saved friend references for friends leaderboard.
 - `users/{uid}/achievements/current`: earned badge IDs.
 - `users/{uid}/streaks/...` and `users/{uid}/streak/...`: streak data used by progress UI.
-- `danceLibrary/{danceId}`: creator-uploaded dance metadata and template generation state.
+- `danceLibrary/{danceId}`: creator-uploaded dance metadata, template generation state, and `visibility` (`public` or `private`; missing means public).
 - `leaderboardStats/{uid}`: aggregate stats used for ranking.
 
 ### Storage Paths
@@ -214,6 +243,10 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 
 - `dance_sessions`: local practice session records with sync state.
 
+### Web (Firebase Hosting + Cloud Functions)
+
+- `/dance/{danceId}` on `chorevo-dea05.web.app`: rewritten to the `danceShare` Cloud Function (us-central1, Node.js 22), which renders the share landing page.
+
 ## 9. Success Metrics
 
 - Sign-up and sign-in success rate.
@@ -225,6 +258,8 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 - Analytics view rate after session completion.
 - Weekly active learners and streak retention.
 - Leaderboard participation.
+- Shares per dance and share-link opens (app and web).
+- Share of uploads set to private.
 
 ## 10. Release Acceptance Criteria
 
@@ -235,6 +270,9 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 - A signed-in user can upload a dance, generate or save a template, see it in the library, practise it, submit results, and view analytics.
 - A failed session upload leaves a local unsynced record that can be retried.
 - Unauthorized users cannot write or delete data owned by another UID.
+- `functions` tests (`npm test` in `functions/`) pass and the Cloud Function and Hosting are deployed.
+- A shared link opens the dance video in the app, and shows the dance's title and video on the web when the app is not installed.
+- A private upload does not appear in the feed, in other users' liked videos, or through share links opened by other users.
 
 ## 11. Roadmap Candidates
 
@@ -246,6 +284,10 @@ Creators upload dance demo videos, confirm detected dancer tracks when available
 - Better migration strategy for Room schema changes.
 - Upload thumbnail generation and display.
 - More robust offline sync queue visibility in the UI.
+- Enforce video privacy in Firestore rules (backfill `visibility` on existing dances and query `visibility == "public"`).
+- Verified Android App Links: host `/.well-known/assetlinks.json` with the release signing certificate so links open the app without a browser hop.
+- Thumbnail images in link previews (`og:image`).
+- Automated Firebase deploys from CI.
 
 ## 12. Pose + Hands Holistic Practice Upgrade Requirements
 
