@@ -1,14 +1,14 @@
 package com.example.chorevo.videouploads.repository
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.example.chorevo.core.VideoMedia
+import com.example.chorevo.core.VideoMedia.putFileWithProgress
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
@@ -20,15 +20,9 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -289,27 +283,7 @@ class VideoUploadsRepository @Inject constructor(
         baseProgress: Float,
         maxProgress: Float,
         onProgress: ((Float) -> Unit)?
-    ) = suspendCancellableCoroutine<Unit> { cont ->
-        val uploadTask = videoRef.putFile(uploadUri, metadata)
-
-        uploadTask
-            .addOnProgressListener { snapshot ->
-                val total = snapshot.totalByteCount.takeIf { it > 0L } ?: return@addOnProgressListener
-                val fraction = snapshot.bytesTransferred.toFloat() / total.toFloat()
-                val scaled = baseProgress + (maxProgress - baseProgress) * fraction.coerceIn(0f, 1f)
-                onProgress?.invoke(scaled)
-            }
-            .addOnSuccessListener {
-                if (cont.isActive) cont.resume(Unit)
-            }
-            .addOnFailureListener { error ->
-                if (cont.isActive) cont.resumeWithException(error)
-            }
-
-        cont.invokeOnCancellation {
-            uploadTask.cancel()
-        }
-    }
+    ) = videoRef.putFileWithProgress(uploadUri, metadata, baseProgress, maxProgress, onProgress)
 
     // ============================================================
     // My uploads list
@@ -425,27 +399,7 @@ class VideoUploadsRepository @Inject constructor(
         danceId: String,
         coverFrameMs: Long
     ): String {
-        val jpeg = withContext(Dispatchers.IO) {
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(context, videoUri)
-                val frame = retriever.getFrameAtTime(coverFrameMs * 1_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: retriever.getFrameAtTime(0L)
-                    ?: error("No frame at ${coverFrameMs}ms")
-                val scale = THUMBNAIL_MAX_SIDE.toFloat() / maxOf(frame.width, frame.height)
-                val scaled = if (scale < 1f) {
-                    Bitmap.createScaledBitmap(frame, (frame.width * scale).toInt(), (frame.height * scale).toInt(), true)
-                } else {
-                    frame
-                }
-                ByteArrayOutputStream().use { out ->
-                    scaled.compress(Bitmap.CompressFormat.JPEG, THUMBNAIL_JPEG_QUALITY, out)
-                    out.toByteArray()
-                }
-            } finally {
-                retriever.release()
-            }
-        }
+        val jpeg = VideoMedia.coverJpeg(context, videoUri, coverFrameMs, THUMBNAIL_MAX_SIDE, THUMBNAIL_JPEG_QUALITY)
         val ref = storage.reference.child(thumbnailPath(uid, danceId))
         ref.putBytes(jpeg, StorageMetadata.Builder().setContentType("image/jpeg").build()).await()
         return ref.downloadUrl.await().toString()

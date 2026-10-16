@@ -227,6 +227,159 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Groups ────────────────────────────────────────────────────────────
+    // Public groups (and their posts) are readable by anyone signed in;
+    // private groups only by members. Members join public groups freely and
+    // private groups with the group's invite code. Member counts and cleanup
+    // after a group is deleted are handled by Cloud Functions.
+
+    function groupPath(groupId) {
+      return /databases/$(database)/documents/groups/$(groupId);
+    }
+
+    function isGroupMember(groupId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
+    function canReadGroup(groupId) {
+      return signedIn()
+        && (get(groupPath(groupId)).data.visibility == 'public' || isGroupMember(groupId));
+    }
+
+    function isGroupOwner(groupId) {
+      return signedIn() && get(groupPath(groupId)).data.ownerUid == request.auth.uid;
+    }
+
+    function validGroupText(data) {
+      return data.name is string
+        && data.name.size() >= 3
+        && data.name.size() <= 60
+        && data.nameLower == data.name.lower()
+        && data.description is string
+        && data.description.size() <= 500;
+    }
+
+    match /groups/{groupId} {
+      allow read: if signedIn()
+        && (resource.data.visibility == 'public' || isGroupMember(groupId));
+
+      // Created in one batch with the owner's membership (and, for private
+      // groups, the invite document).
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['id', 'name', 'nameLower', 'description', 'visibility', 'ownerUid', 'ownerName', 'inviteCode', 'createdAt'])
+        && request.resource.data.id == groupId
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerName is string
+        && request.resource.data.createdAt is int
+        && validGroupText(request.resource.data)
+        && ((request.resource.data.visibility == 'public' && !request.resource.data.keys().hasAny(['inviteCode']))
+          || (request.resource.data.visibility == 'private'
+            && request.resource.data.inviteCode is string
+            && request.resource.data.inviteCode.size() == 8))
+        && existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'nameLower', 'description'])
+        && validGroupText(request.resource.data);
+
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+
+      match /members/{memberUid} {
+        allow read: if canReadGroup(groupId);
+
+        allow create: if signedIn()
+          && memberUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid', 'displayName', 'photoUrl', 'role', 'joinedAt', 'inviteCode'])
+          && request.resource.data.uid == memberUid
+          && request.resource.data.displayName is string
+          && request.resource.data.joinedAt is int
+          && (
+            // The creator, in the batch that creates the group.
+            (request.resource.data.role == 'owner'
+              && !exists(groupPath(groupId))
+              && getAfter(groupPath(groupId)).data.ownerUid == request.auth.uid)
+            ||
+            // Anyone joining a public group, or a private one with its code.
+            (request.resource.data.role == 'member'
+              && exists(groupPath(groupId))
+              && (get(groupPath(groupId)).data.visibility == 'public'
+                || (request.resource.data.inviteCode is string
+                  && request.resource.data.inviteCode == get(groupPath(groupId)).data.inviteCode)))
+          );
+
+        allow update: if false;
+
+        // Members leave (the owner can't leave their own group); the owner
+        // can remove members.
+        allow delete: if signedIn()
+          && ((memberUid == request.auth.uid && resource.data.role != 'owner')
+            || (memberUid != request.auth.uid && isGroupOwner(groupId)));
+      }
+
+      match /posts/{postId} {
+        allow read: if canReadGroup(groupId);
+
+        allow create: if isGroupMember(groupId)
+          && request.resource.data.keys().hasOnly(['id', 'uid', 'displayName', 'photoUrl', 'body', 'kind', 'danceId', 'danceTitle', 'videoUrl', 'thumbnailUrl', 'storagePath', 'thumbnailPath', 'createdAt'])
+          && request.resource.data.id == postId
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.displayName is string
+          && request.resource.data.body is string
+          && request.resource.data.body.size() <= 1500
+          && request.resource.data.createdAt is int
+          && ((request.resource.data.kind == 'text' && request.resource.data.body.size() > 0)
+            || (request.resource.data.kind == 'dance' && request.resource.data.danceId is string)
+            || (request.resource.data.kind == 'video' && request.resource.data.videoUrl is string));
+
+        allow update: if false;
+
+        allow delete: if signedIn()
+          && (resource.data.uid == request.auth.uid || isGroupOwner(groupId));
+
+        match /replies/{replyId} {
+          allow read: if canReadGroup(groupId);
+
+          allow create: if isGroupMember(groupId)
+            && exists(/databases/$(database)/documents/groups/$(groupId)/posts/$(postId))
+            && request.resource.data.keys().hasOnly(['id', 'postId', 'uid', 'displayName', 'photoUrl', 'body', 'createdAt'])
+            && request.resource.data.id == replyId
+            && request.resource.data.postId == postId
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.displayName is string
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 500
+            && request.resource.data.createdAt is int;
+
+          allow update: if false;
+
+          allow delete: if signedIn()
+            && (resource.data.uid == request.auth.uid || isGroupOwner(groupId));
+        }
+      }
+    }
+
+    // Invite code -> group, so a code can open a private group the user can't
+    // read yet. Only single lookups by code are allowed (no listing).
+    match /groupInvites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['groupId', 'createdAt'])
+        && getAfter(groupPath(request.resource.data.groupId)).data.ownerUid == request.auth.uid
+        && getAfter(groupPath(request.resource.data.groupId)).data.inviteCode == code;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // "My groups": a user's own memberships across all groups.
+    match /{path=**}/members/{memberUid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Legacy forum (replaced by groups). Data is kept; the app no longer shows it.
     match /communityPosts/{postId} {
       allow read: if signedIn();
       allow create: if signedIn()

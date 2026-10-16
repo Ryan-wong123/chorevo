@@ -225,7 +225,8 @@ private fun AppRouteContent(
 
                 Screen.COMMUNITY -> {
                     CommunityRoute(
-                        profile = profile
+                        profile = profile,
+                        onOpenDance = appViewModel::openDanceById
                     )
                 }
 
