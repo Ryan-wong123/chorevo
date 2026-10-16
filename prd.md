@@ -149,7 +149,11 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - The Groups tab has two lists: "My groups" (groups the user belongs to, updating live) and "Discover" (public groups, most members first, with a name search by prefix).
 - Anyone can create a group (name 3–60 characters, description up to 500) and choose Public or Private. The creator becomes the owner.
 - Public groups are listed in Discover; anyone can open one, read its posts, and join with one tap.
-- Private groups are not listed and cannot be read by non-members. Each has an 8-character invite code (letters and digits without look-alikes such as 0/O and 1/I/L). Members see the code in the group header and can copy or share it; others join with the key button on the Groups screen.
+- Private groups are not listed and cannot be read by non-members. Each has an 8-character invite code (letters and digits without look-alikes such as 0/O and 1/I/L). Members see the code in the group header and can copy it, share an invite link, or show it as a QR code. Others join by:
+  - scanning the QR code in the app (scan icon on the Groups screen, or "Scan QR code instead" in the join dialog), which joins straight away;
+  - scanning it with the phone camera, or opening the shared link (`https://chorevo-dea05.web.app/join/<code>`): the app opens on Groups with the code filled in, one tap to join (signed-out users sign in first). Without the app, the link shows a web page with the code;
+  - entering the code with the key icon.
+  Scanning the code of a group the user is already in just opens it.
 - Members post in a group. A post has text (up to 1,500 characters) and optionally one attachment:
   - one of the member's own public, ready dances from the feed (shown with its cover; "Open dance" opens it in the Home feed), or
   - a new video just for the group, picked from the gallery or recorded (compressed to 720p when larger, under 200 MB, with a cover frame); it plays in a full-screen player.

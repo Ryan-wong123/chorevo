@@ -2,6 +2,7 @@ package com.example.chorevo.community
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,6 +49,28 @@ class GroupModelsTest {
         assertTrue(state.isOwner)
         assertEquals("p2", state.openPost?.id)
         assertFalse(GroupsUiState().isMember)
+    }
+
+    @Test
+    fun inviteCodeFromText_readsInviteLinksAndBareCodes() {
+        assertEquals("ABCD2345", inviteCodeFromText("https://chorevo-dea05.web.app/join/ABCD2345"))
+        assertEquals("ABCD2345", inviteCodeFromText("https://chorevo-dea05.firebaseapp.com/join/abcd2345/"))
+        assertEquals("ABCD2345", inviteCodeFromText("chorevo://join/ABCD2345"))
+        assertEquals("ABCD2345", inviteCodeFromText("https://chorevo-dea05.web.app/join/ABCD2345?utm=x"))
+        assertEquals("ABCD2345", inviteCodeFromText("  abcd-2345 "))
+    }
+
+    @Test
+    fun inviteCodeFromText_rejectsOtherCodes() {
+        assertNull(inviteCodeFromText(null))
+        assertNull(inviteCodeFromText(""))
+        assertNull(inviteCodeFromText("https://evil.example.com/join/ABCD2345"))
+        assertNull(inviteCodeFromText("https://chorevo-dea05.web.app/dance/ABCD2345"))
+        assertNull(inviteCodeFromText("https://chorevo-dea05.web.app/join/ABCD"))
+        assertNull(inviteCodeFromText("https://chorevo-dea05.web.app/join/ABCD23456"))
+        // Look-alike characters are not in invite codes.
+        assertNull(inviteCodeFromText("ABCD0O1I"))
+        assertNull(inviteCodeFromText("Hello there, friend"))
     }
 
     @Test

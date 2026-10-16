@@ -226,7 +226,9 @@ private fun AppRouteContent(
                 Screen.COMMUNITY -> {
                     CommunityRoute(
                         profile = profile,
-                        onOpenDance = appViewModel::openDanceById
+                        onOpenDance = appViewModel::openDanceById,
+                        pendingInviteCode = appViewModel.uiState.collectAsStateWithLifecycle().value.pendingGroupInvite,
+                        onInviteHandled = appViewModel::clearGroupInvite
                     )
                 }
 

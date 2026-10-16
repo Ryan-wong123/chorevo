@@ -113,6 +113,10 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
 
+    // Group invite QR codes: scanning (Play services) and generating (ZXing)
+    implementation(libs.play.services.code.scanner)
+    implementation(libs.zxing.core)
+
     // --- Firebase ---
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)

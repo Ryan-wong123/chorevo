@@ -56,6 +56,8 @@ data class AppUiState(
      * the way TikTok/Instagram open a shared post.
      */
     val sharedDance: DanceLibraryModel? = null,
+    /** Invite code from a scanned group QR code or link, waiting for the Groups screen. */
+    val pendingGroupInvite: String? = null,
     /** Light/dark choice from Settings; loaded from DataStore. */
     val themeMode: ThemeMode = ThemeMode.DARK,
     /** Whether the welcome carousel was already shown; null until loaded. */

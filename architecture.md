@@ -84,7 +84,7 @@ Screens:
 - `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
 - `AnalyticsDashboardView`: learner and creator analytics. With `showOverview = true` (the profile's Activity and Learners tabs) it renders `AnalyticsOverview` above the list: stat tiles with a sparkline, a draw-in trend chart, an 8-week activity heatmap, and a body diagram. The numbers come from `computeOverviewStats` and the body focus from `bodyFocusFromFeedback` (`analytics/AnalyticsStats.kt`, plain Kotlin, unit tested), which counts corrections per `BodyArea` in each session's stored feedback messages.
 - `LeaderboardScreen`: Global/Friends leaderboard with a top-three `Podium` (medal rings, rising blocks, `podium_rank_N` test tags), ranks 4+ in a list, and the user's "Your position" card pinned at the bottom. Add/remove-friend buttons come from `friendActionFor` for both podium and list.
-- `GroupsScreen`: "My groups" and "Discover" tabs, create-group and join-by-code dialogs. `GroupDetailScreen`: the open group's header (visibility, member count, invite code with copy/share), join banner, posts (text, shared dance, group video with a full-screen player), the member composer (dance picker, gallery/record video), replies bottom sheet, members dialog, leave/delete.
+- `GroupsScreen`: "My groups" and "Discover" tabs, create-group and join-by-code dialogs, QR scanning (`InviteQr.scan`, the Google code scanner — no camera permission), and the join prompt for an invite link handed over by `AppViewModel.pendingGroupInvite`. `GroupDetailScreen`: the open group's header (visibility, member count, invite code with QR/copy/share; the QR code, drawn with ZXing by `InviteQr.bitmap`, encodes `ShareLinks.groupInviteLink`), join banner, posts (text, shared dance, group video with a full-screen player), the member composer (dance picker, gallery/record video), replies bottom sheet, members dialog, leave/delete.
 - `UserProfileScreen`: header, streak-ring avatar, stats row, streak card, level panel, weekly challenge summary, and icon tabs (Uploads and Private as thumbnail grids via `VideoUploadsTab(gridFilter = …)` with an action sheet, Liked, Activity, Learners), plus the full-screen liked-videos feed.
 - `SettingsScreen`: profile photo, notifications, reminder time, sign out.
 - `WeeklyChallengesScreen`, `WeeklyChallengeSummaryCard`, `WeeklyChallengeCelebrationDialog`.
@@ -339,10 +339,11 @@ On the web:
 
 1. `GroupsViewModel.bind` observes the user's memberships (collection group `members`) and loads public groups for Discover.
 2. Creating a group writes, in one batch, `groups/{id}`, the owner's `members/{uid}` (role `owner`) and, for a private group, `groupInvites/{code}` with a random 8-character code. The rules require all of these together.
-3. Joining a public group writes `members/{uid}`. Joining a private group reads `groupInvites/{code}` (get only; invites cannot be listed), then writes `members/{uid}` carrying the same `inviteCode`, which the rules compare with the group's.
-4. The `groupMemberCount` function recounts members on every join or leave and writes `memberCount`.
-5. Opening a group observes the group, the user's membership, members and posts. A post is text, a shared dance (`danceId`, title, cover and video URL copied from the user's public dance; "Open dance" calls `AppViewModel.openDanceById`), or a group video (compressed to 720p if larger, uploaded to `groupVideos/{uid}/{postId}.mp4` with a cover in `groupThumbnails/`).
-6. Deleting a post removes its replies and, for the author, its files. Deleting a group triggers `groupCleanup`, which deletes the invite, every group file, and the whole subtree (`recursiveDelete`).
+3. Invite links `https://chorevo-dea05.web.app/join/<code>` (the QR code's content) are App Links (`/join/` in the manifest filter) and `chorevo://join/<code>`. `MainActivity` passes them through `ShareLinks.parseInviteCode` (`inviteCodeFromText`, which also reads bare codes) to `AppViewModel.openGroupInvite`, which waits for sign-in if needed and opens Groups with the join dialog filled in. Hosting serves `public/join.html` for `/join/**` when the app is missing.
+4. Joining a public group writes `members/{uid}`. Joining a private group reads `groupInvites/{code}` (get only; invites cannot be listed), then writes `members/{uid}` carrying the same `inviteCode`, which the rules compare with the group's.
+5. The `groupMemberCount` function recounts members on every join or leave and writes `memberCount`.
+6. Opening a group observes the group, the user's membership, members and posts. A post is text, a shared dance (`danceId`, title, cover and video URL copied from the user's public dance; "Open dance" calls `AppViewModel.openDanceById`), or a group video (compressed to 720p if larger, uploaded to `groupVideos/{uid}/{postId}.mp4` with a cover in `groupThumbnails/`).
+7. Deleting a post removes its replies and, for the author, its files. Deleting a group triggers `groupCleanup`, which deletes the invite, every group file, and the whole subtree (`recursiveDelete`).
 
 ### Analytics Flow
 
@@ -545,9 +546,9 @@ Test locations:
 Unit tests (`app/src/test`):
 
 - `analytics`: `AnalyticsDashboardViewModelTest`, `AnalyticsRepositoryTest`, `AnalyticsStatsTest` (overview numbers, trend, heatmap days, body focus)
-- `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link handling, system back targets, theme mode, and onboarding)
+- `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link and group-invite handling, system back targets, theme mode, and onboarding)
 - `dancelibrarylist`: `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` (including video privacy), `DiscoveryTest` (category grouping, search, trending score, tab ordering), `DanceLibraryDiscoveryViewModelTest` (tabs, one-time like-count load, chips, search)
-- `community`: `GroupModelsTest` (invite-code normalising, name limits, composer and state helpers), `GroupsViewModelTest` (binding, opening a group, posting by kind and membership, join by code, owner-only delete)
+- `community`: `GroupModelsTest` (invite-code normalising, invite links and QR text, name limits, composer and state helpers), `GroupsViewModelTest` (binding, opening a group, posting by kind and membership, join by code, owner-only delete)
 - `firebase`: `FirebaseAuthRepositoryTest`
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`
 - `posedetection`: `ByteTrackDancerTrackerTest`, `ConservativeFramePreprocessorTest`, `CropPoseGeometryTest`, `HandSimilarityEvaluatorTest`, `HandTrackAssignerTest`, `HolisticFrameLandmarksTest`, `HolisticFrameSelectorTest`, `MissingLandmarkInterpolatorTest`, `MultiPersonPoseTrackerTest`, `PersonDetectorFactoryTest`, `PoseDetectionMergerTest`, `PoseSimilarityEvaluatorTest`, `PoseTemplateJsonTest`, `TrackFragmentMergerTest`, `YoloPersonDetectionParserTest`

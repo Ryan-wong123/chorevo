@@ -96,14 +96,15 @@ class MainActivity : ComponentActivity() {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Parses a dance share link (see [ShareLinks.parseDanceId]) out of the
-     * incoming intent and forwards the ID to [AppViewModel] so it can load and
-     * display the correct dance once auth is confirmed.
+     * Parses a dance share link (see [ShareLinks.parseDanceId]) or a group
+     * invite link (see [ShareLinks.parseInviteCode]) out of the incoming intent
+     * and forwards it to [AppViewModel], which acts on it once auth is confirmed.
      */
     private fun handleDeepLinkIntent(intent: Intent?) {
         val uri = intent?.data ?: return
         if (intent.action != Intent.ACTION_VIEW) return
 
         ShareLinks.parseDanceId(uri)?.let(appViewModel::openDanceById)
+        ShareLinks.parseInviteCode(uri)?.let(appViewModel::openGroupInvite)
     }
 }

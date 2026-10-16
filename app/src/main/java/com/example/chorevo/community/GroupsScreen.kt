@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -56,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -78,9 +80,12 @@ import com.example.chorevo.ui.theme.PillShape
 fun GroupsScreen(
     profile: UserProfile,
     vm: GroupsViewModel,
-    onOpenDance: (String) -> Unit
+    onOpenDance: (String) -> Unit,
+    pendingInviteCode: String? = null,
+    onInviteHandled: () -> Unit = {}
 ) {
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
     val displayName = profile.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User"
 
@@ -89,6 +94,28 @@ fun GroupsScreen(
         val msg = state.message ?: return@LaunchedEffect
         snackbar.showSnackbar(msg)
         vm.clearMessage()
+    }
+
+    var showCreate by rememberSaveable { mutableStateOf(false) }
+    var showJoinCode by rememberSaveable { mutableStateOf(false) }
+    var joinCodePrefill by rememberSaveable { mutableStateOf("") }
+    val scanInvite: () -> Unit = {
+        InviteQr.scan(
+            context,
+            onResult = { code ->
+                if (code != null) vm.joinWithCode(code) else vm.showMessage("That QR code isn't a Chorevo group invite.")
+            },
+            onError = { e -> vm.showMessage("Couldn't open the scanner: ${e.message}") }
+        )
+    }
+
+    // An invite link or a QR code scanned with the phone camera: confirm, then join.
+    LaunchedEffect(pendingInviteCode) {
+        val code = pendingInviteCode ?: return@LaunchedEffect
+        if (state.openGroupId != null) vm.closeGroup()
+        joinCodePrefill = code
+        showJoinCode = true
+        onInviteHandled()
     }
 
     if (state.openGroupId != null) {
@@ -102,8 +129,6 @@ fun GroupsScreen(
         return
     }
 
-    var showCreate by rememberSaveable { mutableStateOf(false) }
-    var showJoinCode by rememberSaveable { mutableStateOf(false) }
     val accent = ChorevoTheme.colors.accent
 
     Scaffold(
@@ -113,7 +138,13 @@ fun GroupsScreen(
             TopAppBar(
                 title = { Text("Groups", fontWeight = FontWeight.SemiBold) },
                 actions = {
-                    IconButton(onClick = { showJoinCode = true }, modifier = Modifier.testTag("joinCodeButton")) {
+                    IconButton(onClick = scanInvite, modifier = Modifier.testTag("scanInviteButton")) {
+                        Icon(Icons.Outlined.QrCodeScanner, contentDescription = "Scan a group QR code")
+                    }
+                    IconButton(
+                        onClick = { joinCodePrefill = ""; showJoinCode = true },
+                        modifier = Modifier.testTag("joinCodeButton")
+                    ) {
                         Icon(Icons.Outlined.VpnKey, contentDescription = "Join with invite code")
                     }
                 },
@@ -189,7 +220,9 @@ fun GroupsScreen(
     }
     if (showJoinCode) {
         JoinCodeDialog(
+            initialCode = joinCodePrefill,
             working = state.isWorking,
+            onScan = { showJoinCode = false; scanInvite() },
             onDismiss = { showJoinCode = false },
             onJoin = { code ->
                 vm.joinWithCode(code)
@@ -424,15 +457,21 @@ private fun CreateGroupDialog(
 }
 
 @Composable
-private fun JoinCodeDialog(working: Boolean, onDismiss: () -> Unit, onJoin: (String) -> Unit) {
-    var code by rememberSaveable { mutableStateOf("") }
+private fun JoinCodeDialog(
+    initialCode: String,
+    working: Boolean,
+    onScan: () -> Unit,
+    onDismiss: () -> Unit,
+    onJoin: (String) -> Unit
+) {
+    var code by rememberSaveable(initialCode) { mutableStateOf(normalizeInviteCode(initialCode)) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Join with invite code") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Ask a member of a private group for its 8-character code.",
+                    "Scan the group's QR code, or enter the 8-character code a member shared.",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 OutlinedTextField(
@@ -446,6 +485,11 @@ private fun JoinCodeDialog(working: Boolean, onDismiss: () -> Unit, onJoin: (Str
                         .fillMaxWidth()
                         .testTag("inviteCodeField")
                 )
+                TextButton(onClick = onScan, modifier = Modifier.testTag("scanInsteadButton")) {
+                    Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Scan QR code instead")
+                }
             }
         },
         confirmButton = {

@@ -67,6 +67,7 @@
 
             <!--
                 Share links: https://chorevo-dea05.web.app/dance/<danceId>
+                and group invites (QR codes): https://chorevo-dea05.web.app/join/<code>
                 (Firebase Hosting -> danceShare function, see functions/index.js).
                 android:autoVerify="true" enables App Links once
                 /.well-known/assetlinks.json is hosted with the signing cert.
@@ -81,6 +82,7 @@
                 <data android:host="chorevo-dea05.firebaseapp.com" />
                 <data android:host="chorevo.app" />
                 <data android:pathPrefix="/dance/" />
+                <data android:pathPrefix="/join/" />
             </intent-filter>
 
             <!--
@@ -92,6 +94,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="chorevo" android:host="dance" />
+                <data android:scheme="chorevo" android:host="join" />
             </intent-filter>
 
         </activity>

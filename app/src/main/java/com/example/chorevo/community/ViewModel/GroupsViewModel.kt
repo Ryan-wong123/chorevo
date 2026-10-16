@@ -327,6 +327,9 @@ class GroupsViewModel @Inject constructor(
         }
     }
 
+    /** Shows a one-off snackbar message. */
+    fun showMessage(message: String) = say(message)
+
     fun clearMessage() {
         _uiState.update { it.copy(message = null) }
     }

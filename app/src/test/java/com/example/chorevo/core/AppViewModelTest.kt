@@ -330,6 +330,35 @@ class AppViewModelTest {
         assertNull(vm.uiState.value.sharedDance)
     }
 
+    // ── Group invites (QR codes / links) ──────────────────────────────────────
+
+    @Test
+    fun openGroupInvite_whenSignedIn_opensGroupsWithTheCode() = runTest {
+        coEvery { authRepository.getCurrentUserProfile() } returns makeProfile()
+        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        advanceUntilIdle()
+
+        vm.openGroupInvite("ABCD2345")
+
+        assertEquals(Screen.COMMUNITY, vm.uiState.value.screen)
+        assertEquals("ABCD2345", vm.uiState.value.pendingGroupInvite)
+        vm.clearGroupInvite()
+        assertNull(vm.uiState.value.pendingGroupInvite)
+    }
+
+    @Test
+    fun openGroupInvite_whileSignedOut_waitsForSignIn() = runTest {
+        advanceUntilIdle()
+
+        vm.openGroupInvite("ABCD2345")
+        assertEquals(Screen.AUTH, vm.uiState.value.screen)
+        assertNull(vm.uiState.value.pendingGroupInvite)
+
+        vm.onAuthed(makeProfile())
+        assertEquals(Screen.COMMUNITY, vm.uiState.value.screen)
+        assertEquals("ABCD2345", vm.uiState.value.pendingGroupInvite)
+    }
+
     // ── navigateBack (system back gesture) ────────────────────────────────────
 
     @Test

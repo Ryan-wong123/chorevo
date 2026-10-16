@@ -142,3 +142,23 @@ fun normalizeInviteCode(raw: String): String =
 
 /** Group name rules shared with firestore.rules: 3–60 characters after trimming. */
 fun isValidGroupName(name: String): Boolean = name.trim().length in 3..60
+
+private val INVITE_LINK = Regex(
+    """^(?:https?://(?:chorevo-dea05\.web\.app|chorevo-dea05\.firebaseapp\.com|chorevo\.app)/join/|chorevo://join/)""" +
+        """([A-Za-z0-9-]+)/?(?:[?#].*)?$"""
+)
+private val BARE_INVITE_CODE = Regex("""^[A-Za-z0-9 -]{8,12}$""")
+
+/**
+ * The invite code in a scanned QR code or opened link, or null when the text
+ * is not a Chorevo group invite. Accepts the invite link
+ * (https://chorevo-dea05.web.app/join/<code>, chorevo://join/<code>) or a
+ * bare code.
+ */
+fun inviteCodeFromText(text: String?): String? {
+    val trimmed = text?.trim().orEmpty()
+    val raw = INVITE_LINK.find(trimmed)?.groupValues?.get(1)
+        ?: trimmed.takeIf { BARE_INVITE_CODE.matches(it) }
+        ?: return null
+    return normalizeInviteCode(raw).takeIf { it.length == INVITE_CODE_LENGTH && raw.count { c -> c.isLetterOrDigit() } == INVITE_CODE_LENGTH }
+}
