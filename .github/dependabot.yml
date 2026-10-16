@@ -1,12 +1,21 @@
-# Weekly dependency updates (security fixes included), grouped so each week
-# brings at most one PR per ecosystem instead of one per library. Kotlin, KSP,
-# Compose compiler and Hilt must move together, so they share a group.
+# Weekly dependency updates, grouped so each week brings at most one PR per
+# group instead of one per library. Kotlin, KSP, Compose compiler and Hilt must
+# move together, so they share a group.
+#
+# Every ecosystem checks only on Monday 09:00 Singapore time. Open Dependabot
+# PRs are not rebased when main changes (rebase-strategy: disabled); comment
+# "@dependabot rebase" on one to bring it up to date. Security fixes for known
+# vulnerabilities are separate and can arrive any day.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Singapore
+    rebase-strategy: disabled
     groups:
       github-actions:
         patterns: ["*"]
@@ -15,6 +24,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Singapore
+    rebase-strategy: disabled
     # Hilt 2.59+ and AGP 9 need a deliberate Android Gradle Plugin 9 upgrade
     # (new DSL); don't propose them in the weekly batch.
     ignore:
@@ -43,6 +56,10 @@ updates:
     directory: /functions
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Singapore
+    rebase-strategy: disabled
     groups:
       functions:
         patterns: ["*"]
@@ -51,6 +68,10 @@ updates:
     directory: /rules-tests
     schedule:
       interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Singapore
+    rebase-strategy: disabled
     groups:
       rules-tests:
         patterns: ["*"]
