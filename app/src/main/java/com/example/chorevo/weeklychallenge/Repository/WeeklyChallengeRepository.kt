@@ -145,9 +145,10 @@ class WeeklyChallengeRepository @Inject constructor(
 
         val recentWeeklySessionCounts = bucketByCompletedWeek(statsRows, excludeWeekStart = weekStart)
 
-        val availableDanceTypes = danceLibraryRepository.listEnabled()
+        // Styles in the feed, from the category counts the Cloud Functions keep.
+        val availableDanceTypes = danceLibraryRepository.loadCategories()
             .getOrElse { emptyList() }
-            .map { it.danceType }
+            .map { it.label }
 
         return WeeklyChallengeEngine.generate(
             weekStart = weekStart,
