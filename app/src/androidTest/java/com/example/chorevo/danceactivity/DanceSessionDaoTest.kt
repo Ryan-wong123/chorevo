@@ -40,7 +40,7 @@ class DanceSessionDaoTest {
 
     @After
     fun tearDown() {
-        db.close()
+        if (::db.isInitialized) db.close()
     }
 
     @Test

@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
@@ -68,7 +69,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions { jvmTarget = "11" }
     buildFeatures {
         compose = true
         buildConfig = true
@@ -98,12 +98,20 @@ android {
         }
     }
 }
+
+// Kotlin 2.2+ removed `kotlinOptions`; same JVM target as compileOptions.
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_11)
+    }
+}
+
 dependencies {
     //Hilt
-    implementation("com.google.dagger:hilt-android:2.57.1")
+    implementation(libs.hilt.android)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
-    ksp("com.google.dagger:hilt-android-compiler:2.57.1")
-    implementation("androidx.hilt:hilt-navigation-compose:1.3.0")
+    ksp(libs.hilt.android.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
 
     // --- Core Android / Lifecycle ---
     implementation(libs.androidx.core.ktx)
@@ -124,6 +132,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.compose.runtime)
     ksp(libs.androidx.room.compiler)
+    // KSP2 doesn't pass main's processors to androidTest; DanceSessionDaoTest has its own @Database.
+    kspAndroidTest(libs.androidx.room.compiler)
 
     // --- DataStore ---
     implementation(libs.androidx.datastore.preferences)
