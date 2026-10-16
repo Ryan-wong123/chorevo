@@ -1,19 +1,56 @@
-# Weekly dependency update PRs (security fixes included).
+# Weekly dependency updates (security fixes included), grouped so each week
+# brings at most one PR per ecosystem instead of one per library. Kotlin, KSP,
+# Compose compiler and Hilt must move together, so they share a group.
 version: 2
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
-  - package-ecosystem: npm
-    directory: /functions
-    schedule:
-      interval: weekly
-  - package-ecosystem: npm
-    directory: /rules-tests
-    schedule:
-      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+
   - package-ecosystem: gradle
     directory: /
     schedule:
       interval: weekly
+    # Hilt 2.59+ and AGP 9 need a deliberate Android Gradle Plugin 9 upgrade
+    # (new DSL); don't propose them in the weekly batch.
+    ignore:
+      - dependency-name: "com.google.dagger*"
+        versions: [">= 2.59"]
+      - dependency-name: "com.android.application"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "com.android.tools.build:gradle"
+        update-types: ["version-update:semver-major"]
+    groups:
+      kotlin-toolchain:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "com.google.devtools.ksp*"
+          - "com.google.dagger*"
+          - "androidx.room*"
+      android-libraries:
+        patterns: ["*"]
+        exclude-patterns:
+          - "org.jetbrains.kotlin*"
+          - "com.google.devtools.ksp*"
+          - "com.google.dagger*"
+          - "androidx.room*"
+
+  - package-ecosystem: npm
+    directory: /functions
+    schedule:
+      interval: weekly
+    groups:
+      functions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /rules-tests
+    schedule:
+      interval: weekly
+    groups:
+      rules-tests:
+        patterns: ["*"]
