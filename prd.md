@@ -2,7 +2,7 @@
 
 ## 1. Product Summary
 
-Chorevo is a native Android dance-learning app that helps learners practise dance routines with AI-assisted body pose and hand/finger feedback. The product combines a vertical dance video feed with likes, comments and sharing, creator uploads with public/private visibility, multi-dancer reference analysis, live camera practice with an instructor avatar, post-session analytics, points, levels, badges, streaks, weekly challenges, a community forum, reminders, profiles, and leaderboards.
+Chorevo is a native Android dance-learning app that helps learners practise dance routines with AI-assisted body pose and hand/finger feedback. The product combines a vertical dance video feed with likes, comments and sharing, creator uploads with public/private visibility, multi-dancer reference analysis, live camera practice with an instructor avatar, post-session analytics, points, levels, badges, streaks, weekly challenges, community groups, reminders, profiles, and leaderboards.
 
 The current implementation is a single-module Kotlin Android app using Jetpack Compose (Material 3), Hilt, Firebase Authentication (email/password and Google via Credential Manager), Firestore, Firebase Storage, Firebase App Check (debug provider), CameraX, Media3 (ExoPlayer and Transformer), Room, WorkManager, DataStore, Coil, MediaPipe Tasks Vision (Pose and Holistic Landmarker), TensorFlow Lite (YOLO person detector) and SceneView (3D instructor avatar). Shareable dance links are served by Firebase Hosting and a Cloud Function (`functions/`).
 
@@ -15,7 +15,7 @@ The current implementation is a single-module Kotlin Android app using Jetpack C
 - Save completed practice sessions locally first, then sync them to Firebase.
 - Present understandable analytics that help users improve.
 - Motivate repeated practice through points, levels, badges, streaks, weekly challenges, reminders, and leaderboards.
-- Let users interact through likes, comments, a community forum, and sharing to other apps.
+- Let users interact through likes, comments, community groups, and sharing to other apps.
 - Keep user-owned data protected with Firebase Auth, Firestore rules, and Storage rules.
 
 ## 3. Target Users
@@ -24,7 +24,7 @@ There is a single user role in the app today: every account is stored with `role
 
 ### Learners
 
-Learners browse dances, like and comment on them, share them, select a routine, practise with camera guidance, submit results, review analytics, earn points and badges, complete weekly challenges, maintain streaks, post in the community forum, and compare progress on leaderboards.
+Learners browse dances, like and comment on them, share them, select a routine, practise with camera guidance, submit results, review analytics, earn points and badges, complete weekly challenges, maintain streaks, join groups and post their dances in them, and compare progress on leaderboards.
 
 ### Creators / Educators
 
@@ -34,10 +34,10 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 ### Navigation and Design
 
-- A floating, translucent pill bottom bar with five destinations: Home, Score (leaderboard), a raised gradient "+" Upload button, Forum (community), and Profile.
+- A floating, translucent pill bottom bar with five destinations: Home, Score (leaderboard), a raised gradient "+" Upload button, Groups (community), and Profile.
 - The bar is hidden on the sign-in and practice screens and slides away while the user swipes between feed videos.
 - Settings and Weekly Challenges are sub-screens of Profile.
-- System back (button or gesture) goes to the parent screen: Practice, Upload, Forum, Score and Profile go back to Home; Settings and Weekly Challenges go back to Profile; on Home or sign-in it leaves the app. Back also closes an open forum post or the new-post editor, the liked-videos player, and steps back through the upload steps. The predictive back gesture is supported (Android 13+): while dragging, the screen shrinks with rounded corners to preview leaving.
+- System back (button or gesture) goes to the parent screen: Practice, Upload, Groups, Score and Profile go back to Home; Settings and Weekly Challenges go back to Profile; on Home or sign-in it leaves the app. Back also closes an open group post's replies, then the open group, the liked-videos player, and steps back through the upload steps. The predictive back gesture is supported (Android 13+): while dragging, the screen shrinks with rounded corners to preview leaving.
 - Dark mode is the default. Settings has an Appearance choice of Dark, Light, or System (follow the phone); status and navigation bar icons follow the chosen theme.
 - App icon: an adaptive icon with a white dancing pose-skeleton figure on the brand gradient (teal → violet → magenta), with a monochrome layer for themed icons on Android 13+.
 - The Chorevo design system: a fixed brand palette (teal primary, magenta accent) in dark and light variants that follow the system setting (dynamic colour is off), Sora and Plus Jakarta Sans fonts, and rounded shapes.
@@ -144,11 +144,20 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
   - Completing all three adds a 50-point bonus.
 - Completed practice sessions update challenge progress, rewards go into the points total, and a celebration dialog shows completions. The full list opens from the profile summary card ("View all").
 
-### Community Forum
+### Community Groups
 
-- The Forum tab shows the latest 50 posts, newest first, updating live.
-- Signed-in users can create a post (title up to 120 characters, body up to 1,500) and reply to posts (up to 500 characters; up to 100 replies shown, oldest first).
-- Posts and replies cannot be edited. Rules allow authors to delete their own, but the app has no delete action yet.
+- The Groups tab has two lists: "My groups" (groups the user belongs to, updating live) and "Discover" (public groups, most members first, with a name search by prefix).
+- Anyone can create a group (name 3–60 characters, description up to 500) and choose Public or Private. The creator becomes the owner.
+- Public groups are listed in Discover; anyone can open one, read its posts, and join with one tap.
+- Private groups are not listed and cannot be read by non-members. Each has an 8-character invite code (letters and digits without look-alikes such as 0/O and 1/I/L). Members see the code in the group header and can copy or share it; others join with the key button on the Groups screen.
+- Members post in a group. A post has text (up to 1,500 characters) and optionally one attachment:
+  - one of the member's own public, ready dances from the feed (shown with its cover; "Open dance" opens it in the Home feed), or
+  - a new video just for the group, picked from the gallery or recorded (compressed to 720p when larger, under 200 MB, with a cover frame); it plays in a full-screen player.
+- Posts show newest first (up to 100). Members reply to posts (up to 500 characters) in a bottom sheet; non-members of a public group can read replies but not write.
+- Posts and replies cannot be edited. Authors can delete their own posts; the owner can delete any post.
+- Members can leave a group. The owner can see the member list, remove members and delete the group; deleting removes its posts, replies, invite and group videos. The owner cannot leave without deleting.
+- The member count is kept by a Cloud Function, so it can lag a join by a second or two.
+- The old forum (`communityPosts`) is no longer shown; its data is kept.
 
 ### Leaderboard
 
@@ -242,7 +251,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - A successful session sync must update streak and leaderboard stats.
 - Users must be able to view leaderboard rankings by metric.
 - The Friends leaderboard must include the current user plus saved friend IDs.
-- Users must be able to create community posts and replies.
+- Users must be able to create, discover and join groups (public, or private by invite code), and post text, their dances or group-only videos and replies inside them.
 - Users must be able to enable/disable reminders and set the reminder time.
 
 ## 7. Non-Functional Requirements
@@ -301,14 +310,20 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - `danceLibrary/{danceId}`: creator-uploaded dance metadata, `visibility` (`public` or `private`; missing means public), `coverFrameMs` (cover thumbnail position in ms; missing means 1000), template state (`templateGenerationStatus`, `templateGenerationError`, `templateStoragePath`, `templateReviewStatus`, `dancerCount`), and upload details (original/compressed/uploaded sizes, `wasCompressed`, `storagePath`).
 - `danceLibrary/{danceId}/likes/{uid}`: `{liked: true}`.
 - `danceLibrary/{danceId}/comments/{commentId}`: commentId, uid, username, text, createdAt.
-- `communityPosts/{postId}`: id, uid, displayName, photoUrl, title, body, createdAt.
-- `communityPosts/{postId}/replies/{replyId}`: id, postId, uid, displayName, photoUrl, body, createdAt.
+- `groups/{groupId}`: id, name, nameLower, description, visibility (`public` or `private`), ownerUid, ownerName, inviteCode (private only), createdAt, memberCount (written by a Cloud Function).
+- `groups/{groupId}/members/{uid}`: uid, displayName, photoUrl, role (`owner` or `member`), joinedAt, inviteCode (when joined by code).
+- `groups/{groupId}/posts/{postId}`: id, uid, displayName, photoUrl, body, kind (`text`, `dance` or `video`), danceId, danceTitle, videoUrl, thumbnailUrl, storagePath, thumbnailPath, createdAt.
+- `groups/{groupId}/posts/{postId}/replies/{replyId}`: id, postId, uid, displayName, photoUrl, body, createdAt.
+- `groupInvites/{code}`: groupId, createdAt (looks up a private group by its invite code).
+- `communityPosts/{postId}` and its `replies`: the old forum; kept but no longer shown.
 - `leaderboardStats/{uid}`: uid, displayName, photoUrl, totalPracticeSessions, avgSimilarityScore, totalActiveDays, streakDays (legacy), updatedAt.
 
 ### Storage Paths
 
 - `danceVideos/{uid}/{danceId}.mp4`: uploaded reference videos (video, under 200 MB).
-- `danceThumbnails/{uid}/{fileName}`: reserved by the rules (image, under 10 MB); not used by the app yet.
+- `danceThumbnails/{uid}/{danceId}.jpg`: cover thumbnails (image, under 10 MB).
+- `groupVideos/{uid}/{postId}.mp4`: group-only videos (video, under 200 MB), readable by signed-in users through their download URL, which only group members can see.
+- `groupThumbnails/{uid}/{postId}.jpg`: covers for group videos (image, under 10 MB).
 - `danceTemplates/{uid}/{danceId}.json`: generated pose templates (JSON, under 20 MB), writable only by the uploader. Older templates at `danceTemplates/{danceId}.json` are read-only.
 - `profilePhotos/{uid}/profile.jpg`: profile pictures (image, under 10 MB).
 

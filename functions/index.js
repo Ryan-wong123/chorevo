@@ -90,3 +90,44 @@ exports.refreshDiscovery = onSchedule(
     await refreshAllDances(db, { logger });
   }
 );
+
+// ── Groups ───────────────────────────────────────────────────────────────────
+const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
+const { getStorage } = require("firebase-admin/storage");
+const { storagePathsOfPosts } = require("./groups");
+
+/** Keeps groups/{id}.memberCount exact whenever someone joins or leaves. */
+exports.groupMemberCount = onDocumentWritten(
+  { document: "groups/{groupId}/members/{memberUid}", region: "us-central1" },
+  async (event) => {
+    const groupRef = getFirestore().doc(`groups/${event.params.groupId}`);
+    const group = await groupRef.get();
+    if (!group.exists) return; // group deleted; its members are being cleaned up
+    const snap = await groupRef.collection("members").count().get();
+    await groupRef.update({ memberCount: snap.data().count });
+  }
+);
+
+/**
+ * When a group is deleted, removes everything under it (members, posts,
+ * replies), its invite code, and the group-only videos and thumbnails its
+ * posts uploaded.
+ */
+exports.groupCleanup = onDocumentDeleted(
+  { document: "groups/{groupId}", region: "us-central1", timeoutSeconds: 300 },
+  async (event) => {
+    const db = getFirestore();
+    const groupRef = db.doc(`groups/${event.params.groupId}`);
+    const posts = await groupRef.collection("posts").get();
+    const paths = storagePathsOfPosts(posts.docs.map((d) => d.data()));
+
+    const bucket = getStorage().bucket();
+    await Promise.all(paths.map((p) => bucket.file(p).delete({ ignoreNotFound: true }).catch((err) =>
+      logger.warn("Could not delete group file", { path: p, error: String(err && err.message) })
+    )));
+
+    const code = event.data?.get("inviteCode");
+    if (code) await db.doc(`groupInvites/${code}`).delete();
+    await db.recursiveDelete(groupRef);
+  }
+);

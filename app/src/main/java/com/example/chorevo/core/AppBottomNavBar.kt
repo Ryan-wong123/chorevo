@@ -17,11 +17,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.EmojiEvents
-import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Icon
@@ -51,7 +51,7 @@ import com.example.chorevo.ui.theme.PillShape
 enum class BottomNavItem(val label: String) {
     HOME("Home"),
     UPLOAD("Upload"),
-    COMMUNITY("Forum"),
+    COMMUNITY("Groups"),
     LEADERBOARD("Score"),
     PROFILE("Profile")
 }
@@ -115,7 +115,7 @@ fun AppBottomNavBar(
                 selected = selected == BottomNavItem.UPLOAD,
                 onClick = { onSelect(BottomNavItem.UPLOAD) }
             )
-            NavTab(BottomNavItem.COMMUNITY, selected, Icons.Filled.Forum, Icons.Outlined.Forum, "Community", onSelect)
+            NavTab(BottomNavItem.COMMUNITY, selected, Icons.Filled.Groups, Icons.Outlined.Groups, "Groups", onSelect)
             NavTab(BottomNavItem.PROFILE, selected, Icons.Filled.Person, Icons.Outlined.Person, "Profile", onSelect)
         }
     }
