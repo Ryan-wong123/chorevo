@@ -230,6 +230,18 @@ fun AuthScreen(
                         colors = authTextFieldColors
                     )
 
+                    if (s.mode == AuthMode.LOGIN) {
+                        TextButton(
+                            onClick = vm::sendPasswordReset,
+                            enabled = !s.loading,
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .testTag("forgotPasswordButton")
+                        ) {
+                            Text("Forgot password?", style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+
                     // Gradient primary button.
                     Box(
                         modifier = Modifier

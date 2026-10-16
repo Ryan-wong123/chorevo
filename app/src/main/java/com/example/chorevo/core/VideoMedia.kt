@@ -71,3 +71,15 @@ object VideoMedia {
         cont.invokeOnCancellation { task.cancel() }
     }
 }
+
+/**
+ * Whether [url] is a download URL from this app's Firebase Storage. Videos
+ * and covers that other users put in posts are only loaded from there, never
+ * from an arbitrary host (tracking) or a local scheme such as file:// or
+ * content:// (which the player would otherwise open).
+ */
+fun isTrustedMediaUrl(url: String?): Boolean {
+    if (url.isNullOrBlank()) return false
+    val uri = runCatching { java.net.URI(url) }.getOrNull() ?: return false
+    return uri.scheme == "https" && uri.host == "firebasestorage.googleapis.com"
+}

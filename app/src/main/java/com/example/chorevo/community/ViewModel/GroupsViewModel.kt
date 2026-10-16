@@ -51,7 +51,8 @@ class GroupsViewModel @Inject constructor(
     /** Starts watching the user's groups; call when the screen opens. */
     fun bind(uid: String, displayName: String, photoUrl: String?) {
         if (author?.uid == uid) return
-        author = GroupsRepository.Author(uid, displayName.ifBlank { "User" }, photoUrl)
+        // Names are limited to 60 characters by firestore.rules.
+        author = GroupsRepository.Author(uid, displayName.trim().ifBlank { "User" }.take(60), photoUrl)
         myGroupsJob?.cancel()
         myGroupsJob = viewModelScope.launch {
             repository.observeMyGroups(uid).collect { groups ->

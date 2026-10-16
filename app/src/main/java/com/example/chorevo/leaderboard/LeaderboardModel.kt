@@ -23,14 +23,6 @@ enum class LeaderboardMetric(
     }
 }
 
-data class LeaderboardStatsSnapshot(
-    val displayName: String = "User",
-    val photoUrl: String? = null,
-    val totalPracticeSessions: Int = 0,
-    val avgSimilarityScore: Double = 0.0,
-    val totalActiveDays: Int = 0
-)
-
 data class LeaderboardStat(
     val uid: String = "",
     val displayName: String = "User",

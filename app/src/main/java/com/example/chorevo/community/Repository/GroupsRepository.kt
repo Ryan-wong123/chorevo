@@ -303,8 +303,15 @@ class GroupsRepository @Inject constructor(
     }
 
     /** Owner only. */
+    /** Removes a member (owner only). They're banned too, so the invite code can't bring them back. */
     suspend fun removeMember(groupId: String, memberUid: String): Result<Unit> = runCatching {
-        groupRef(groupId).collection(MEMBERS).document(memberUid).delete().await()
+        val batch = firestore.batch()
+        batch.delete(groupRef(groupId).collection(MEMBERS).document(memberUid))
+        batch.set(
+            groupRef(groupId).collection(BANS).document(memberUid),
+            mapOf("uid" to memberUid, "bannedAt" to System.currentTimeMillis())
+        )
+        batch.commit().await()
     }
 
     // ── Posts and replies ───────────────────────────────────────────────
@@ -507,6 +514,7 @@ class GroupsRepository @Inject constructor(
         const val TAG = "GroupsRepository"
         const val GROUPS = "groups"
         const val MEMBERS = "members"
+        const val BANS = "bans"
         const val INVITATIONS = "groupInvitations"
         const val POSTS = "posts"
         const val REPLIES = "replies"

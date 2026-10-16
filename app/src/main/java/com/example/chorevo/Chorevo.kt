@@ -4,9 +4,6 @@ import android.app.Application
 import androidx.work.Configuration
 import com.example.chorevo.notification.NotificationChannels
 import com.google.firebase.FirebaseApp
-import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-import com.google.firebase.appcheck.ktx.appCheck
-import com.google.firebase.ktx.Firebase
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -32,11 +29,8 @@ class Chorevo : Application(), Configuration.Provider {
         // Push notifications arrive on these channels even before any reminder is scheduled.
         NotificationChannels.create(this)
 
-        if (BuildConfig.DEBUG) {
-            Firebase.appCheck.installAppCheckProviderFactory(
-                DebugAppCheckProviderFactory.getInstance()
-            )
-        }
+        // Play Integrity in release, the debug provider in debug builds.
+        AppCheckInstaller.install()
     }
 
     override fun onTerminate() {

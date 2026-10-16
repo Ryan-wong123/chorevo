@@ -36,7 +36,7 @@ test.after(async () => {
 });
 
 const as = (uid) => env.authenticatedContext(uid).firestore();
-const now = 1_700_000_000_000;
+const now = Date.now();
 
 function groupData(id, visibility, ownerUid, extra = {}) {
   return {
@@ -139,6 +139,9 @@ test("only members post and reply, as themselves", async () => {
   await assertSucceeds(setDoc(doc(bob, "groups/pub/posts/p2"), post));
   await assertFails(setDoc(doc(bob, "groups/pub/posts/p3"), { ...post, id: "p3", uid: "owner" }));
   await assertFails(setDoc(doc(bob, "groups/pub/posts/p4"), { ...post, id: "p4", body: "" }));
+  await env.withSecurityRulesDisabled((ctx) =>
+    setDoc(doc(ctx.firestore(), "danceLibrary/d1"), { danceId: "d1", educatorUid: "bob", visibility: "public" })
+  );
   await assertSucceeds(setDoc(doc(bob, "groups/pub/posts/p5"), {
     ...post, id: "p5", body: "", kind: "dance", danceId: "d1", danceTitle: "Salsa",
   }));

@@ -16,20 +16,24 @@ class BootReceiver : BroadcastReceiver() {
 
         if (
             action == Intent.ACTION_BOOT_COMPLETED ||
-            action == Intent.ACTION_LOCKED_BOOT_COMPLETED ||
             action == Intent.ACTION_MY_PACKAGE_REPLACED
         ) {
+            // Keep the process alive until rescheduling finishes.
+            val pending = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
-                val prefs = NotificationPreferencesDataStore(context)
-                val scheduler = ReminderScheduler(context, prefs)
+                try {
+                    val prefs = NotificationPreferencesDataStore(context)
+                    val scheduler = ReminderScheduler(context, prefs)
 
-                val pushEnabled = prefs.pushEnabledFlow.firstOrNull() ?: false
-                if (!pushEnabled) return@launch
-
-                val hour = prefs.notificationHourFlow.firstOrNull() ?: 9
-                val minute = prefs.notificationMinuteFlow.firstOrNull() ?: 0
-
-                scheduler.scheduleNextDaily(hour, minute)
+                    val pushEnabled = prefs.pushEnabledFlow.firstOrNull() ?: false
+                    if (pushEnabled) {
+                        val hour = prefs.notificationHourFlow.firstOrNull() ?: 9
+                        val minute = prefs.notificationMinuteFlow.firstOrNull() ?: 0
+                        scheduler.scheduleNextDaily(hour, minute)
+                    }
+                } finally {
+                    pending.finish()
+                }
             }
         }
     }
