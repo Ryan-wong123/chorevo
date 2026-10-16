@@ -130,10 +130,11 @@ Repositories isolate Firebase, Room, and Storage APIs:
 - `VideoUploadsRepository`: video compression/upload, dance metadata write (including `visibility` and `coverFrameMs`), template upload or WorkManager queue, upload management, `updateDance` (optional visibility), `setVisibility`, and `deleteDance`.
 - `AnalyticsRepository`: learner and educator session listeners, Firestore mapping, learner display names, and reference video availability.
 - `LeaderboardRepository`: leaderboard stats, ranking, friend list management.
-- `FirebaseStreakRepository`, `AchievementRepository`, `PointsRepository`: streaks, badges, and points.
+- `FirebaseStreakRepository`, `AchievementRepository`, `PointsRepository`: read the streak, badges and points (written only by Cloud Functions).
+- `SessionRewardsRepository`: observes `users/{uid}/sessionRewards/{sessionId}`, the server's result for one session.
 - `UsernameRepository`: availability checks, a free suggestion from the display name, claiming/changing a username (one batch: `usernames/{new}`, `users/{uid}.username`, delete `usernames/{old}`), and prefix search for invites. Format rules live in `firebase/Usernames.kt`.
 - `GroupsRepository`: groups, members, posts and replies (snapshot listeners), the user's invitations by username (send, accept as one batch with the membership, decline), creating a group with its owner membership and invite in one batch, joining by invite code via `groupInvites/{code}`, and group video uploads (720p compression, cover frame via `core/VideoMedia`).
-- `WeeklyChallengeRepository`: weekly challenge generation, progress, and rewards.
+- `WeeklyChallengeRepository`: reads this week's challenges; the first time in a week it calls the `weeklyChallenges` callable function to create them (via `FirebaseFunctions`).
 
 ### Infrastructure Layer
 
@@ -188,7 +189,9 @@ Main collections:
 - `users/{uid}/friends/{friendUid}`: friend references (uid, displayName, photoUrl, addedAt).
 - `users/{uid}/points/current`: totalPoints, lastSessionPoints, lastUpdated.
 - `users/{uid}/achievements/current`: earnedBadges, lastUpdated.
-- `users/{uid}/streaks/current`: weekStart, daysMask, totalStreakActivities, lastActivityDate, updatedAt. (`firestore.rules` also allows a legacy `streak/` path that no code uses.)
+- `users/{uid}/streaks/current`: weekStart, daysMask, totalStreakActivities, lastActivityDate, updatedAt.
+- `users/{uid}/sessionRewards/{sessionId}`: the server's reward summary for one session.
+- Points, achievements, streaks, weekly challenges and session rewards are written only by Cloud Functions (see Rewards Flow).
 - `users/{uid}/weeklyChallenges/{weekStart}`: weekly challenge set and progress.
 - `danceLibrary/{danceId}`: uploaded dance metadata, including `visibility` (`"public"` or `"private"`; a missing field reads as `"public"` through the `DanceLibraryModel` default), `coverFrameMs` (cover thumbnail position; missing reads as 1000), template status fields, and upload size details.
 - `danceLibrary/{danceId}/likes/{uid}`: `{liked: true}`.
@@ -197,7 +200,7 @@ Main collections:
 - `groupInvites/{code}`: `{groupId, createdAt}` for private groups.
 - `groupInvitations/{groupId}_{inviteeUid}`: invitations by username (groupId, groupName, inviteeUid, inviteeUsername, inviterUid, inviterName, createdAt). The group name is copied in because the invitee can't read a private group before joining.
 - `communityPosts/{postId}` and replies: the old forum; no longer read by the app.
-- `leaderboardStats/{uid}`: aggregate leaderboard stats (totalPracticeSessions, avgSimilarityScore, totalActiveDays, legacy streakDays, displayName, photoUrl, updatedAt), written only by Cloud Functions (`leaderboardFrom*` in `functions/index.js`, `functions/leaderboard.js`).
+- `leaderboardStats/{uid}`: aggregate leaderboard stats (totalPracticeSessions, avgSimilarityScore, totalActiveDays, legacy streakDays, displayName, photoUrl, updatedAt), written only by Cloud Functions (`rewardsFromSession` and `leaderboardFromProfile` in `functions/index.js`, `functions/leaderboard.js`).
 
 `DanceLibraryModel` exposes `isPrivate` (annotated `@get:Exclude` so it is not written back to Firestore) and `isVisibleTo(viewerUid)`, which returns true for public dances and for private dances viewed by their uploader. `isTemplateReady` is also excluded.
 
@@ -332,14 +335,21 @@ On the web:
 4. `DanceARPracticeScreen` shows a 3-second countdown, then uses CameraX and `LiveLandmarkDetector`, which runs Holistic Landmarker (pose + left/right hands, face ignored) and falls back to Pose Landmarker lite (body only).
 5. `PoseSimilarityEvaluator` compares learner pose landmarks to the selected reference track; `HandSimilarityEvaluator` compares hands only when the template contains hand tracks.
 6. On submit, a `DanceSessionEntity` and analysis payload are created (body-only scores; hand feedback is included in the feedback messages).
-7. `DanceLibraryListViewModel.saveSessionAndUpload` inserts the session locally, uploads it to Firestore, and marks it synced. On success, streak and leaderboard stats refresh.
-8. In parallel, without waiting for the upload, `AchievementViewModel.processCompletedSession` awards points (`users/{uid}/points/current`) and badges (`achievements/current`), and `WeeklyChallengeViewModel.recordCompletedSession` updates weekly challenges. A results dialog shows points, level-ups, and badges.
-9. On upload failure, the local session remains unsynced. `AutoRetryUploaderService.retryUnsyncedSessions(uid)`, called from `AppViewModel` after a session restore at launch and after every sign-in (`onAuthed`), re-uploads that account's sessions (`unsyncedFor`), updates the streak, refreshes leaderboard stats, and marks them synced.
+7. `DanceLibraryListViewModel.saveSessionAndUpload` inserts the session locally, uploads it to Firestore, and marks it synced. The server then awards points, badges, streak, challenges and leaderboard stats (Rewards Flow).
+8. `AchievementViewModel.awaitSessionRewards` waits (up to 20 s) for the server's `sessionRewards/{sessionId}` and shows the results dialog with points, level-up and badges, then `WeeklyChallengeViewModel.onSessionRewards` shows any completed challenges. Offline, the dialog says the points follow when the session syncs.
+9. On upload failure, the local session remains unsynced. `AutoRetryUploaderService.retryUnsyncedSessions(uid)`, called from `AppViewModel` after a session restore at launch and after every sign-in (`onAuthed`), re-uploads that account's sessions (`unsyncedFor`) and marks them synced; the server rewards each one as it arrives.
 
 ### Weekly Challenge Flow
 
-1. The profile calls `WeeklyChallengeViewModel.loadForWeek`, which calls `getOrCreateCurrentWeek`. If the week has no document yet, `WeeklyChallengeEngine` generates three challenges from the last 40 sessions and the dance types in the library.
-2. After each practice session, `recordCompletedSession` updates progress in a transaction, credits reward and bonus points through `PointsRepository`, and shows `WeeklyChallengeCelebrationDialog` for completions.
+1. The profile calls `WeeklyChallengeViewModel.loadForWeek`, which calls `getOrCreateCurrentWeek`. If the week has no document yet, it calls the `weeklyChallenges` callable function, which generates three challenges from the last 40 sessions and the dance types in the feed (`functions/rewards.js`, `generateChallenges`).
+2. After each synced session, `rewardsFromSession` advances progress and credits challenge and bonus points; the app shows `WeeklyChallengeCelebrationDialog` for completions.
+
+### Rewards Flow
+
+1. The app uploads a practice session to `users/{uid}/danceLearningSessions/{sessionId}` with its scores (each 0..1, enforced by the rules) and the phone's time-zone offset. Sessions can't be changed afterwards; a retry of an uploaded session is skipped.
+2. `rewardsFromSession` (Firestore trigger on create) runs once per session in a transaction: session points (alignment × 50 + timing × 30 + smoothness × 20, max 100), new badges, the weekly streak (one activity per local day, using the server's clock), weekly challenge progress and rewards, and `leaderboardStats/{uid}`. It writes the summary to `users/{uid}/sessionRewards/{sessionId}`.
+3. Limits: at most 30 rewarded sessions per user per day; scores are clamped; a user's history from before server-side rewards is counted once (seeded from their existing sessions).
+4. The app reads points, badges, streak, challenges and session rewards; `firestore.rules` deny client writes to all of them.
 
 ### Groups Flow
 
@@ -563,7 +573,8 @@ Unit tests (`app/src/test`):
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`
 - `posedetection`: `ByteTrackDancerTrackerTest`, `ConservativeFramePreprocessorTest`, `CropPoseGeometryTest`, `HandSimilarityEvaluatorTest`, `HandTrackAssignerTest`, `HolisticFrameLandmarksTest`, `HolisticFrameSelectorTest`, `MissingLandmarkInterpolatorTest`, `MultiPersonPoseTrackerTest`, `PersonDetectorFactoryTest`, `PoseDetectionMergerTest`, `PoseSimilarityEvaluatorTest`, `PoseTemplateJsonTest`, `TrackFragmentMergerTest`, `YoloPersonDetectionParserTest`
 - `videouploads`: `VideoUploadTest` (upload ViewModel, dancer review, confirmed templates, visibility, cover frame)
-- `weeklychallenge`: `WeeklyChallengeEngineTest`, `WeeklyChallengeViewModelTest`
+- `weeklychallenge`: `WeeklyChallengeViewModelTest` (the challenge rules are tested server-side in `functions/test/rewards.test.js`)
+- `danceactivity`: `SessionRewardsTest` (parsing the server summary; result dialog waits for it, or shows the pending state)
 
 Instrumented tests (`app/src/androidTest`): `AnalyticsDashboardViewTest`, `DanceARPracticeScreenTest`, `DanceSessionDaoTest` (Room DAO), `DanceLibraryListViewTest`, `AuthScreenTest`, `OnboardingScreenTest`, `LeaderboardScreenTest`, `VideoUploadActivityScreenTest`.
 
@@ -575,7 +586,7 @@ GitHub Actions (`.github/workflows/android.yml`) runs on push and pull request t
 2. Integration tests: `connectedDebugAndroidTest` on an API 29 x86_64 `pixel_5` emulator (2 GB AVD disk, 300 s boot timeout).
 3. Build: `assembleDebug assembleRelease`.
 
-Artifacts (kept 7 days): `chorevo-debug-apk`, `chorevo-release-apk`, and `instrumented-test-results` (uploaded even on failure).
+Artifacts (kept 3 days; uploads never fail the build): `chorevo-debug-apk`, `chorevo-release-apk`, `chorevo-release-aab` (when signing secrets are set), and `instrumented-test-results` (only when emulator tests fail).
 
 CI notes:
 

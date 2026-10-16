@@ -212,36 +212,144 @@ exports.groupCleanup = onDocumentDeleted(
   }
 );
 
-// ── Leaderboard (server-computed) ─────────────────────────────────────────────
+// ── Rewards and leaderboard (server-computed) ─────────────────────────────────
+// Points, badges, the weekly streak, weekly challenges and leaderboard stats
+// are all derived here from synced practice sessions. Clients can only read
+// them (firestore.rules). Logic: functions/rewards.js and leaderboard.js.
 const { AggregateField } = require("firebase-admin/firestore");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { leaderboardEntry } = require("./leaderboard");
+const rewards = require("./rewards");
 
-/** Recomputes leaderboardStats/{uid} from the user's sessions, streak and profile. */
-async function recomputeLeaderboard(uid) {
-  const db = getFirestore();
-  const userRef = db.doc(`users/${uid}`);
-  const [user, agg, streak] = await Promise.all([
-    userRef.get(),
-    userRef.collection("danceLearningSessions")
-      .aggregate({ sessions: AggregateField.count(), avg: AggregateField.average("alignmentScore") })
-      .get(),
-    userRef.collection("streaks").doc("current").get(),
-  ]);
-  if (!user.exists) return;
-  const { sessions, avg } = agg.data();
-  const entry = leaderboardEntry(uid, user.data(), sessions, avg, streak.get("totalStreakActivities"), Date.now());
-  await db.doc(`leaderboardStats/${uid}`).set(entry);
+const userDoc = (db, uid, path) => db.doc(`users/${uid}/${path}`);
+
+/** Dance styles live in the feed (labels of categories with dances). */
+async function availableDanceTypes(db) {
+  const snap = await db.doc("meta/danceCategories").get();
+  const counts = snap.get("counts") || {};
+  const labels = snap.get("labels") || {};
+  return Object.keys(counts).filter((k) => Number(counts[k]) > 0).map((k) => labels[k] || k);
 }
 
-exports.leaderboardFromSessions = onDocumentWritten(
+/** A fresh challenge set for the user's current week, from their recent sessions. */
+async function generateWeek(db, uid, day, tzOffsetMinutes, nowMs) {
+  const recent = await db.collection(`users/${uid}/danceLearningSessions`)
+    .orderBy("tsStart", "desc").limit(40).get();
+  const rows = recent.docs.map((d) => d.data()).filter((s) => typeof s.alignmentScore === "number");
+  return rewards.generateChallenges({
+    weekStart: day.weekStart,
+    recentScores: rows.slice(0, 10),
+    availableDanceTypes: await availableDanceTypes(db),
+    recentWeeklySessionCounts: rewards.weeklySessionCounts(
+      rows.map((s) => Number(s.tsStart) || 0).filter(Boolean), tzOffsetMinutes, day.weekStart
+    ),
+    nowMs,
+  });
+}
+
+/** Writes leaderboardStats/{uid} from the reward state (rewarded sessions, streak). */
+function leaderboardFromState(uid, user, state, streak, nowMs) {
+  const sessions = Number(state && state.rewardedSessions) || 0;
+  const avg = sessions ? (Number(state.alignmentSum) || 0) / sessions : null;
+  return leaderboardEntry(uid, user || {}, sessions, avg, streak && streak.totalStreakActivities, nowMs);
+}
+
+/**
+ * Rewards one newly synced practice session: points, badges, streak, weekly
+ * challenge progress and the leaderboard, in one transaction, exactly once
+ * per session. The result goes to users/{uid}/sessionRewards/{sessionId},
+ * which the app listens to for the celebration dialogs.
+ */
+exports.rewardsFromSession = onDocumentCreated(
   { document: "users/{uid}/danceLearningSessions/{sessionId}", region: "us-central1" },
-  (event) => recomputeLeaderboard(event.params.uid)
+  async (event) => {
+    const { uid, sessionId } = event.params;
+    const session = event.data?.data();
+    if (!session || typeof session.alignmentScore !== "number") return;
+    const db = getFirestore();
+    const nowMs = Date.now();
+    const tz = rewards.safeOffsetMinutes(session.tzOffsetMinutes);
+    const day = rewards.localDay(nowMs, tz);
+
+    // Reads that can't be done inside the transaction (queries), done first.
+    const danceId = session.analysis && session.analysis.danceId;
+    const [dance, existingWeek] = await Promise.all([
+      typeof danceId === "string" && danceId ? db.doc(`danceLibrary/${danceId}`).get() : null,
+      userDoc(db, uid, `weeklyChallenges/${day.weekStart}`).get(),
+    ]);
+    const danceType = dance && dance.exists ? dance.get("danceType") : "";
+    const freshWeek = existingWeek.exists ? null : await generateWeek(db, uid, day, tz, nowMs);
+    // Users with history from before server rewards: count it once.
+    const stateSnap = await userDoc(db, uid, "points/current").get();
+    let seed = null;
+    if (typeof stateSnap.get("rewardedSessions") !== "number") {
+      const agg = await db.collection(`users/${uid}/danceLearningSessions`)
+        .aggregate({ n: AggregateField.count(), sum: AggregateField.sum("alignmentScore") }).get();
+      const { n, sum } = agg.data();
+      seed = { sessions: Math.max(0, n - 1), alignmentSum: Math.max(0, (Number(sum) || 0) - session.alignmentScore) };
+    }
+
+    const refs = {
+      reward: userDoc(db, uid, `sessionRewards/${sessionId}`),
+      state: userDoc(db, uid, "points/current"),
+      achievements: userDoc(db, uid, "achievements/current"),
+      streak: userDoc(db, uid, "streaks/current"),
+      week: userDoc(db, uid, `weeklyChallenges/${day.weekStart}`),
+      user: db.doc(`users/${uid}`),
+      leaderboard: db.doc(`leaderboardStats/${uid}`),
+    };
+
+    await db.runTransaction(async (tx) => {
+      const [reward, state, achievements, streak, week, user] = await Promise.all([
+        tx.get(refs.reward), tx.get(refs.state), tx.get(refs.achievements),
+        tx.get(refs.streak), tx.get(refs.week), tx.get(refs.user),
+      ]);
+      if (reward.exists || !user.exists) return; // already rewarded, or account gone
+
+      const challengeSet = week.exists ? rewards.challengeSetFromDoc(week.data()) : freshWeek;
+      const result = rewards.applySession({
+        session, danceType, nowMs, seed,
+        state: state.exists ? state.data() : null,
+        achievements: achievements.exists ? achievements.data() : null,
+        streak: streak.exists ? streak.data() : null,
+        challengeSet,
+      });
+
+      tx.set(refs.reward, { sessionId, ...result.summary, createdAt: nowMs });
+      if (result.capped) return;
+      tx.set(refs.state, { ...result.state, lastUpdated: FieldValue.serverTimestamp() }, { merge: true });
+      tx.set(refs.achievements, { ...result.achievements, lastUpdated: FieldValue.serverTimestamp() }, { merge: true });
+      tx.set(refs.streak, { ...result.streak, updatedAt: FieldValue.serverTimestamp() });
+      if (result.challengeSet) {
+        tx.set(refs.week, { ...rewards.challengeSetToDoc(result.challengeSet), updatedAt: FieldValue.serverTimestamp() });
+      }
+      tx.set(refs.leaderboard, leaderboardFromState(uid, user.data(), result.state, result.streak, nowMs));
+    });
+  }
 );
 
-exports.leaderboardFromStreak = onDocumentWritten(
-  { document: "users/{uid}/streaks/{docId}", region: "us-central1" },
-  (event) => recomputeLeaderboard(event.params.uid)
-);
+/**
+ * This week's challenges for the signed-in user, created on first request.
+ * Called by the app when it opens the challenges (data: { tzOffsetMinutes }).
+ */
+exports.weeklyChallenges = onCall({ region: "us-central1" }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
+  const db = getFirestore();
+  const nowMs = Date.now();
+  const tz = rewards.safeOffsetMinutes(request.data && request.data.tzOffsetMinutes);
+  const day = rewards.localDay(nowMs, tz);
+  const ref = userDoc(db, uid, `weeklyChallenges/${day.weekStart}`);
+  const existing = await ref.get();
+  if (existing.exists) return { weekStart: day.weekStart };
+  const set = await generateWeek(db, uid, day, tz, nowMs);
+  await db.runTransaction(async (tx) => {
+    // Another request (or a session reward) may have created it meanwhile.
+    if ((await tx.get(ref)).exists) return;
+    tx.set(ref, { ...rewards.challengeSetToDoc(set), updatedAt: FieldValue.serverTimestamp() });
+  });
+  return { weekStart: day.weekStart };
+});
 
 /** Name or photo changes show on the leaderboard (only for users already on it). */
 exports.leaderboardFromProfile = onDocumentWritten(
@@ -251,8 +359,21 @@ exports.leaderboardFromProfile = onDocumentWritten(
     const after = event.data.after.exists ? event.data.after.data() : null;
     if (!after) return;
     if (before.displayName === after.displayName && before.photoUrl === after.photoUrl) return;
-    const stats = await getFirestore().doc(`leaderboardStats/${event.params.uid}`).get();
-    if (stats.exists) await recomputeLeaderboard(event.params.uid);
+    const db = getFirestore();
+    const uid = event.params.uid;
+    const [stats, state, streak] = await Promise.all([
+      db.doc(`leaderboardStats/${uid}`).get(),
+      userDoc(db, uid, "points/current").get(),
+      userDoc(db, uid, "streaks/current").get(),
+    ]);
+    if (!stats.exists) return;
+    if (typeof state.get("rewardedSessions") !== "number") {
+      // Not rewarded server-side yet: keep the numbers, refresh name and photo.
+      const entry = leaderboardEntry(uid, after, 0, null, 0, Date.now());
+      await stats.ref.update({ displayName: entry.displayName, photoUrl: entry.photoUrl, updatedAt: entry.updatedAt });
+      return;
+    }
+    await stats.ref.set(leaderboardFromState(uid, after, state.data(), streak.exists ? streak.data() : null, Date.now()));
   }
 );
 

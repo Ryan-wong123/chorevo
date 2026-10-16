@@ -219,8 +219,8 @@ class DanceLibraryListViewModel @Inject constructor(
 
             res.fold(
                 onSuccess = {
-                    // The leaderboard is recomputed server-side from the session and streak.
-                    runCatching { streakRepository.tickToday(uid) }
+                    // Points, badges, streak and the leaderboard are computed
+                    // server-side from the uploaded session.
                     _uploadState.update { it.copy(isWorking = false, message = "Submitted practice result") }
                     onSuccess?.invoke()
                 },

@@ -110,7 +110,11 @@ internal fun PracticeResultDialog(
     leveledUp: Boolean,
     previousLevel: AchievementLevel,
     newBadges: List<BadgeDefinition>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    /** The session hasn't synced yet, so the server hasn't awarded its points. */
+    rewardsPending: Boolean = false,
+    /** The daily limit of rewarded sessions was reached. */
+    rewardsCapped: Boolean = false
 ) {
     val context = LocalContext.current
     val colors = ChorevoTheme.colors
@@ -229,37 +233,54 @@ internal fun PracticeResultDialog(
                         }
                     }
 
-                    // Points and level
-                    Text(
-                        text = "+$sessionPoints pts",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = colors.accent
-                    )
-                    Text(
-                        text = if (leveledUp) {
-                            "Level up! ${previousLevel.emoji} ${previousLevel.title} → ${currentLevel.emoji} ${currentLevel.title}"
-                        } else {
-                            "${currentLevel.emoji} ${currentLevel.title} · $totalPoints total points"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center
-                    )
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        LinearProgressIndicator(
-                            progress = { progressToNext },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(PillShape),
-                            color = colors.accent,
-                            trackColor = colors.accent.copy(alpha = 0.2f)
+                    // Points and level (awarded by the server once the session syncs)
+                    if (rewardsPending) {
+                        Text(
+                            text = "Your points will be added when this session syncs.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.testTag("rewardsPending")
                         )
-                        if (nextLevel != null) {
-                            Spacer(Modifier.height(4.dp))
+                    } else {
+                        Text(
+                            text = "+$sessionPoints pts",
+                            style = MaterialTheme.typography.headlineMedium,
+                            color = colors.accent
+                        )
+                        Text(
+                            text = if (leveledUp) {
+                                "Level up! ${previousLevel.emoji} ${previousLevel.title} → ${currentLevel.emoji} ${currentLevel.title}"
+                            } else {
+                                "${currentLevel.emoji} ${currentLevel.title} · $totalPoints total points"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            LinearProgressIndicator(
+                                progress = { progressToNext },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(PillShape),
+                                color = colors.accent,
+                                trackColor = colors.accent.copy(alpha = 0.2f)
+                            )
+                            if (nextLevel != null) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    "${nextLevel.pointsRequired - totalPoints} pts to ${nextLevel.title}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        if (rewardsCapped) {
                             Text(
-                                "${nextLevel.pointsRequired - totalPoints} pts to ${nextLevel.title}",
+                                text = "You've reached today's points limit. Keep practising — points return tomorrow.",
                                 style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.fillMaxWidth(),
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

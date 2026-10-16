@@ -2,7 +2,10 @@ package com.example.chorevo.weeklychallenge.ViewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.chorevo.danceactivity.SessionRewards
+import com.example.chorevo.weeklychallenge.ChallengeType
 import com.example.chorevo.weeklychallenge.Repository.WeeklyChallengeRepository
+import com.example.chorevo.weeklychallenge.WeeklyChallenge
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,42 +45,44 @@ class WeeklyChallengeViewModel @Inject constructor(
     }
 
     /**
-     * Folds a freshly completed practice session into this week's challenges.
-     * Called alongside [com.example.chorevo.danceactivity.ViewModel.AchievementViewModel.processCompletedSession]
-     * right after a session is submitted.
+     * Shows the celebration for weekly challenges a practice session just
+     * completed (the server advanced them and awarded their points; see
+     * AchievementViewModel.awaitSessionRewards), then reloads the week.
      */
-    fun recordCompletedSession(
-        uid: String,
-        danceType: String,
-        alignmentScore: Double,
-        timingConsistencyScore: Double,
-        smoothnessScore: Double
-    ) {
-        viewModelScope.launch {
-            runCatching {
-                repository.recordCompletedSession(
-                    uid = uid,
-                    danceType = danceType,
-                    alignmentScore = alignmentScore,
-                    timingConsistencyScore = timingConsistencyScore,
-                    smoothnessScore = smoothnessScore
+    fun onSessionRewards(uid: String, rewards: SessionRewards) {
+        val completed = rewards.completedChallenges.map { c ->
+            WeeklyChallenge(
+                id = c.id,
+                type = challengeTypeFor(c.id),
+                title = c.title,
+                description = "",
+                emoji = c.emoji,
+                targetCount = 0,
+                rewardPoints = c.rewardPoints,
+                completed = true
+            )
+        }
+        if (completed.isNotEmpty() || rewards.bonusUnlocked) {
+            _uiState.update {
+                it.copy(
+                    newlyCompleted = completed,
+                    bonusNewlyUnlocked = rewards.bonusUnlocked,
+                    challengeSet = if (rewards.bonusUnlocked && rewards.bonusPoints > 0) {
+                        it.challengeSet.copy(bonusRewardPoints = rewards.bonusPoints)
+                    } else {
+                        it.challengeSet
+                    },
+                    showCelebrationDialog = true
                 )
-            }.onSuccess { result ->
-                _uiState.update {
-                    it.copy(
-                        challengeSet = result.challengeSet,
-                        newlyCompleted = result.newlyCompleted,
-                        bonusNewlyUnlocked = result.bonusNewlyUnlocked,
-                        showCelebrationDialog = result.newlyCompleted.isNotEmpty() || result.bonusNewlyUnlocked,
-                        errorMessage = null
-                    )
-                }
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(errorMessage = error.message ?: "Failed to update weekly challenges")
-                }
             }
         }
+        loadForWeek(uid)
+    }
+
+    private fun challengeTypeFor(id: String): ChallengeType = when (id) {
+        "focus_drill" -> ChallengeType.FOCUS_DRILL
+        "style_explorer" -> ChallengeType.STYLE_EXPLORER
+        else -> ChallengeType.MOMENTUM_GOAL
     }
 
     /** Dismisses the completion celebration dialog after the user has seen it. */
