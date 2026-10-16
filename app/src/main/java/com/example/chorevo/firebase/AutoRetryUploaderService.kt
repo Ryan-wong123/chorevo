@@ -25,11 +25,8 @@ class AutoRetryUploaderService @Inject constructor(
         for (s in pending) {
             runCatching {
                 danceLibraryRepository.uploadDanceSession(uid = uid, session = s)
-                val updatedStreak = streakRepository.tickToday(uid)
-                leaderboardRepository.refreshUserStats(
-                    uid = uid,
-                    totalActiveDays = updatedStreak.totalStreakActivities
-                )
+                // The leaderboard is recomputed server-side from the session and streak.
+                streakRepository.tickToday(uid)
                 dao.markSynced(s.sessionId)
             }
         }

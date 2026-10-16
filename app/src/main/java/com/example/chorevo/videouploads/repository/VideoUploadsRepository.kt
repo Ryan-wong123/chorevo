@@ -154,11 +154,11 @@ class VideoUploadsRepository @Inject constructor(
             // to "ready", which would briefly make the dance show up in the feed.
             val doc = DanceLibraryModel(
                 danceId = danceId,
-                title = title.trim(),
-                description = description.trim(),
-                danceType = danceType.trim(),
+                title = title.trim().take(120),
+                description = description.trim().take(2_000),
+                danceType = danceType.trim().take(40),
                 educatorUid = uid,
-                educatorName = educatorName.trim(),
+                educatorName = educatorName.trim().take(60),
                 videoUrl = videoUrl,
                 enabled = true,
                 templateGenerationStatus = initialStatus,
@@ -318,9 +318,9 @@ class VideoUploadsRepository @Inject constructor(
     ): Result<Unit> {
         return try {
             val fields = mutableMapOf<String, Any>(
-                "title" to title.trim(),
-                "danceType" to danceType.trim(),
-                "description" to description.trim()
+                "title" to title.trim().take(120),
+                "danceType" to danceType.trim().take(40),
+                "description" to description.trim().take(2_000)
             )
             visibility?.let { fields["visibility"] = it }
 

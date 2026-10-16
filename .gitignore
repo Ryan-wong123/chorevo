@@ -26,3 +26,16 @@ local.properties
 /yolov*.onnx
 /calibration_image_sample_data_*.npy
 .firebase/
+
+# Secrets and signing material: never commit
+.env
+.env.*
+*.jks
+keystore.properties
+*.keystore
+*.p12
+*.pem
+*service-account*.json
+gha-creds-*.json
+firebase-debug*.log
+firestore-debug.log

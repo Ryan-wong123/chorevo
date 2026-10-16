@@ -9,13 +9,14 @@
 // Safe to run more than once.
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
-const { refreshAllDances, backfillLikeUids } = require("../maintenance");
+const { refreshAllDances, backfillLikeUids, removeProfileEmails } = require("../maintenance");
 
 async function main() {
   initializeApp({ projectId: process.env.GCLOUD_PROJECT || "chorevo-dea05" });
   const db = getFirestore();
   console.log(await backfillLikeUids(db));
   console.log(await refreshAllDances(db, { recountLikes: true }));
+  console.log(await removeProfileEmails(db));
 }
 
 main().catch((err) => {

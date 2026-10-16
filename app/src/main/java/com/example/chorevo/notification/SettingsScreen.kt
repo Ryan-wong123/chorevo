@@ -109,6 +109,9 @@ fun SettingsScreen(
     val savedPhotoUrl = uiState.profile?.photoUrl ?: profile.photoUrl
     val currentProfile = uiState.profile ?: profile
     var showUsernameDialog by remember { mutableStateOf(false) }
+    var showDeleteAccount by remember { mutableStateOf(false) }
+    var deletingAccount by remember { mutableStateOf(false) }
+    var deleteAccountError by remember { mutableStateOf<String?>(null) }
 
     val pushEnabled = uiState.pushEnabled
     val selectedHour = uiState.notificationHour
@@ -249,7 +252,53 @@ fun SettingsScreen(
                     fontWeight = FontWeight.SemiBold
                 )
             }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            TextButton(
+                onClick = { deleteAccountError = null; showDeleteAccount = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("deleteAccountButton")
+            ) {
+                Text("Delete account", color = MaterialTheme.colorScheme.error)
+            }
         }
+    }
+
+    if (showDeleteAccount) {
+        AlertDialog(
+            onDismissRequest = { if (!deletingAccount) showDeleteAccount = false },
+            title = { Text("Delete your account?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This permanently deletes your account and everything you've shared: your " +
+                            "profile, username, dances and videos, likes, comments, practice history, " +
+                            "groups you own and your posts in other groups. It can't be undone."
+                    )
+                    deleteAccountError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !deletingAccount,
+                    onClick = {
+                        deletingAccount = true
+                        appViewModel.deleteAccount { error ->
+                            deletingAccount = false
+                            if (error == null) showDeleteAccount = false else deleteAccountError = error
+                        }
+                    },
+                    modifier = Modifier.testTag("confirmDeleteAccount")
+                ) {
+                    Text(if (deletingAccount) "Deleting…" else "Delete forever", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccount = false }, enabled = !deletingAccount) { Text("Cancel") }
+            }
+        )
     }
 
     if (showTimePicker) {

@@ -10,7 +10,7 @@ Chorevo is a single-module native Android application:
 - App architecture: MVVM-style presentation with repositories for data access
 - Dependency injection: Hilt
 - Local data: Room and DataStore
-- Cloud data: Firebase Auth (email/password and Google via Credential Manager), Firestore, Firebase Storage, Firebase App Check (debug provider)
+- Cloud data: Firebase Auth (email/password and Google via Credential Manager), Firestore, Firebase Storage, Firebase App Check (Play Integrity in release, debug provider in debug builds)
 - Background work: WorkManager
 - Camera/video: CameraX, Media3 ExoPlayer (feed and previews) and Media3 Transformer (upload compression), Coil (images)
 - Pose analysis: MediaPipe Tasks Vision 0.10.26.1 (Pose Landmarker and Holistic Landmarker) and TensorFlow Lite 2.17.0 (YOLO person detector)
@@ -32,7 +32,7 @@ The app starts in `Chorevo`, initializes Firebase/App Check, then `MainActivity`
 
 - enables Hilt through `@HiltAndroidApp`,
 - initializes Firebase,
-- installs the Firebase App Check debug provider when `BuildConfig.DEBUG` (release builds install no App Check provider; the `firebase-appcheck-debug` artifact is an `implementation` dependency),
+- installs App Check through `AppCheckInstaller` (`src/release`: Play Integrity; `src/debug`: the debug provider, a `debugImplementation` dependency that never ships), and creates the notification channels,
 - provides custom WorkManager configuration with a single-thread executor and `setMaxSchedulerLimit(20)`, and shuts the executor down in `onTerminate`.
 
 The manifest removes `androidx.startup.InitializationProvider` (`tools:node="remove"`) so WorkManager uses this configuration.
@@ -125,7 +125,7 @@ ViewModels expose read-only `StateFlow` and mutate immutable UI state data class
 
 Repositories isolate Firebase, Room, and Storage APIs:
 
-- `FirebaseAuthRepository`: sign up, sign in, Google sign-in (`signInWithGoogle`), sign out, profile restore, profile photo upload. Every auth path merge-writes `users/{uid}` and mirrors displayName/photoUrl into `leaderboardStats/{uid}`.
+- `FirebaseAuthRepository`: sign up, sign in, Google sign-in (`signInWithGoogle`), sign out, profile restore, profile photo upload. Every auth path merge-writes `users/{uid}` (uid, name, photo, lastSeen; never email or role, and it removes an email stored by older versions). `deleteAccount` deletes the Firebase Auth user (the `deleteUserData` function removes their data); `sendPasswordReset` emails a reset link; sign-up sends a verification email.
 - `DanceLibraryRepository`: library query (excludes private dances), liked dances (excludes other users' private dances), `getDanceById(danceId, viewerUid)` for share links, likes (`loadSocialData`, `toggleLike`), comments (`loadComments`, `loadMoreComments`, `postComment`), template download, local session insert, session upload.
 - `VideoUploadsRepository`: video compression/upload, dance metadata write (including `visibility` and `coverFrameMs`), template upload or WorkManager queue, upload management, `updateDance` (optional visibility), `setVisibility`, and `deleteDance`.
 - `AnalyticsRepository`: learner and educator session listeners, Firestore mapping, learner display names, and reference video availability.
@@ -197,7 +197,7 @@ Main collections:
 - `groupInvites/{code}`: `{groupId, createdAt}` for private groups.
 - `groupInvitations/{groupId}_{inviteeUid}`: invitations by username (groupId, groupName, inviteeUid, inviteeUsername, inviterUid, inviterName, createdAt). The group name is copied in because the invitee can't read a private group before joining.
 - `communityPosts/{postId}` and replies: the old forum; no longer read by the app.
-- `leaderboardStats/{uid}`: aggregate leaderboard stats (totalPracticeSessions, avgSimilarityScore, totalActiveDays, legacy streakDays, displayName, photoUrl, updatedAt).
+- `leaderboardStats/{uid}`: aggregate leaderboard stats (totalPracticeSessions, avgSimilarityScore, totalActiveDays, legacy streakDays, displayName, photoUrl, updatedAt), written only by Cloud Functions (`leaderboardFrom*` in `functions/index.js`, `functions/leaderboard.js`).
 
 `DanceLibraryModel` exposes `isPrivate` (annotated `@get:Exclude` so it is not written back to Firestore) and `isVisibleTo(viewerUid)`, which returns true for public dances and for private dances viewed by their uploader. `isTemplateReady` is also excluded.
 
@@ -266,7 +266,7 @@ Key fields:
 3. If no profile exists, `AuthRoute` is shown.
 4. Email/password: `AuthViewModel` calls sign up or sign in on `FirebaseAuthRepository`.
 5. Google: `AuthViewModel.requestGoogleSignIn` emits `AuthEvent.LaunchGoogleSignIn`; `AuthScreen` gets an ID token from `GoogleIdTokenProvider` (Credential Manager, `GetGoogleIdOption` with `default_web_client_id`, authorized accounts first, then all accounts); `signInWithGoogle` exchanges it through `GoogleAuthProvider`.
-6. Every auth path, including restore in step 1, merge-writes `users/{uid}`, reads it back, and merge-writes `leaderboardStats/{uid}`.
+6. Every auth path, including restore in step 1, merge-writes `users/{uid}` and reads it back. The leaderboard copy of name and photo is updated by the `leaderboardFromProfile` function.
 7. `AppViewModel.onAuthed(profile)` stores the profile and routes to home.
 
 ### Dance Upload Flow
@@ -363,8 +363,8 @@ On the web:
 
 ### Leaderboard Flow
 
-1. After a successful session sync, `DanceLibraryListViewModel.saveSessionAndUpload` (and `AutoRetryUploaderService`) calls `LeaderboardRepository.refreshUserStats`.
-2. The repository reads the profile and sessions, computes session count, average alignment ("similarity"), and active days, and writes `leaderboardStats/{uid}` (including the legacy `streakDays`).
+1. After a successful session sync, `DanceLibraryListViewModel.saveSessionAndUpload` (and `AutoRetryUploaderService`) ticks the weekly streak.
+2. Cloud Functions recompute `leaderboardStats/{uid}` whenever a session, the streak or the profile name/photo changes: session count and average alignment ("similarity") by aggregation queries, active days from the streak (capped at the session count), scores clamped to 0..1 (`functions/leaderboard.js`). Clients can't write the leaderboard.
 3. Global scope observes the top 100 ordered by the selected metric. If the user isn't in it, `observeMyGlobalEntry` watches their own stats and computes their rank as 1 + a `count()` of users with a higher score, for the pinned "Your position" card.
 4. Friends scope reads `leaderboardStats` for the current user plus `users/{uid}/friends` directly by document ID (`whereIn`, chunks of 30), so friends outside the top 100 appear.
 5. Ranking is computed client-side; ties share a rank.
@@ -510,7 +510,7 @@ Implementation notes:
 Firestore rules (`firestore.rules`, matching the deployed ruleset) enforce:
 
 - signed-in access for protected data,
-- `users/{uid}`: readable by any signed-in user (including email); written only by the owner, and a `username` only when `usernames/{username}` belongs to them after the write; not deletable,
+- `users/{uid}`: single profiles readable by signed-in users, never listable; written only by the owner with validated fields (no email, no role changes, names up to 60 characters, https photo URLs), a `username` only when `usernames/{username}` belongs to them after the write, and changing it must release the old handle; not deletable by clients (account deletion runs server-side). See SECURITY.md for the full model,
 - `users/{uid}/fcmTokens/{token}`: owner only; the document ID must equal `token`; fields token, platform, updatedAt,
 - `usernames/{handle}`: get by signed-in users, listed at most 20 at a time; created only by the claiming user with a well-formed handle (`^[a-z0-9_]{3,20}$`) in the batch that puts it on their profile (an existing handle can't be re-created, so names are unique); deleted only by its owner once their profile no longer uses it; no updates,
 - `groupInvitations/{groupId}_{inviteeUid}`: read by the invitee or inviter; created by a group member as themselves, for an existing user who isn't a member yet and isn't the inviter, with the group's current name; no updates; deleted by the invitee, the inviter or the group owner,
@@ -518,12 +518,12 @@ Firestore rules (`firestore.rules`, matching the deployed ruleset) enforce:
 - `danceLearningSessions`: owner writes; reads by the owner or by the educator named in `analysis.educatorUid` (including a collection-group rule); create/update require `analysis.danceId` to reference an existing dance whose `educatorUid` equals `analysis.educatorUid`; `analysis.danceId` and `analysis.educatorUid` cannot change on update; no deletes,
 - `danceLibrary/{danceId}`: readable by signed-in users when `visibility == "public"`, otherwise only by the uploader (the rule reads the field directly, because a `get('visibility', 'public')` default lets list queries through unchecked; every dance has the field). List queries must filter on `visibility == "public"` or `educatorUid == auth.uid`. Create requires `educatorUid == auth.uid` and `danceId == docId`; update and delete only by the creator, with `educatorUid` and `danceId` unchanged. Clients may not set or change the server-managed fields (`likeCount`, `trendingScore`, `feedReady`, `danceTypeKey`, `searchTokens`, `searchTrigrams`, `shuffleKey`),
 - `meta/{docId}`: readable by signed-in users, written only by Cloud Functions,
-- `leaderboardStats/{uid}`: readable by any signed-in user, written only by the owner, no deletes,
+- `leaderboardStats/{uid}`: readable by any signed-in user, written only by Cloud Functions,
 - `groups/{groupId}`: readable when `visibility == "public"` or the caller is a member (read directly, so list queries must filter on `visibility == "public"`). Create only together with the caller's owner membership (`existsAfter`), allowed fields only, `ownerUid == auth.uid`, name 3–60 with `nameLower` matching, description ≤ 500, an 8-character `inviteCode` exactly when private. Only the owner updates (name, nameLower, description only) or deletes; `memberCount` is server-only.
 - `groups/{groupId}/members/{uid}`: readable when the group is; users only add themselves — as `owner` only while creating their own group (`getAfter`), otherwise as `member` of a public group or with the matching `inviteCode`. No updates. Members leave (except the owner); the owner removes others. A collection-group rule lets users list their own memberships.
 - `groups/{groupId}/posts/{postId}` and `replies/{replyId}`: readable when the group is; created only by members as themselves, allowed fields only, body ≤ 1,500 (reply 1–500), `kind` text (non-empty body), dance (`danceId`) or video (`videoUrl`); no updates; delete by the author or the group owner.
 - `groupInvites/{code}`: `get` by signed-in users, never listed; created only by the group owner with the code matching the group's; no updates or deletes from clients.
-- `communityPosts/{postId}` and `replies/{replyId}` (old forum, no longer used by the app): readable by signed-in users; create validated; no updates; delete only by the author.
+- `communityPosts/{postId}` and `replies/{replyId}` (old forum, no longer used by the app): readable by signed-in users; no new posts; delete only by the author.
 
 - `danceLibrary/{danceId}/likes/{uid}`: readable when the dance is readable; users like (`liked: true`, optional `uid` equal to their own and `createdAt`) and unlike only as themselves, and only dances they can read; the dance owner may delete likes on their dance. A collection-group rule lets users query their own likes (`uid == auth.uid`).
 - `danceLibrary/{danceId}/comments/{commentId}`: readable, and creatable, when the dance is readable; create validated (allowed fields only, author is the caller, ID matches, text 1–1,000 characters); no updates; delete by the author or the dance owner.
@@ -532,7 +532,7 @@ Storage rules enforce:
 
 - owner-only writes for `danceVideos/{uid}/` and `groupVideos/{uid}/` (video, < 200 MB), `danceThumbnails/{uid}/`, `groupThumbnails/{uid}/` and `profilePhotos/{uid}/` (image, < 10 MB),
 - signed-in reads for group videos and covers. Their download URLs are only stored in member-readable posts, but anyone holding a URL can play it (same as dance videos),
-- public reads for dance videos and thumbnails, and authenticated reads for profile photos and templates,
+- no listing of any folder; direct reads by path only by the owner for dance and group videos/thumbnails (others play them through download URLs), signed-in reads for profile photos and templates; owners can delete their files; file names pinned to the IDs the app uses,
 - `danceTemplates/{userId}/{fileName}`: written and deleted only by that user (JSON, < 20 MB); legacy `danceTemplates/{fileName}` files are read-only. Older app builds that still write to the legacy path can no longer save templates.
 - deny-by-default fallback.
 

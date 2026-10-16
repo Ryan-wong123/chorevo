@@ -31,10 +31,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -44,7 +44,7 @@ jobs:
 
       # The Firestore emulator used by the rules tests runs on Java.
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: "21"
@@ -65,6 +65,8 @@ jobs:
     name: Deploy to Firebase
     needs: test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Add required reviewers to this environment in the repo settings to gate deploys.
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -82,11 +84,11 @@ jobs:
 
       - name: Checkout
         if: steps.creds.outputs.present == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Node.js
         if: steps.creds.outputs.present == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -94,17 +96,19 @@ jobs:
             functions/package-lock.json
             rules-tests/package-lock.json
 
-      - name: Authenticate to Google Cloud
-        if: steps.creds.outputs.present == 'true'
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-
+      # Install before the credentials exist on the runner, without running
+      # package install scripts, so a compromised dependency can't read them.
       - name: Install dependencies
         if: steps.creds.outputs.present == 'true'
         run: |
-          npm ci --prefix functions
-          npm ci --prefix rules-tests
+          npm ci --prefix functions --ignore-scripts
+          npm ci --prefix rules-tests --ignore-scripts
+
+      - name: Authenticate to Google Cloud
+        if: steps.creds.outputs.present == 'true'
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
 
       # Order matters: indexes and functions first, data backfill next, rules
       # last, so the rules never see documents without the fields they need.

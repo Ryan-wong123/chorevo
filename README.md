@@ -316,22 +316,82 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ### CI-uploaded artifacts
 
-The current workflow uploads instrumented test artifacts only:
+Each Android CI run uploads (kept 7 days):
 
-- `app/build/outputs/androidTest-results/`
-- `app/build/reports/androidTests/`
+- `chorevo-debug-apk`: the debug APK, installable for testing.
+- `chorevo-release-apk`: the release APK. It is signed and installable only
+  when the release signing secrets are set (see Setup for Release); otherwise
+  it is `app-release-unsigned.apk`, which Android won't install.
+- `chorevo-release-aab`: the signed App Bundle for Google Play (only when
+  the signing secrets are set).
+- `instrumented-test-results`: emulator test reports (uploaded even on failure).
 
-Artifact name:
+## Setup for Release
 
-- `instrumented-test-results`
+Release builds are signed with your **upload key**. Without it, the release
+build is left unsigned. The key and its passwords are never committed:
+`*.jks`, `*.keystore` and `keystore.properties` are gitignored.
 
-Retention:
+### 1. Create your upload key (once)
 
-- `7 days`
+```bash
+keytool -genkeypair -v -keystore chorevo-upload-key.jks -alias upload \
+  -keyalg RSA -keysize 2048 -validity 10000
+```
 
-### Important note
+Keep the `.jks` file and its passwords somewhere safe, such as a password
+manager. Never commit them. If you lose the key, you have to ask Google to
+reset the upload key.
 
-The workflow assembles debug and release builds, but it does not currently upload APK or AAB files as downloadable CI artifacts.
+### 2. Build signed releases on your computer
+
+Copy `keystore.properties.example` to `keystore.properties` in the project
+root and fill in your passwords (and the path to the `.jks`). Then:
+
+```bash
+./gradlew assembleRelease   # signed, installable APK: app/build/outputs/apk/release/
+./gradlew bundleRelease     # App Bundle for Play:     app/build/outputs/bundle/release/
+```
+
+### 3. Let CI sign releases
+
+In GitHub, go to **Settings → Secrets and variables → Actions** and add:
+
+| Secret | Value |
+|---|---|
+| `RELEASE_KEYSTORE_BASE64` | output of `base64 -w0 chorevo-upload-key.jks` (macOS: `base64 -i chorevo-upload-key.jks`) |
+| `RELEASE_KEYSTORE_PASSWORD` | the keystore password |
+| `RELEASE_KEY_ALIAS` | `upload` |
+| `RELEASE_KEY_PASSWORD` | the key password |
+
+From then on, the CI build job produces a signed, installable release APK and
+a signed `chorevo-release-aab` you can upload to Play. The key only exists on
+the build machine during the build and is deleted afterwards. Pull requests
+from forks don't get secrets, so their builds stay unsigned.
+
+### 4. Play App Signing and fingerprints
+
+When you set up Play Console, turn on **Play App Signing**: Google signs the
+app for users with its app signing key, and your key stays the upload key.
+Then add the SHA-1 and SHA-256 fingerprints of **both** keys:
+
+- to the Android app in the Firebase console (Google sign-in and App Check
+  need them), and
+- to `public/.well-known/assetlinks.json` (App Links for shared dance and
+  invite links), then deploy Hosting.
+
+Your upload key's fingerprints:
+
+```bash
+keytool -list -v -keystore chorevo-upload-key.jks -alias upload
+```
+
+Google's app signing key fingerprints are in Play Console → Test and release →
+App integrity → App signing.
+
+The other steps before publishing (application ID, App Check enforcement, API
+key restrictions, Data safety, privacy policy, testing the release build) are
+listed in [SECURITY.md](SECURITY.md#before-releasing-on-google-play-console-actions).
 
 ## Firebase Setup
 
@@ -769,7 +829,7 @@ The repository currently contains tests around:
 - The app is implemented as a single Android module.
 - Hilt is used for dependency injection.
 - Firebase App Check debug provider is enabled in debug builds.
-- Release minification is currently disabled.
+- Release builds use R8 (minify + resource shrinking); keep rules are in `app/proguard-rules.pro`.
 
 ## Automatic Firebase deploys
 
