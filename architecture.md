@@ -79,6 +79,7 @@ Screens:
 - `DancingFigure` / `StageBackground` (`core/DancingFigure.kt`): a pose skeleton looping through keyframed poses (smoothstep interpolation, brand-gradient bones with a glow) and a dark background with two drifting brand glows; used by onboarding and sign-in.
 - `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet. `DiscoveryBar` (`dancelibrarylist/DiscoveryBar.kt`) is drawn over the top of the feed: tabs (`feedTab_*` tags), a search field (`searchButton`, `searchField`) and category chips (`categoryChip_all`, `categoryChip_<key>`). The feed shows `DanceLibraryUiState.visibleItems`, and a filter with no matches shows an empty state with `clearFilters` while keeping the bar mounted.
 - `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
+- `DanceStylePicker` (`videouploads/DanceStylePicker.kt`): dance-type dropdown of `STANDARD_DANCE_STYLES` plus "Other…" free text with a "Did you mean …?" suggestion from `closestStandardStyle`; used by the upload Details step and the Edit dialog.
 - `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
 - `AnalyticsDashboardView`: learner and creator analytics. With `showOverview = true` (the profile's Activity and Learners tabs) it renders `AnalyticsOverview` above the list: stat tiles with a sparkline, a draw-in trend chart, an 8-week activity heatmap, and a body diagram. The numbers come from `computeOverviewStats` and the body focus from `bodyFocusFromFeedback` (`analytics/AnalyticsStats.kt`, plain Kotlin, unit tested), which counts corrections per `BodyArea` in each session's stored feedback messages.
 - `LeaderboardScreen`: Global/Friends leaderboard with a top-three `Podium` (medal rings, rising blocks, `podium_rank_N` test tags), ranks 4+ in a list, and the user's "Your position" card pinned at the bottom. Add/remove-friend buttons come from `friendActionFor` for both podium and list.
@@ -93,7 +94,7 @@ Shared components:
 - `ShareBottomSheet` (`core/share/ShareSheet.kt`): share sheet used by the home feed and the liked-videos feed.
 - `VideoVisibilitySelector` (`videouploads/VideoVisibilitySelector.kt`): Public/Private chips used by the upload form and the Edit dialog.
 - `InstructorAvatarOverlay` (`posedetection`): 3D avatar driven by reference landmarks.
-- `VideoThumbnailTile` (`core/VideoThumbnailTile.kt`): 9:16 video thumbnail (the frame at the dance's `coverFrameMs`) with title and an optional badge, used by the liked and uploads grids; shimmers while the frame loads.
+- `VideoThumbnailTile` (`core/VideoThumbnailTile.kt`): 9:16 video thumbnail — the uploaded `thumbnailUrl` JPEG via Coil when present, otherwise the frame at the dance's `coverFrameMs` with title and an optional badge, used by the liked and uploads grids; shimmers while the frame loads.
 - `Shimmer.kt` (`core`): `Modifier.shimmer()` plus `ShimmerBlock`, `ShimmerList` and `ShimmerGrid` loading placeholders (used by the feed skeleton, profile/uploads grids, leaderboard, weekly challenges and analytics detail).
 - `AnimatedEmptyState` (`core/EmptyState.kt`): floating icon in a pulsing halo, title and hint, faded in on first show; used for empty feed, uploads, liked, leaderboard and challenges.
 - `Haptics` / `rememberHaptics()` (`core/Haptics.kt`): `tick()` (likes) and `success()` (combo milestones, results grade, finished publish) via the view's haptic feedback.
@@ -194,6 +195,7 @@ Main collections:
 Important query patterns:
 
 - Feed pages (`DanceLibraryRepository.loadFeedPage`, 12 per page): `danceLibrary where visibility == "public" and feedReady == true`, plus `danceTypeKey == key` for a chip and `searchTokens array-contains <first search word>` for a search, ordered by `shuffleKey` (For You), `createdAt desc` (New) or `trendingScore desc` (Trending), continued with `startAfter`. For You starts at a random seed (`shuffleKey >= seed`), then wraps once (`shuffleKey < seed`). Further search words are matched on the device (`matchesSearch`). All 12 combinations have composite indexes in `firestore.indexes.json`. `DanceLibraryListViewModel` appends pages (`loadMore`, triggered three videos from the end), keeps fetching while pages come back empty after search filtering (up to 5), and debounces search by 300 ms.
+- Search (`DanceLibraryRepository.searchFeed`, used when the search box has text): two queries run in parallel — `searchTokens array-contains <first word>` in tab order (limit 40) and `searchTrigrams array-contains-any <first word's 3-letter pieces>` (limit 60, best effort) — then every candidate is scored with `searchScore` (each query word must prefix, sit inside, or be within `allowedTypos` edits of a word in the title, type, creator, description or style key) and sorted by score. One page, no paging. The trigram queries have their own composite indexes.
 - Category chips: `meta/danceCategories` (`counts` and `labels` per `danceTypeKey`), maintained by Cloud Functions.
 - Likes: the like count is the dance's `likeCount` (falling back to a `count()` query before the function has set it) and "liked" is one read of `likes/{uid}`. Like documents store `{liked, uid, createdAt}`.
 - Liked dances: `collectionGroup("likes") where uid == me`, newest first, then one read per dance (private or deleted dances are skipped).
@@ -494,7 +496,7 @@ Firestore rules (`firestore.rules`, matching the deployed ruleset) enforce:
 - `users/{uid}`: readable by any signed-in user (including email); written only by the owner; not deletable,
 - owner-only reads and writes for `points`, `achievements`, `streaks` (and the legacy `streak`), `weeklyChallenges`, and `friends` under `users/{uid}`,
 - `danceLearningSessions`: owner writes; reads by the owner or by the educator named in `analysis.educatorUid` (including a collection-group rule); create/update require `analysis.danceId` to reference an existing dance whose `educatorUid` equals `analysis.educatorUid`; `analysis.danceId` and `analysis.educatorUid` cannot change on update; no deletes,
-- `danceLibrary/{danceId}`: readable by signed-in users when `visibility == "public"`, otherwise only by the uploader (the rule reads the field directly, because a `get('visibility', 'public')` default lets list queries through unchecked; every dance has the field). List queries must filter on `visibility == "public"` or `educatorUid == auth.uid`. Create requires `educatorUid == auth.uid` and `danceId == docId`; update and delete only by the creator, with `educatorUid` and `danceId` unchanged. Clients may not set or change the server-managed fields (`likeCount`, `trendingScore`, `feedReady`, `danceTypeKey`, `searchTokens`, `shuffleKey`),
+- `danceLibrary/{danceId}`: readable by signed-in users when `visibility == "public"`, otherwise only by the uploader (the rule reads the field directly, because a `get('visibility', 'public')` default lets list queries through unchecked; every dance has the field). List queries must filter on `visibility == "public"` or `educatorUid == auth.uid`. Create requires `educatorUid == auth.uid` and `danceId == docId`; update and delete only by the creator, with `educatorUid` and `danceId` unchanged. Clients may not set or change the server-managed fields (`likeCount`, `trendingScore`, `feedReady`, `danceTypeKey`, `searchTokens`, `searchTrigrams`, `shuffleKey`),
 - `meta/{docId}`: readable by signed-in users, written only by Cloud Functions,
 - `leaderboardStats/{uid}`: readable by any signed-in user, written only by the owner, no deletes,
 - `communityPosts/{postId}` and `replies/{replyId}`: readable by signed-in users; create validated (allowed fields only, author is the caller, title ≤ 120, body ≤ 1,500, reply ≤ 500, replies only on existing posts); no updates; delete only by the author.
@@ -518,6 +520,8 @@ Video privacy:
 
 ## 9. Testing and CI
 
+GitHub Actions has two workflows. `android.yml` runs JVM unit tests, emulator tests and the APK build. `firebase.yml` runs the Cloud Function tests (`functions/`) and the Firestore rules tests (`rules-tests/`, Firestore emulator) on every push, and on pushes to `main` deploys indexes, Storage rules, functions and Hosting, runs `functions/scripts/backfill.js`, then deploys the Firestore rules — using the `FIREBASE_SERVICE_ACCOUNT` secret (skipped when it is not set; setup in the README).
+
 Test locations:
 
 - Unit tests: `app/src/test`
@@ -537,7 +541,7 @@ Unit tests (`app/src/test`):
 
 Instrumented tests (`app/src/androidTest`): `AnalyticsDashboardViewTest`, `DanceARPracticeScreenTest`, `DanceSessionDaoTest` (Room DAO), `DanceLibraryListViewTest`, `AuthScreenTest`, `OnboardingScreenTest`, `LeaderboardScreenTest`, `VideoUploadActivityScreenTest`.
 
-Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances) and `functions/test/discovery.test.js` (search tokens, feedReady, trending score, derived-field updates without loops, category counts), run with `npm test` in `functions/`. They are not part of GitHub Actions.
+Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances) and `functions/test/discovery.test.js` (search tokens, feedReady, trending score, derived-field updates without loops, category counts) and preview images, run with `npm test` in `functions/` and by the `firebase.yml` workflow.
 
 GitHub Actions (`.github/workflows/android.yml`) runs on push and pull request to all branches, cancelling in-progress runs for the same ref, with JDK 17 (Temurin). Jobs run in order:
 
@@ -567,11 +571,11 @@ Deployment:
 - Leaderboard values are client-written; high-trust ranking would need server-side verification.
 - Template generation is compute-heavy and runs off the main thread (`Dispatchers.Default` or WorkManager).
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
-- Search is word-prefix search on stored tokens, not full-text search: the first word must start a word in the title, dance type or creator name. Typo tolerance or relevance ranking would need a search service.
+- Search is built on Firestore: candidates come from word-prefix tokens and trigrams, and are scored on the device, so it handles prefixes and small typos but not synonyms, stemming or relevance learned from usage. Results are capped (40 exact + 60 typo candidates per search). A hosted search service (Algolia, Typesense) would be the next step for a much larger library.
+- Older uploads have no `thumbnailUrl` (nothing generates thumbnails for existing videos); their grids decode a video frame and their link previews use the default image.
 - Like counts and trending scores are written by Cloud Functions, so they lag a like by a second or two, and trending ages every 6 hours.
 - Older app builds query the feed with `enabled == true` only; once the privacy rules are deployed that query is denied, so those builds show an empty feed until updated.
 - App Links: `public/.well-known/assetlinks.json` is UTF-8 and deployed with Hosting (the old `**/.*` ignore rule that skipped it is gone). Verification only succeeds for builds signed by a certificate whose SHA-256 fingerprint is listed there; CI builds are signed with a throwaway debug key per run, so links from CI APKs open the chooser or browser.
-- The share function and Hosting are not deployed by CI, so web changes must be deployed manually after merging.
 - `PoseEstimator`/`NoOpPoseEstimator` and `PoseTemplateRepository` in `posedetection` are unused scaffolding.
 
 ## 11. Multi-Dancer AI Architecture

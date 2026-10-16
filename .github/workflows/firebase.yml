@@ -1,0 +1,132 @@
+name: Firebase
+
+# Tests Cloud Functions and Firestore rules on every push and pull request.
+# On pushes to main it also deploys Firestore rules/indexes, Storage rules,
+# Cloud Functions and Hosting, then runs the idempotent data backfill.
+# Deploying needs the FIREBASE_SERVICE_ACCOUNT secret (see README,
+# "Automatic Firebase deploys"); without it the deploy job is skipped.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FIREBASE_PROJECT: chorevo-dea05
+  NODE_VERSION: "22"
+
+jobs:
+  test:
+    name: Functions and rules tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            rules-tests/package-lock.json
+
+      # The Firestore emulator used by the rules tests runs on Java.
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Cloud Functions tests
+        working-directory: functions
+        run: |
+          npm ci
+          npm test
+
+      - name: Firestore rules tests (emulator)
+        working-directory: rules-tests
+        run: |
+          npm ci
+          npm test
+
+  deploy:
+    name: Deploy to Firebase
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check for deploy credentials
+        id: creds
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$SA" ]; then
+            echo "::notice::FIREBASE_SERVICE_ACCOUNT secret is not set; skipping the Firebase deploy."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.creds.outputs.present == 'true'
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        if: steps.creds.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            functions/package-lock.json
+            rules-tests/package-lock.json
+
+      - name: Authenticate to Google Cloud
+        if: steps.creds.outputs.present == 'true'
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Install dependencies
+        if: steps.creds.outputs.present == 'true'
+        run: |
+          npm ci --prefix functions
+          npm ci --prefix rules-tests
+
+      # Order matters: indexes and functions first, data backfill next, rules
+      # last, so the rules never see documents without the fields they need.
+      - name: Deploy indexes, Storage rules, functions and Hosting
+        if: steps.creds.outputs.present == 'true'
+        run: >
+          rules-tests/node_modules/.bin/firebase deploy
+          --project "$FIREBASE_PROJECT"
+          --only firestore:indexes,storage,functions,hosting
+          --non-interactive --force
+
+      - name: Backfill feed fields (idempotent)
+        if: steps.creds.outputs.present == 'true'
+        working-directory: functions
+        env:
+          GCLOUD_PROJECT: ${{ env.FIREBASE_PROJECT }}
+        run: node scripts/backfill.js
+
+      - name: Deploy Firestore rules
+        if: steps.creds.outputs.present == 'true'
+        run: >
+          rules-tests/node_modules/.bin/firebase deploy
+          --project "$FIREBASE_PROJECT"
+          --only firestore:rules
+          --non-interactive

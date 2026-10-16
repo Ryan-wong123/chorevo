@@ -215,6 +215,7 @@ class DanceLibraryRepositoryTest {
         every { feedCol.whereEqualTo(any<String>(), any()) } returns feedQuery
         every { feedQuery.whereEqualTo(any<String>(), any()) } returns feedQuery
         every { feedQuery.whereArrayContains(any<String>(), any()) } returns feedQuery
+        every { feedQuery.whereArrayContainsAny(any<String>(), any()) } returns feedQuery
         every { feedQuery.whereGreaterThanOrEqualTo(any<String>(), any()) } returns feedQuery
         every { feedQuery.whereLessThan(any<String>(), any()) } returns feedQuery
         every { feedQuery.orderBy(any<String>()) } returns feedQuery
@@ -300,5 +301,23 @@ class DanceLibraryRepositoryTest {
         every { feedQuery.get() } returns Tasks.forException(RuntimeException("boom"))
 
         assertTrue(repo.loadFeedPage(DiscoveryFilter(), seed = 0.5, cursor = null).isFailure)
+    }
+
+    @Test
+    fun search_typoTolerant_findsMisspelledWords_andRanksExactMatchesFirst() = runTest {
+        mockFeedQuery(
+            listOf(
+                docFor(DanceLibraryModel(danceId = "exact", title = "Hip Hop Grove", danceType = "Hip Hop", educatorUid = "u")),
+                docFor(DanceLibraryModel(danceId = "typo", title = "Hip Hop Groove", danceType = "Hip Hop", educatorUid = "u")),
+                docFor(DanceLibraryModel(danceId = "other", title = "Swan Lake", danceType = "Ballet", educatorUid = "u"))
+            )
+        )
+
+        val page = repo.loadFeedPage(DiscoveryFilter(query = "hiphp grove"), seed = 0.5, cursor = null).getOrThrow()
+
+        assertEquals(listOf("exact", "typo"), page.items.map { it.danceId })
+        assertNull(page.next)
+        verify { feedQuery.whereArrayContains("searchTokens", "hiphp") }
+        verify { feedQuery.whereArrayContainsAny("searchTrigrams", listOf("hip", "iph", "php")) }
     }
 }

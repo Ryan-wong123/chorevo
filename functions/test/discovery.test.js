@@ -74,3 +74,10 @@ test("buildCategories counts feed dances and picks the most common spelling", ()
   assert.deepStrictEqual(cats.counts, { hiphop: 3 });
   assert.strictEqual(cats.labels.hiphop, "hip hop");
 });
+
+test("searchTrigrams breaks words into 3-letter pieces for typo matching", () => {
+  const grams = d.searchTrigrams({ title: "Salsa Go", danceType: "Hip Hop" });
+  for (const g of ["sal", "als", "lsa", "go", "hip", "hop", "iph", "pho"]) assert.ok(grams.includes(g), g);
+  // A misspelling shares pieces with the real word.
+  assert.ok(["hip", "iph"].some((g) => grams.includes(g)));
+});

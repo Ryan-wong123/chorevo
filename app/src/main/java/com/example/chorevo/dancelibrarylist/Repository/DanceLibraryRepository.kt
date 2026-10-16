@@ -12,6 +12,10 @@ import com.example.chorevo.dancelibrarylist.FeedTab
 import com.example.chorevo.dancelibrarylist.categoriesFromCounts
 import com.example.chorevo.dancelibrarylist.matchesSearch
 import com.example.chorevo.dancelibrarylist.searchToken
+import com.example.chorevo.dancelibrarylist.MAX_SEARCH_TOKEN_LENGTH
+import com.example.chorevo.dancelibrarylist.searchScore
+import com.example.chorevo.dancelibrarylist.searchTrigramsOf
+import com.example.chorevo.dancelibrarylist.searchWords
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
 import com.google.firebase.firestore.AggregateSource
@@ -43,6 +47,10 @@ class DanceLibraryRepository @Inject constructor(
         const val COMMENTS_PAGE_SIZE = 20L
         /** Dances fetched per feed page. */
         const val FEED_PAGE_SIZE = 12L
+        /** Exact (prefix) search results fetched per search. */
+        const val SEARCH_EXACT_LIMIT = 40L
+        /** Typo-tolerant search candidates fetched per search. */
+        const val SEARCH_FUZZY_LIMIT = 60L
         /** Matches the Firestore rule limit for comment text. */
         const val MAX_COMMENT_LENGTH = 1000
     }
@@ -65,6 +73,7 @@ class DanceLibraryRepository @Inject constructor(
         cursor: FeedCursor?,
         pageSize: Long = FEED_PAGE_SIZE
     ): Result<FeedPage> {
+        if (searchToken(filter.query) != null) return searchFeed(filter)
         return try {
             var position = cursor ?: FeedCursor()
             val collected = mutableListOf<DanceLibraryModel>()
@@ -106,6 +115,55 @@ class DanceLibraryRepository @Inject constructor(
             }
             @Suppress("UNREACHABLE_CODE")
             Result.success(FeedPage(collected, next = null))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Search results (one page, best matches first). Two queries run together:
+     * - exact: searchTokens array-contains the first word (word prefixes), in tab order;
+     * - typo-tolerant: searchTrigrams array-contains-any the first word's
+     *   3-letter pieces, so "hiphp" or "slasa" still find candidates.
+     * Every candidate is then scored on the device with [searchScore] (all
+     * words must match, allowing a typo or two) and sorted by score.
+     */
+    private suspend fun searchFeed(filter: DiscoveryFilter): Result<FeedPage> {
+        return try {
+            val firstWord = searchWords(filter.query).first().take(MAX_SEARCH_TOKEN_LENGTH)
+            fun base(): Query {
+                var q: Query = firestore.collection("danceLibrary")
+                    .whereEqualTo("visibility", DanceLibraryModel.VISIBILITY_PUBLIC)
+                    .whereEqualTo("feedReady", true)
+                filter.categoryKey?.let { q = q.whereEqualTo("danceTypeKey", it) }
+                return q
+            }
+            val (exact, fuzzy) = coroutineScope {
+                val exactDocs = async {
+                    val q = base().whereArrayContains("searchTokens", firstWord)
+                    when (filter.tab) {
+                        FeedTab.FOR_YOU -> q.orderBy("shuffleKey")
+                        FeedTab.NEW -> q.orderBy("createdAt", Query.Direction.DESCENDING)
+                        FeedTab.TRENDING -> q.orderBy("trendingScore", Query.Direction.DESCENDING)
+                    }.limit(SEARCH_EXACT_LIMIT).get().await().documents
+                }
+                val fuzzyDocs = async {
+                    // Best effort: a missing index or other failure just means no typo matches.
+                    runCatching {
+                        base().whereArrayContainsAny("searchTrigrams", searchTrigramsOf(firstWord))
+                            .limit(SEARCH_FUZZY_LIMIT).get().await().documents
+                    }.getOrDefault(emptyList())
+                }
+                exactDocs.await() to fuzzyDocs.await()
+            }
+            val ranked = (exact + fuzzy)
+                .mapNotNull { it.toObject(DanceLibraryModel::class.java) }
+                .distinctBy { it.danceId }
+                .filter { it.isTemplateReady && !it.isPrivate }
+                .mapNotNull { dance -> searchScore(dance, filter.query)?.let { dance to it } }
+                .sortedBy { it.second } // stable: ties keep the exact query's tab order first
+                .map { it.first }
+            Result.success(FeedPage(ranked, next = null))
         } catch (e: Exception) {
             Result.failure(e)
         }

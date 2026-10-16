@@ -770,3 +770,16 @@ The repository currently contains tests around:
 - Hilt is used for dependency injection.
 - Firebase App Check debug provider is enabled in debug builds.
 - Release minification is currently disabled.
+
+## Automatic Firebase deploys
+
+`.github/workflows/firebase.yml` runs the Cloud Function tests and the Firestore rules tests on every push and pull request. On pushes to `main` it then deploys Firestore indexes, Storage rules, Cloud Functions and Hosting, runs the data backfill (`functions/scripts/backfill.js`, safe to repeat), and deploys the Firestore rules last.
+
+The deploy needs a service account key stored as a GitHub secret. Without it the deploy job is skipped with a notice.
+
+1. Google Cloud Console → IAM & Admin → Service Accounts (project `chorevo-dea05`) → Create service account, e.g. `github-deploy`.
+2. Grant it these roles: Firebase Admin, Cloud Functions Admin, Service Account User, Cloud Scheduler Admin, Artifact Registry Administrator, and Cloud Datastore User (for the backfill).
+3. Open the account → Keys → Add key → JSON. A file downloads.
+4. GitHub → repository Settings → Secrets and variables → Actions → New repository secret: name `FIREBASE_SERVICE_ACCOUNT`, value = the whole JSON file.
+5. Delete the downloaded key file. Merging to `main` now deploys.
+
