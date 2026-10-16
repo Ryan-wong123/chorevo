@@ -160,8 +160,16 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Posts show newest first (up to 100). Members reply to posts (up to 500 characters) in a bottom sheet; non-members of a public group can read replies but not write.
 - Posts and replies cannot be edited. Authors can delete their own posts; the owner can delete any post.
 - Members can leave a group. The owner can see the member list, remove members and delete the group; deleting removes its posts, replies, invite and group videos. The owner cannot leave without deleting.
+- Invite by username: any member can open "Invite by username" from the group menu, type the start of a username, and tap Invite next to a person (people already in the group show "Member"). The invited user sees the invitation at the top of "My groups" ("Ana invited you", Join / Decline), with a count badge on the Groups tab and the "My groups" tab. Joining adds them to the group (private groups too) and removes the invitation; declining removes it. Deleting the group removes its pending invitations. There is no push notification for invitations yet.
 - The member count is kept by a Cloud Function, so it can lag a join by a second or two.
 - The old forum (`communityPosts`) is no longer shown; its data is kept.
+
+### Usernames
+
+- Every user has a unique username (3–20 characters: a–z, 0–9 and `_`), shown as `@username`.
+- Users without one (all accounts from before usernames) are asked to choose one after signing in. A free suggestion based on their display name is filled in, and availability is checked as they type. "Later" puts it off until the next launch.
+- Users can change their username from Settings (tap `@username · Change` under the email). The old name becomes free for others.
+- Usernames are used to invite people to groups.
 
 ### Leaderboard
 
@@ -255,7 +263,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - A successful session sync must update streak and leaderboard stats.
 - Users must be able to view leaderboard rankings by metric.
 - The Friends leaderboard must include the current user plus saved friend IDs.
-- Users must be able to create, discover and join groups (public, or private by invite code), and post text, their dances or group-only videos and replies inside them.
+- Users must be able to choose a unique username and change it later.
+- Users must be able to create, discover and join groups (public, or private by invite code, QR code or an invitation by username), and post text, their dances or group-only videos and replies inside them.
 - Users must be able to enable/disable reminders and set the reminder time.
 
 ## 7. Non-Functional Requirements
@@ -304,7 +313,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 ### Firestore Collections
 
-- `users/{uid}`: uid, email, role (`USER`), displayName, photoUrl, lastSeen.
+- `users/{uid}`: uid, email, role (`USER`), displayName, photoUrl, lastSeen, username.
+- `usernames/{username}`: uid, createdAt (one document per claimed username, so each can belong to only one user).
 - `users/{uid}/danceLearningSessions/{sessionId}`: practice session summary (sessionId, timestamps, activity name/type, duration, alignment/balance/timing/smoothness scores, qualityFlag) and a nested `analysis` map (danceId, educatorUid, scores, average pose error, video URL and position, reference track, feedback messages, timeline points, performance segments).
 - `users/{uid}/friends/{friendUid}`: uid, displayName, photoUrl, addedAt.
 - `users/{uid}/points/current`: totalPoints, lastSessionPoints, lastUpdated.
@@ -319,6 +329,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - `groups/{groupId}/posts/{postId}`: id, uid, displayName, photoUrl, body, kind (`text`, `dance` or `video`), danceId, danceTitle, videoUrl, thumbnailUrl, storagePath, thumbnailPath, createdAt.
 - `groups/{groupId}/posts/{postId}/replies/{replyId}`: id, postId, uid, displayName, photoUrl, body, createdAt.
 - `groupInvites/{code}`: groupId, createdAt (looks up a private group by its invite code).
+- `groupInvitations/{groupId}_{inviteeUid}`: groupId, groupName, inviteeUid, inviteeUsername, inviterUid, inviterName, createdAt (an invitation by username).
 - `communityPosts/{postId}` and its `replies`: the old forum; kept but no longer shown.
 - `leaderboardStats/{uid}`: uid, displayName, photoUrl, totalPracticeSessions, avgSimilarityScore, totalActiveDays, streakDays (legacy), updatedAt.
 

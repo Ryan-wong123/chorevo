@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -49,6 +50,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -86,6 +88,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -99,6 +102,7 @@ import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.core.createCachedFeedExoPlayer
 import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.firebase.Repository.UserSearchResult
 import com.example.chorevo.ui.theme.ChorevoTheme
 import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.videouploads.VideoCaptureFileProvider
@@ -125,6 +129,7 @@ fun GroupDetailScreen(
     var showDancePicker by rememberSaveable { mutableStateOf(false) }
     var playingUrl by rememberSaveable { mutableStateOf<String?>(null) }
     var showQr by rememberSaveable { mutableStateOf(false) }
+    var showInvite by rememberSaveable { mutableStateOf(false) }
 
     BackHandler {
         if (state.openPostId != null) vm.closePost() else vm.closeGroup()
@@ -159,6 +164,13 @@ fun GroupDetailScreen(
                                     text = { Text("Members") },
                                     onClick = { menuOpen = false; showMembers = true }
                                 )
+                                if (state.isMember) {
+                                    DropdownMenuItem(
+                                        text = { Text("Invite by username") },
+                                        onClick = { menuOpen = false; vm.resetInviteSearch(); showInvite = true },
+                                        modifier = Modifier.testTag("inviteByUsernameItem")
+                                    )
+                                }
                                 if (group.isPrivate && state.isMember && group.inviteCode != null) {
                                     DropdownMenuItem(
                                         text = { Text("Show invite QR code") },
@@ -298,6 +310,15 @@ fun GroupDetailScreen(
         )
     }
     playingUrl?.let { url -> VideoDialog(url = url, onDismiss = { playingUrl = null }) }
+    if (showInvite && group != null && state.isMember) {
+        InviteByUsernameDialog(
+            search = state.inviteSearch,
+            memberUids = state.members.map { it.uid }.toSet(),
+            onQueryChange = vm::setInviteQuery,
+            onInvite = vm::sendInvitation,
+            onDismiss = { showInvite = false; vm.resetInviteSearch() }
+        )
+    }
     if (showQr && group != null && group.inviteCode != null && state.isMember) {
         InviteQrDialog(group = group, onShare = { shareInvite(context, group) }, onDismiss = { showQr = false })
     }
@@ -838,6 +859,80 @@ private fun ConfirmDialog(
             }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+/** Find people by username and send them an invitation to this group. */
+@Composable
+private fun InviteByUsernameDialog(
+    search: InviteSearch,
+    memberUids: Set<String>,
+    onQueryChange: (String) -> Unit,
+    onInvite: (UserSearchResult) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Invite by username") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = search.query,
+                    onValueChange = onQueryChange,
+                    prefix = { Text("@") },
+                    placeholder = { Text("username") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
+                    trailingIcon = {
+                        if (search.isSearching) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("inviteUsernameField")
+                )
+                LazyColumn(Modifier.heightIn(max = 320.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (search.query.isNotBlank() && !search.isSearching && search.results.isEmpty()) {
+                        item {
+                            Text(
+                                "No one with that username.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    items(search.results, key = { it.uid }) { user ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("inviteResult_${user.username}")
+                        ) {
+                            Box(Modifier.weight(1f)) { AuthorRow(user.displayName, user.photoUrl, 0L) }
+                            Text(
+                                "@${user.username}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                            when {
+                                user.uid in memberUids -> Text("Member", style = MaterialTheme.typography.labelMedium)
+                                user.uid in search.invitedUids -> Text(
+                                    "Invited",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = ChorevoTheme.colors.accent
+                                )
+                                else -> TextButton(
+                                    onClick = { onInvite(user) },
+                                    enabled = search.sendingUid == null,
+                                    modifier = Modifier.testTag("sendInvite_${user.username}")
+                                ) { Text(if (search.sendingUid == user.uid) "…" else "Invite") }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } }
     )
 }
 

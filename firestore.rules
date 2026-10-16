@@ -101,9 +101,17 @@ service cloud.firestore {
       return ['likeCount', 'trendingScore', 'feedReady', 'danceTypeKey', 'searchTokens', 'searchTrigrams', 'shuffleKey'];
     }
 
+    // A username on a profile must be claimed by that user in /usernames.
+    function usernameClaimOk(uid) {
+      return !('username' in request.resource.data)
+        || (resource != null && resource.data.get('username', null) == request.resource.data.username)
+        || (request.resource.data.username is string
+          && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid);
+    }
+
     match /users/{uid} {
       allow read: if isOwner(uid) || (signedIn() && request.auth.uid != uid);
-      allow create, update: if isOwner(uid);
+      allow create, update: if isOwner(uid) && usernameClaimOk(uid);
       allow delete: if false;
 
       match /points/{docId} {
@@ -301,12 +309,14 @@ service cloud.firestore {
               && !exists(groupPath(groupId))
               && getAfter(groupPath(groupId)).data.ownerUid == request.auth.uid)
             ||
-            // Anyone joining a public group, or a private one with its code.
+            // Anyone joining a public group, or a private one with its code
+            // or an invitation sent to them.
             (request.resource.data.role == 'member'
               && exists(groupPath(groupId))
               && (get(groupPath(groupId)).data.visibility == 'public'
                 || (request.resource.data.inviteCode is string
-                  && request.resource.data.inviteCode == get(groupPath(groupId)).data.inviteCode)))
+                  && request.resource.data.inviteCode == get(groupPath(groupId)).data.inviteCode)
+                || exists(/databases/$(database)/documents/groupInvitations/$(groupId + '_' + memberUid))))
           );
 
         allow update: if false;
@@ -359,6 +369,50 @@ service cloud.firestore {
             && (resource.data.uid == request.auth.uid || isGroupOwner(groupId));
         }
       }
+    }
+
+    // Unique usernames: the document ID is the handle. Claimed in the same
+    // batch that sets users/{uid}.username; the old handle is released in the
+    // batch that changes it. A create on a taken handle is an update, so it fails.
+    match /usernames/{handle} {
+      allow get: if signedIn();
+      allow list: if signedIn() && request.query.limit <= 20;
+      allow create: if signedIn()
+        && handle.matches('^[a-z0-9_]{3,20}$')
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt is int
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('username', null) == handle;
+      allow update: if false;
+      allow delete: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('username', null) != handle;
+    }
+
+    // Invitations to a group for one user, sent by a member. The ID is
+    // <groupId>_<inviteeUid>. The invitee accepts by joining (see members) and
+    // deleting it, or declines by deleting it.
+    match /groupInvitations/{invitationId} {
+      allow read: if signedIn()
+        && (resource.data.inviteeUid == request.auth.uid || resource.data.inviterUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['groupId', 'groupName', 'inviteeUid', 'inviteeUsername', 'inviterUid', 'inviterName', 'createdAt'])
+        && request.resource.data.groupId is string
+        && request.resource.data.inviteeUid is string
+        && invitationId == request.resource.data.groupId + '_' + request.resource.data.inviteeUid
+        && request.resource.data.inviterUid == request.auth.uid
+        && request.resource.data.inviteeUid != request.auth.uid
+        && request.resource.data.inviterName is string
+        && request.resource.data.createdAt is int
+        && isGroupMember(request.resource.data.groupId)
+        && request.resource.data.groupName == get(groupPath(request.resource.data.groupId)).data.name
+        && !exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId)/members/$(request.resource.data.inviteeUid))
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.inviteeUid));
+      allow update: if false;
+      allow delete: if signedIn()
+        && (resource.data.inviteeUid == request.auth.uid
+          || resource.data.inviterUid == request.auth.uid
+          || isGroupOwner(resource.data.groupId));
     }
 
     // Invite code -> group, so a code can open a private group the user can't

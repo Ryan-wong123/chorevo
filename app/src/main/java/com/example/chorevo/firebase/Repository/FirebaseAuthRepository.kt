@@ -101,7 +101,8 @@ class FirebaseAuthRepository @Inject constructor(
             email = user.email,
             displayName = snap.getString("displayName")?.trim(),
             role = UserRole.USER,
-            photoUrl = snap.getString("photoUrl")
+            photoUrl = snap.getString("photoUrl"),
+            username = snap.getString("username")?.takeUnless { it.isBlank() }
         )
     }
 
@@ -149,6 +150,7 @@ class FirebaseAuthRepository @Inject constructor(
         val existing = userRef.get().await()
         val storedDisplayName = existing.getString("displayName")?.trim().takeUnless { it.isNullOrBlank() }
         val storedPhotoUrl = existing.getString("photoUrl")?.takeUnless { it.isBlank() }
+        val username = existing.getString("username")?.takeUnless { it.isBlank() }
 
         val displayName = explicitDisplayName?.trim().takeUnless { it.isNullOrBlank() }
             ?: storedDisplayName
@@ -178,7 +180,8 @@ class FirebaseAuthRepository @Inject constructor(
             email = user.email ?: fallbackEmail,
             displayName = displayName,
             role = UserRole.USER,
-            photoUrl = photoUrl
+            photoUrl = photoUrl,
+            username = username
         )
     }
 }

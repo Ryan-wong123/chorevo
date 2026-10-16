@@ -3,6 +3,8 @@ package com.example.chorevo.community
 import com.example.chorevo.community.Repository.GroupsRepository
 import com.example.chorevo.community.ViewModel.GroupsViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.firebase.Repository.UserSearchResult
+import com.example.chorevo.firebase.Repository.UsernameRepository
 import com.example.chorevo.testing.MainDispatcherRule
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import io.mockk.coEvery
@@ -33,6 +35,8 @@ class GroupsViewModelTest {
 
     private lateinit var repo: GroupsRepository
     private lateinit var uploads: VideoUploadsRepository
+    private lateinit var usernames: UsernameRepository
+    private val invitations = MutableStateFlow<List<GroupInvitation>>(emptyList())
     private lateinit var vm: GroupsViewModel
     private val membership = MutableStateFlow<GroupMember?>(null)
 
@@ -42,6 +46,8 @@ class GroupsViewModelTest {
     fun setUp() {
         repo = mockk(relaxed = true)
         uploads = mockk(relaxed = true)
+        usernames = mockk(relaxed = true)
+        every { repo.observeInvitations("me") } returns invitations
         every { repo.observeMyGroups("me") } returns flowOf(listOf(pub))
         coEvery { repo.loadPublicGroups(any()) } returns Result.success(listOf(pub))
         every { repo.observeGroup("g1") } returns flowOf(pub)
@@ -56,7 +62,7 @@ class GroupsViewModelTest {
                 DanceLibraryModel(danceId = "pending", templateGenerationStatus = "processing")
             )
         )
-        vm = GroupsViewModel(repo, uploads)
+        vm = GroupsViewModel(repo, uploads, usernames)
     }
 
     @Test
@@ -162,6 +168,63 @@ class GroupsViewModelTest {
         advanceUntilIdle()
         coVerify { repo.deleteGroup("g1") }
         assertNull(vm.uiState.value.openGroupId)
+    }
+
+    @Test
+    fun invitations_areObserved_andAcceptingOpensTheGroup() = runTest {
+        val inv = GroupInvitation(id = "g1_me", groupId = "g1", groupName = "Salsa", inviteeUid = "me", inviterName = "Ana")
+        coEvery { repo.acceptInvitation(inv, any()) } returns Result.success("g1")
+        vm.bind("me", "Me", null)
+        invitations.value = listOf(inv)
+        advanceUntilIdle()
+        assertEquals(listOf("g1_me"), vm.uiState.value.invitations.map { it.id })
+
+        vm.acceptInvitation(inv)
+        advanceUntilIdle()
+        coVerify { repo.acceptInvitation(inv, GroupsRepository.Author("me", "Me", null)) }
+        assertEquals("g1", vm.uiState.value.openGroupId)
+        assertNull(vm.uiState.value.answeringInvitationId)
+    }
+
+    @Test
+    fun declineInvitation_deletesIt() = runTest {
+        val inv = GroupInvitation(id = "g1_me", groupId = "g1")
+        coEvery { repo.declineInvitation(inv) } returns Result.success(Unit)
+        vm.bind("me", "Me", null)
+        vm.declineInvitation(inv)
+        advanceUntilIdle()
+        coVerify { repo.declineInvitation(inv) }
+    }
+
+    @Test
+    fun inviteSearch_hidesMyself_andSendingMarksInvited() = runTest {
+        val ana = UserSearchResult("ana", "ana_d", "Ana", null)
+        val me = UserSearchResult("me", "me_me", "Me", null)
+        coEvery { usernames.search("an") } returns Result.success(listOf(ana, me))
+        coEvery { repo.sendInvitation(any(), any(), ana) } returns Result.success(Unit)
+        vm.bind("me", "Me", null)
+        vm.openGroup("g1")
+        membership.value = GroupMember(uid = "me")
+        advanceUntilIdle()
+
+        vm.setInviteQuery("@An")
+        advanceUntilIdle()
+        assertEquals(listOf("ana"), vm.uiState.value.inviteSearch.results.map { it.uid })
+
+        vm.sendInvitation(ana)
+        advanceUntilIdle()
+        coVerify { repo.sendInvitation(pub, GroupsRepository.Author("me", "Me", null), ana) }
+        assertTrue("ana" in vm.uiState.value.inviteSearch.invitedUids)
+    }
+
+    @Test
+    fun sendInvitation_needsMembership() = runTest {
+        vm.bind("me", "Me", null)
+        vm.openGroup("g1")
+        advanceUntilIdle()
+        vm.sendInvitation(UserSearchResult("ana", "ana_d", "Ana", null))
+        advanceUntilIdle()
+        coVerify(exactly = 0) { repo.sendInvitation(any(), any(), any()) }
     }
 
     @Test

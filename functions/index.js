@@ -128,6 +128,13 @@ exports.groupCleanup = onDocumentDeleted(
 
     const code = event.data?.get("inviteCode");
     if (code) await db.doc(`groupInvites/${code}`).delete();
+
+    // Pending invitations by username to this group.
+    const invitations = await db.collection("groupInvitations").where("groupId", "==", event.params.groupId).get();
+    const writer = db.bulkWriter();
+    invitations.docs.forEach((d) => writer.delete(d.ref));
+    await writer.close();
+
     await db.recursiveDelete(groupRef);
   }
 );
