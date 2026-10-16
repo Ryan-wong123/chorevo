@@ -108,10 +108,10 @@ kotlin {
 
 dependencies {
     //Hilt
-    implementation("com.google.dagger:hilt-android:2.57.1")
+    implementation(libs.hilt.android)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
-    ksp("com.google.dagger:hilt-android-compiler:2.57.1")
-    implementation("androidx.hilt:hilt-navigation-compose:1.3.0")
+    ksp(libs.hilt.android.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
 
     // --- Core Android / Lifecycle ---
     implementation(libs.androidx.core.ktx)
