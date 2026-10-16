@@ -15,11 +15,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # Hilt 2.59.2+ and AGP 9 need a deliberate Android Gradle Plugin 9 upgrade
+    # Hilt 2.59.1+ and AGP 9 need a deliberate Android Gradle Plugin 9 upgrade
     # (new DSL); don't propose them in the weekly batch.
     ignore:
       - dependency-name: "com.google.dagger*"
-        versions: [">= 2.59.2"]
+        versions: [">= 2.59.1"]
       - dependency-name: "com.android.application"
         update-types: ["version-update:semver-major"]
       - dependency-name: "com.android.tools.build:gradle"
