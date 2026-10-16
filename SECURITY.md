@@ -91,6 +91,39 @@ hours for dances).
   dependencies with `--ignore-scripts` before any credentials reach the
   runner.
 
+## Release signing
+
+Release builds are signed with your **upload key** when it is configured;
+otherwise the release APK is unsigned and can't be installed. The key is never
+committed (`*.jks`, `*.keystore` and `keystore.properties` are gitignored).
+
+1. Create the upload key once and keep it, and its passwords, somewhere safe
+   (a password manager). If you lose it, you have to ask Google to reset the
+   upload key.
+   ```
+   keytool -genkeypair -v -keystore chorevo-upload-key.jks -alias upload \
+     -keyalg RSA -keysize 2048 -validity 10000
+   ```
+2. **Local builds:** copy `keystore.properties.example` to
+   `keystore.properties` and fill it in. `./gradlew assembleRelease` then
+   produces a signed, installable APK, and `./gradlew bundleRelease` produces
+   the App Bundle for Play.
+3. **CI:** add these repository secrets (GitHub → Settings → Secrets and
+   variables → Actions):
+   - `RELEASE_KEYSTORE_BASE64`: the output of `base64 -w0 chorevo-upload-key.jks`
+     (on macOS, `base64 -i chorevo-upload-key.jks`)
+   - `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` (`upload`) and
+     `RELEASE_KEY_PASSWORD`
+
+   With these set, the Android CI build job signs the release APK and also
+   uploads a signed `chorevo-release-aab` for Play. Secrets aren't available
+   to pull requests from forks, so those builds stay unsigned.
+4. In Play Console, turn on **Play App Signing**. Google then re-signs the app
+   for users with the app signing key, and your key stays the upload key. Add
+   the SHA-1/SHA-256 of **both** keys to Firebase and to `assetlinks.json`
+   (step 2 below). Get your upload key's fingerprints with
+   `keytool -list -v -keystore chorevo-upload-key.jks -alias upload`.
+
 ## Before releasing on Google Play (console actions)
 
 1. **Application ID:** `com.example.chorevo` is rejected by Play.

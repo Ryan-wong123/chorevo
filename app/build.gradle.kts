@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -7,6 +9,20 @@ plugins {
     id("com.google.dagger.hilt.android")
 
 }
+
+// Release signing (upload key). Read from keystore.properties in the project
+// root (local builds; gitignored) or from environment variables (CI, filled
+// from GitHub secrets). Without them the release build is left unsigned.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("keystore.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun signingValue(property: String, env: String): String? =
+    keystoreProperties.getProperty(property)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingValue("storeFile", "CHOREVO_KEYSTORE_FILE")
 
 android {
     namespace = "com.example.chorevo"
@@ -24,8 +40,20 @@ android {
         }
     }
 
+    signingConfigs {
+        releaseStoreFile?.let { path ->
+            create("release") {
+                storeFile = rootProject.file(path)
+                storePassword = signingValue("storePassword", "CHOREVO_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "CHOREVO_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "CHOREVO_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.findByName("release")
             // R8: shrinks and obfuscates the release build (keep rules in proguard-rules.pro).
             isMinifyEnabled = true
             isShrinkResources = true
