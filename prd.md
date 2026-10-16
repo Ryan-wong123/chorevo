@@ -39,6 +39,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Settings and Weekly Challenges are sub-screens of Profile.
 - System back (button or gesture) goes to the parent screen: Practice, Upload, Forum, Score and Profile go back to Home; Settings and Weekly Challenges go back to Profile; on Home or sign-in it leaves the app. Back also closes an open forum post or the new-post editor, the liked-videos player, and steps back through the upload steps. The predictive back gesture is supported (Android 13+): while dragging, the screen shrinks with rounded corners to preview leaving.
 - Dark mode is the default. Settings has an Appearance choice of Dark, Light, or System (follow the phone); status and navigation bar icons follow the chosen theme.
+- App icon: an adaptive icon with a white dancing pose-skeleton figure on the brand gradient (teal → violet → magenta), with a monochrome layer for themed icons on Android 13+.
 - The Chorevo design system: a fixed brand palette (teal primary, magenta accent) in dark and light variants that follow the system setting (dynamic colour is off), Sora and Plus Jakarta Sans fonts, and rounded shapes.
 - Motion and feedback: screens fade through when switching tabs and practice slides up over the feed; lists and grids show shimmering placeholders while loading instead of "Loading…" text or spinners; empty lists show an animated empty state (floating icon, title, hint); the phone gives a light haptic tick on likes and a stronger confirm on practice combos, the results grade reveal, and a finished publish. Haptics follow the system touch-feedback setting.
 
@@ -61,7 +62,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Full-screen vertical video feed with the next video preloaded.
 - A discovery bar floats over the top of the feed:
   - **Tabs:** For You (a shuffled order that starts at a random point each app session), Trending (ranked by likes with an age decay, (likes + 1) / (age in days + 2)^1.5, so new dances can trend), and New (newest uploads first).
-  - **Search:** the search button swaps the tabs for a search field; the feed reloads 300 ms after typing pauses. The first word must start a word in the title, dance type, or creator name (so "sal" finds "Salsa"); any further words must appear somewhere in the title, dance type, creator, or description (case-insensitive).
+  - **Search:** the search button swaps the tabs for a search field; results load 300 ms after typing pauses, best matches first (up to about 100 candidates, not paged). Each word may start a word ("sal" finds "Salsa"), appear inside one, or be a near miss: one typo for words of 4–6 letters and two for longer words ("slasa", "hiphp grove" still match). Every word must match the title, dance type, creator, or description.
   - **Category chips:** "All" plus one chip per dance type, most common first. Spellings are grouped ("Hip Hop", "hip-hop" and "HIPHOP" are one chip) and labelled with the most common spelling. Tapping the active chip again clears it.
   - Chips and search narrow whichever tab is selected, and changing any of them starts the feed from its first video. If nothing matches, an empty state with "Clear filters" is shown and the bar stays in place.
   - A dance opened from a share link is pinned first only on the unfiltered For You feed.
@@ -87,7 +88,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Uploading is a five-step flow with a segmented step indicator ("Step N of 5") and Back/Next buttons; steps slide in the direction of travel:
   1. **Video**: pick a gallery video or record one with the camera; a large preview of the chosen video is shown.
   2. **Cover**: choose the cover frame with a slider over the video or one of five quick-pick frames; the chosen frame is stored as `coverFrameMs` (default 1 s) and used for the thumbnail in profile and liked grids.
-  3. **Details**: title, dance type, and description (all required to continue).
+  3. **Details**: title, dance type, and description (all required to continue). Dance type is chosen from a list of standard styles (Hip Hop, K-Pop, Ballet, Contemporary, Jazz, Salsa, …) or "Other…" for a custom style; a custom style that is a near miss of a standard one ("Hiphp") offers the standard spelling ("Did you mean Hip Hop?"). The Edit dialog uses the same picker.
   4. **Dancers**: "Analyze Dancers" runs on-device multi-dancer analysis (see section 13) and shows a dancer review panel; the creator selects which dancers to keep and the default dancer, then confirms. Alternatively they tick "Skip review and analyze in the background after upload".
   5. **Publish**: a summary card (cover, title, type, dancers, visibility), the Public/Private choice (default Public), upload progress, and the Publish button. A confirmed review uploads with that template; otherwise the template is generated later with WorkManager.
 - After a successful publish the draft clears and the flow returns to step 1.
@@ -284,7 +285,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Repository and ViewModel logic should be unit tested with MockK, coroutine test utilities, and Turbine where useful.
 - Room DAO behavior and key Compose flows should be covered by instrumentation tests.
 - CI should run JVM unit tests, Android instrumentation tests, and assemble debug/release builds.
-- Cloud Function tests (`npm test` in `functions/`) are run manually; they are not part of CI.
+- Cloud Function tests (`functions/`) and Firestore rules tests (`rules-tests/`) run in CI (`firebase.yml`) on every push; merges to `main` deploy Firebase automatically once the `FIREBASE_SERVICE_ACCOUNT` secret is set.
 
 ## 8. Key Data Objects
 
@@ -322,6 +323,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 ### Web (Firebase Hosting + Cloud Functions)
 
 - `/dance/{danceId}` on `chorevo-dea05.web.app`: rewritten to the `danceShare` Cloud Function (us-central1, Node.js 22), which renders the share landing page.
+- Link previews show an image: the dance's cover-frame thumbnail (`og:image`, large card on X/Twitter, video poster on the page) or, for older uploads without one and for unavailable dances, the branded `og-default.png` (1200×630).
 - `/.well-known/assetlinks.json`: served from `public/` (UTF-8, `application/json`) so Android can verify App Links. It lists the SHA-256 fingerprints of the signing certificates allowed to open links; add one for each key that signs a build people install (each developer's debug key, the release key).
 - `danceDerivedFields` (Firestore trigger on `danceLibrary/{id}`): keeps `feedReady`, `danceTypeKey`, `searchTokens`, `shuffleKey` and default `visibility`/`likeCount`/`trendingScore` in step with the dance, and the category chip counts in `meta/danceCategories`.
 - `danceLikeCount` (trigger on `danceLibrary/{id}/likes/{uid}`): recounts likes and refreshes the trending score.
@@ -367,10 +369,7 @@ These are product targets. They are not instrumented yet: the Firebase Analytics
 - Moderation/reporting workflows for comments and community posts.
 - Richer body-part feedback, finger-specific coaching, and a hand overlay in practice.
 - Better migration strategy for Room schema changes.
-- Upload thumbnail generation and display.
 - More robust offline sync queue visibility in the UI.
-- Thumbnail images in link previews (`og:image`).
-- Automated Firebase deploys from CI.
 - Analytics event instrumentation for the success metrics.
 
 ### Known Issues

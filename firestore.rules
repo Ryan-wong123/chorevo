@@ -98,7 +98,7 @@ service cloud.firestore {
     // Kept up to date by Cloud Functions (functions/discovery.js); clients may
     // not set or change them.
     function serverManagedDanceFields() {
-      return ['likeCount', 'trendingScore', 'feedReady', 'danceTypeKey', 'searchTokens', 'shuffleKey'];
+      return ['likeCount', 'trendingScore', 'feedReady', 'danceTypeKey', 'searchTokens', 'searchTrigrams', 'shuffleKey'];
     }
 
     match /users/{uid} {

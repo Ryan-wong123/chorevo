@@ -1,6 +1,8 @@
 package com.example.chorevo.videouploads.repository
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.work.Constraints
 import androidx.work.Data
@@ -18,8 +20,11 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
 import kotlin.coroutines.resume
@@ -135,6 +140,13 @@ class VideoUploadsRepository @Inject constructor(
             )
             val videoUrl = videoRef.downloadUrl.await().toString()
 
+            // Cover-frame thumbnail for grids and link previews. Best effort:
+            // an upload without one still works (grids fall back to the video).
+            onStageChanged?.invoke("Saving cover image")
+            val thumbnailUrl = runCatching {
+                uploadThumbnail(ctx, videoUri, uid, danceId, coverFrameMs)
+            }.getOrNull().orEmpty()
+
             // 4) Save Firestore doc immediately, then build template in background.
             onStageChanged?.invoke("Saving details")
             onProgress?.invoke(0.98f)
@@ -158,7 +170,8 @@ class VideoUploadsRepository @Inject constructor(
                 templateGenerationStatus = initialStatus,
                 templateReviewStatus = reviewStatus,
                 visibility = visibility,
-                coverFrameMs = coverFrameMs
+                coverFrameMs = coverFrameMs,
+                thumbnailUrl = thumbnailUrl
             )
 
             db.collection("danceLibrary")
@@ -379,7 +392,9 @@ class VideoUploadsRepository @Inject constructor(
 
             val videoRef = storage.reference.child("danceVideos/$uid/$danceId.mp4")
             val templateRef = storage.reference.child(PoseTemplateStorage.jsonPath(uid, danceId))
+            val thumbnailRef = storage.reference.child(thumbnailPath(uid, danceId))
             runCatching { videoRef.delete().await() }
+            runCatching { thumbnailRef.delete().await() }
             runCatching { templateRef.delete().await() }
 
             // Then likes and comments, which Firestore does not delete with the parent.
@@ -395,5 +410,49 @@ class VideoUploadsRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private fun thumbnailPath(uid: String, danceId: String) = "danceThumbnails/$uid/$danceId.jpg"
+
+    /**
+     * Grabs the frame at [coverFrameMs] from the local video, scales it to at
+     * most [THUMBNAIL_MAX_SIDE] px, uploads it as a JPEG and returns its URL.
+     */
+    private suspend fun uploadThumbnail(
+        context: Context,
+        videoUri: Uri,
+        uid: String,
+        danceId: String,
+        coverFrameMs: Long
+    ): String {
+        val jpeg = withContext(Dispatchers.IO) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, videoUri)
+                val frame = retriever.getFrameAtTime(coverFrameMs * 1_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    ?: retriever.getFrameAtTime(0L)
+                    ?: error("No frame at ${coverFrameMs}ms")
+                val scale = THUMBNAIL_MAX_SIDE.toFloat() / maxOf(frame.width, frame.height)
+                val scaled = if (scale < 1f) {
+                    Bitmap.createScaledBitmap(frame, (frame.width * scale).toInt(), (frame.height * scale).toInt(), true)
+                } else {
+                    frame
+                }
+                ByteArrayOutputStream().use { out ->
+                    scaled.compress(Bitmap.CompressFormat.JPEG, THUMBNAIL_JPEG_QUALITY, out)
+                    out.toByteArray()
+                }
+            } finally {
+                retriever.release()
+            }
+        }
+        val ref = storage.reference.child(thumbnailPath(uid, danceId))
+        ref.putBytes(jpeg, StorageMetadata.Builder().setContentType("image/jpeg").build()).await()
+        return ref.downloadUrl.await().toString()
+    }
+
+    private companion object {
+        const val THUMBNAIL_MAX_SIDE = 720
+        const val THUMBNAIL_JPEG_QUALITY = 82
     }
 }

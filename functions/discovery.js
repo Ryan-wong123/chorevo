@@ -9,6 +9,7 @@ const SERVER_FIELDS = [
   "feedReady",
   "danceTypeKey",
   "searchTokens",
+  "searchTrigrams",
   "shuffleKey",
 ];
 
@@ -54,6 +55,27 @@ function searchTokens(dance) {
   return [...tokens].slice(0, MAX_TOKENS);
 }
 
+/**
+ * Three-letter pieces of every word in the title, dance type and creator
+ * name (words shorter than 3 letters are kept whole). The app finds
+ * misspelled searches with array-contains-any on the trigrams of the first
+ * word typed ("hiphp" shares "hip" with "hiphop"), then ranks by edit
+ * distance on the device.
+ */
+function searchTrigrams(dance) {
+  const grams = new Set();
+  for (const word of [
+    ...words(dance.title),
+    ...words(dance.danceType),
+    ...words(dance.educatorName),
+    ...(danceTypeKey(dance.danceType) ? [danceTypeKey(dance.danceType)] : []),
+  ]) {
+    if (word.length < 3) grams.add(word);
+    else for (let i = 0; i + 3 <= word.length; i++) grams.add(word.slice(i, i + 3));
+  }
+  return [...grams].slice(0, MAX_TOKENS);
+}
+
 /** Missing visibility means public (uploads from before privacy existed). */
 function isPublic(dance) {
   return String(dance.visibility || "public").toLowerCase() !== "private";
@@ -92,6 +114,7 @@ function derivedFieldUpdates(dance, nowMs, random = Math.random) {
     feedReady: isFeedReady(dance),
     danceTypeKey: danceTypeKey(dance.danceType),
     searchTokens: searchTokens(dance),
+    searchTrigrams: searchTrigrams(dance),
   };
   for (const [field, value] of Object.entries(want)) {
     if (JSON.stringify(dance[field] ?? null) !== JSON.stringify(value)) updates[field] = value;
@@ -143,6 +166,7 @@ module.exports = {
   MAX_TOKEN_LENGTH,
   danceTypeKey,
   searchTokens,
+  searchTrigrams,
   isPublic,
   isTemplateReady,
   isFeedReady,

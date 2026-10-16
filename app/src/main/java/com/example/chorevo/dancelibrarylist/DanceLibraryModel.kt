@@ -29,7 +29,9 @@ data class DanceLibraryModel(
     /** [VISIBILITY_PUBLIC] or [VISIBILITY_PRIVATE]; older uploads have no value and stay public. */
     val visibility: String = VISIBILITY_PUBLIC,
     /** Position (ms) of the frame used as the video's cover thumbnail. */
-    val coverFrameMs: Long = DEFAULT_COVER_FRAME_MS
+    val coverFrameMs: Long = DEFAULT_COVER_FRAME_MS,
+    /** JPEG of the cover frame (danceThumbnails/{uid}/{danceId}.jpg); blank for older uploads. */
+    val thumbnailUrl: String = ""
 ) {
     /** Private videos are only visible to their uploader. */
     @get:Exclude

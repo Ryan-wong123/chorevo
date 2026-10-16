@@ -365,12 +365,12 @@ fun VideoUploadsTab(
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
-                    OutlinedTextField(
+                    DanceStylePicker(
                         value = draft.danceType,
                         onValueChange = vm::editDanceTypeChanged,
-                        label = { Text("Dance Type") },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        testTag = "editDanceTypeField",
+                        enabled = !state.saving
                     )
                     OutlinedTextField(
                         value = draft.description,
@@ -550,6 +550,7 @@ private fun UploadsThumbnailGrid(
                         title = item.title,
                         onClick = { onTap(item) },
                         frameTimeMs = item.coverFrameMs,
+                        thumbnailUrl = item.thumbnailUrl,
                         modifier = Modifier
                             .weight(1f)
                             .testTag("uploadTile_${item.danceId}"),

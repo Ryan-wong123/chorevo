@@ -54,4 +54,38 @@ class DiscoveryTest {
         assertTrue(DiscoveryFilter(categoryKey = "salsa").isFiltered)
         assertFalse(DiscoveryFilter(tab = FeedTab.NEW).isFiltered)
     }
+
+    @Test
+    fun editDistance_countsEditsAndSwaps() {
+        assertEquals(0, editDistance("salsa", "salsa"))
+        assertEquals(1, editDistance("hiphp", "hiphop"))
+        assertEquals(1, editDistance("slasa", "salsa")) // adjacent swap
+        assertEquals(3, editDistance("", "abc"))
+    }
+
+    @Test
+    fun closestStandardStyle_fixesSpellingAndTypos() {
+        assertEquals("Hip Hop", closestStandardStyle("hip-hop"))
+        assertEquals("Hip Hop", closestStandardStyle("Hiphp"))
+        assertEquals("K-Pop", closestStandardStyle("kpop"))
+        assertEquals("Ballet", closestStandardStyle("balet"))
+        assertNull(closestStandardStyle("Voguing"))
+        assertNull(closestStandardStyle(""))
+    }
+
+    @Test
+    fun searchScore_prefersExact_toleratesTypos_requiresEveryWord() {
+        val d = DanceLibraryModel(danceId = "1", title = "Salsa Basics", danceType = "Latin", educatorName = "Coach Maria")
+        assertEquals(0, searchScore(d, "sal mar"))
+        assertEquals(2, searchScore(d, "slasa"))       // one typo: cost 1 + 1
+        assertNull(searchScore(d, "salsa ballet"))     // "ballet" matches nothing
+        assertNull(searchScore(d, "xyz"))
+        assertEquals(0, searchScore(d, ""))
+    }
+
+    @Test
+    fun searchTrigramsOf_matchesServerPieces() {
+        assertEquals(listOf("hip", "iph", "php"), searchTrigramsOf("hiphp"))
+        assertEquals(listOf("go"), searchTrigramsOf("go"))
+    }
 }
