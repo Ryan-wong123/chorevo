@@ -3,6 +3,7 @@ package com.example.chorevo.firebase.Repository
 import android.net.Uri
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.firebase.UserRole
+import com.example.chorevo.notification.PushTokens
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.FirebaseAuth
@@ -128,6 +129,7 @@ class FirebaseAuthRepository @Inject constructor(
 
     /** Handles sign out. */
     fun signOut() {
+        PushTokens.unregister()
         auth.signOut()
     }
 

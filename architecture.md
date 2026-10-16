@@ -17,6 +17,7 @@ Chorevo is a single-module native Android application:
 - 3D: SceneView for the instructor avatar overlay
 - Web share links: Firebase Hosting (`chorevo-dea05.web.app`) rewriting `/dance/**` to the `danceShare` Cloud Function in `functions/` (Node.js 22, `firebase-functions` v2 HTTPS, Admin SDK)
 - Discovery maintenance: Cloud Functions `danceDerivedFields` (Firestore trigger on `danceLibrary/{id}`), `danceLikeCount` (trigger on `danceLibrary/{id}/likes/{uid}`) and `refreshDiscovery` (scheduled every 6 hours) keep the feed fields, like counts, trending scores and `meta/danceCategories` current. The field logic is in `functions/discovery.js` (pure, tested) and the jobs in `functions/maintenance.js`, shared with the one-off `functions/scripts/backfill.js`.
+- Push notifications: `notifyGroupInvitation` (trigger on creating `groupInvitations/{id}`) sends the invitee an FCM message (`notification` + `data {type: "group_invitation", groupId}`, Android channel `group_invites`) to the tokens in `users/{uid}/fcmTokens` and deletes tokens FCM reports as dead. Message building is in `functions/groups.js` (`invitationMessage`, `deadTokens`, tested).
 - Groups maintenance: `groupMemberCount` (trigger on `groups/{id}/members/{uid}`) keeps `memberCount`, and `groupCleanup` (on group delete) removes the invite code, pending invitations, group files and subcollections.
 
 Navigation Compose and Hilt Navigation Compose are declared as dependencies, but navigation uses a custom `Screen` enum rather than a `NavHost`. The Firebase Analytics SDK is included but logs no events.
@@ -181,6 +182,7 @@ ViewModels receive repositories through constructor injection. `VideoTemplateGen
 Main collections:
 
 - `users/{uid}`: profile records (uid, email, role, displayName, photoUrl, lastSeen, username).
+- `users/{uid}/fcmTokens/{token}`: `{token, platform, updatedAt}` for push notifications, written by `notification/PushTokens` after sign-in and on token refresh (`ChorevoMessagingService.onNewToken`). Sign-out deletes the device token (`FirebaseMessaging.deleteToken`), and the function removes tokens that stop working.
 - `usernames/{handle}`: `{uid, createdAt}`; the document ID is the username, which makes it unique.
 - `users/{uid}/danceLearningSessions/{sessionId}`: learner session results with a nested `analysis` map.
 - `users/{uid}/friends/{friendUid}`: friend references (uid, displayName, photoUrl, addedAt).
@@ -344,7 +346,7 @@ On the web:
 1. `GroupsViewModel.bind` observes the user's memberships (collection group `members`) and loads public groups for Discover.
 2. Creating a group writes, in one batch, `groups/{id}`, the owner's `members/{uid}` (role `owner`) and, for a private group, `groupInvites/{code}` with a random 8-character code. The rules require all of these together.
 3. Invite links `https://chorevo-dea05.web.app/join/<code>` (the QR code's content) are App Links (`/join/` in the manifest filter) and `chorevo://join/<code>`. `MainActivity` passes them through `ShareLinks.parseInviteCode` (`inviteCodeFromText`, which also reads bare codes) to `AppViewModel.openGroupInvite`, which waits for sign-in if needed and opens Groups with the join dialog filled in. Hosting serves `public/join.html` for `/join/**` when the app is missing.
-4. Invitations by username: a member searches `usernames` by document-ID prefix (limit 10, then one profile read each) and writes `groupInvitations/{groupId}_{inviteeUid}`. `GroupsViewModel` is bound in `AppRouter`, so the invitee's invitations (`where inviteeUid == me`) badge the Groups tab anywhere in the app. Accepting writes `members/{uid}` and deletes the invitation in one batch; the members rule accepts a join when that invitation exists. `groupCleanup` deletes a deleted group's invitations.
+4. Invitations by username: a member searches `usernames` by document-ID prefix (limit 10, then one profile read each) and writes `groupInvitations/{groupId}_{inviteeUid}`. `GroupsViewModel` is bound in `AppRouter`, so the invitee's invitations (`where inviteeUid == me`) badge the Groups tab anywhere in the app. Accepting writes `members/{uid}` and deletes the invitation in one batch; the members rule accepts a join when that invitation exists. `groupCleanup` deletes a deleted group's invitations. Creating an invitation also triggers `notifyGroupInvitation`; `ChorevoMessagingService` shows the push when the app is in the foreground (the system shows it otherwise), and tapping it calls `AppViewModel.openGroupInvitations` from `MainActivity` (held until sign-in if needed). `AppRouter` registers the device token and, on Android 13+, asks for `POST_NOTIFICATIONS` once per launch.
 5. Joining a public group writes `members/{uid}`. Joining a private group reads `groupInvites/{code}` (get only; invites cannot be listed), then writes `members/{uid}` carrying the same `inviteCode`, which the rules compare with the group's.
 6. The `groupMemberCount` function recounts members on every join or leave and writes `memberCount`.
 7. Opening a group observes the group, the user's membership, members and posts. A post is text, a shared dance (`danceId`, title, cover and video URL copied from the user's public dance; "Open dance" calls `AppViewModel.openDanceById`), or a group video (compressed to 720p if larger, uploaded to `groupVideos/{uid}/{postId}.mp4` with a cover in `groupThumbnails/`).
@@ -509,6 +511,7 @@ Firestore rules (`firestore.rules`, matching the deployed ruleset) enforce:
 
 - signed-in access for protected data,
 - `users/{uid}`: readable by any signed-in user (including email); written only by the owner, and a `username` only when `usernames/{username}` belongs to them after the write; not deletable,
+- `users/{uid}/fcmTokens/{token}`: owner only; the document ID must equal `token`; fields token, platform, updatedAt,
 - `usernames/{handle}`: get by signed-in users, listed at most 20 at a time; created only by the claiming user with a well-formed handle (`^[a-z0-9_]{3,20}$`) in the batch that puts it on their profile (an existing handle can't be re-created, so names are unique); deleted only by its owner once their profile no longer uses it; no updates,
 - `groupInvitations/{groupId}_{inviteeUid}`: read by the invitee or inviter; created by a group member as themselves, for an existing user who isn't a member yet and isn't the inviter, with the group's current name; no updates; deleted by the invitee, the inviter or the group owner,
 - owner-only reads and writes for `points`, `achievements`, `streaks` (and the legacy `streak`), `weeklyChallenges`, and `friends` under `users/{uid}`,
@@ -536,7 +539,7 @@ Storage rules enforce:
 Video privacy:
 
 - Enforced in Firestore rules (above), and also checked in the app (`DanceLibraryModel.isVisibleTo`; a permission-denied read of a shared private dance shows "This video is private.") and in the `danceShare` function.
-- Rules tests: `rules-tests/` (`npm install`, then `npm test`; runs the Firestore emulator) covers dance privacy, likes and comments of private dances, the liked-videos query, server-managed fields and `meta`, groups (`groups.test.js`: creation with owner membership, public/private access, invite codes, posting, replies, leaving and removal, owner edits, my-groups query), and usernames and invitations (`invitations.test.js`).
+- Rules tests: `rules-tests/` (`npm install`, then `npm test`; runs the Firestore emulator) covers dance privacy, likes and comments of private dances, the liked-videos query, server-managed fields and `meta`, groups (`groups.test.js`: creation with owner membership, public/private access, invite codes, posting, replies, leaving and removal, owner edits, my-groups query), and usernames, invitations and push tokens (`invitations.test.js`).
 - Video files stay at token-protected Storage download URLs; making a dance private does not revoke an existing URL.
 - The `danceShare` function uses the Admin SDK (bypasses rules) and only renders public, enabled dances.
 
@@ -564,7 +567,7 @@ Unit tests (`app/src/test`):
 
 Instrumented tests (`app/src/androidTest`): `AnalyticsDashboardViewTest`, `DanceARPracticeScreenTest`, `DanceSessionDaoTest` (Room DAO), `DanceLibraryListViewTest`, `AuthScreenTest`, `OnboardingScreenTest`, `LeaderboardScreenTest`, `VideoUploadActivityScreenTest`.
 
-Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances) and `functions/test/discovery.test.js` (search tokens, feedReady, trending score, derived-field updates without loops, category counts) and preview images, and `functions/test/groups.test.js` (group storage paths to clean up), run with `npm test` in `functions/` and by the `firebase.yml` workflow.
+Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances) and `functions/test/discovery.test.js` (search tokens, feedReady, trending score, derived-field updates without loops, category counts) and preview images, and `functions/test/groups.test.js` (group storage paths to clean up, invitation push message, dead-token cleanup), run with `npm test` in `functions/` and by the `firebase.yml` workflow.
 
 GitHub Actions (`.github/workflows/android.yml`) runs on push and pull request to all branches, cancelling in-progress runs for the same ref, with JDK 17 (Temurin). Jobs run in order:
 

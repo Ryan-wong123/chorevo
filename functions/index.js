@@ -92,9 +92,10 @@ exports.refreshDiscovery = onSchedule(
 );
 
 // ── Groups ───────────────────────────────────────────────────────────────────
-const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
+const { onDocumentDeleted, onDocumentCreated } = require("firebase-functions/v2/firestore");
 const { getStorage } = require("firebase-admin/storage");
-const { storagePathsOfPosts } = require("./groups");
+const { getMessaging } = require("firebase-admin/messaging");
+const { storagePathsOfPosts, invitationMessage, deadTokens } = require("./groups");
 
 /** Keeps groups/{id}.memberCount exact whenever someone joins or leaves. */
 exports.groupMemberCount = onDocumentWritten(
@@ -113,6 +114,24 @@ exports.groupMemberCount = onDocumentWritten(
  * replies), its invite code, and the group-only videos and thumbnails its
  * posts uploaded.
  */
+/** Pushes a notification to the invited user's devices when they're invited to a group. */
+exports.notifyGroupInvitation = onDocumentCreated(
+  { document: "groupInvitations/{invitationId}", region: "us-central1" },
+  async (event) => {
+    const invitation = event.data?.data();
+    if (!invitation?.inviteeUid) return;
+    const db = getFirestore();
+    const tokenDocs = await db.collection(`users/${invitation.inviteeUid}/fcmTokens`).limit(20).get();
+    const tokens = tokenDocs.docs.map((d) => d.id);
+    if (tokens.length === 0) return;
+
+    const result = await getMessaging().sendEachForMulticast({ ...invitationMessage(invitation), tokens });
+    const dead = deadTokens(tokens, result.responses);
+    await Promise.all(dead.map((t) => db.doc(`users/${invitation.inviteeUid}/fcmTokens/${t}`).delete()));
+    logger.info("Group invitation push", { sent: result.successCount, failed: result.failureCount, removed: dead.length });
+  }
+);
+
 exports.groupCleanup = onDocumentDeleted(
   { document: "groups/{groupId}", region: "us-central1", timeoutSeconds: 300 },
   async (event) => {

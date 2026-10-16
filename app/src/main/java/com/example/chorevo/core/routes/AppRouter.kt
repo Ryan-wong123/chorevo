@@ -43,6 +43,14 @@ import com.example.chorevo.core.routes.AuthRoute
 import com.example.chorevo.core.routes.CommunityRoute
 import com.example.chorevo.community.ViewModel.GroupsViewModel
 import com.example.chorevo.firebase.UsernameDialog
+import com.example.chorevo.notification.PushTokens
+import androidx.compose.ui.platform.LocalContext
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.example.chorevo.core.routes.DancePracticeRoute
 import com.example.chorevo.core.routes.HomeRoute
 import com.example.chorevo.core.routes.LeaderboardRoute
@@ -107,6 +115,21 @@ fun AppRouter(
         val profile = state.profile
         LaunchedEffect(profile.uid) {
             groupsViewModel.bind(profile.uid, profile.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User", profile.photoUrl)
+        }
+
+        // Push notifications (group invitations): save this device's token, and
+        // on Android 13+ ask once per launch for permission to show them.
+        val context = LocalContext.current
+        val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        var askedForNotifications by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(profile.uid) {
+            PushTokens.register(profile.uid)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedForNotifications &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                askedForNotifications = true
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
 
         AppNavigationRoute(

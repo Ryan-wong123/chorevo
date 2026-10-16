@@ -132,6 +132,7 @@ firebase-auth = { module = "com.google.firebase:firebase-auth-ktx" }
 
 # Firebase Cloud Firestore database
 firebase-firestore = { module = "com.google.firebase:firebase-firestore-ktx" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 
 # Firebase Cloud Storage (files, videos, images)
 firebase-storage = { group = "com.google.firebase", name = "firebase-storage" }

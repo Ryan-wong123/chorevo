@@ -99,6 +99,21 @@
 
         </activity>
 
+        <!-- Push notifications (group invitations), see functions/index.js notifyGroupInvitation. -->
+        <service
+            android:name=".notification.ChorevoMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="group_invites" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_reminder" />
+
         <receiver
             android:name=".notification.ReminderReceiver"
             android:exported="false"
