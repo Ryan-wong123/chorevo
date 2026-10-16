@@ -62,7 +62,7 @@ class WeeklyChallengeRepository @Inject constructor(
         val result = functions.getHttpsCallable("weeklyChallenges")
             .call(mapOf("tzOffsetMinutes" to offsetMinutes))
             .await()
-        val serverWeek = (result.data as? Map<*, *>)?.get("weekStart") as? String ?: weekStart
+        val serverWeek = (result.getData() as? Map<*, *>)?.get("weekStart") as? String ?: weekStart
         return weeklyChallengesRef(uid, serverWeek).get().await().toWeeklyChallengeSetOrNull()
             ?: WeeklyChallengeSet(weekStart = serverWeek)
     }
