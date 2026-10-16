@@ -24,9 +24,9 @@ class AutoRetryUploaderService @Inject constructor(
 
         for (s in pending) {
             runCatching {
+                // Points, badges, streak and the leaderboard are computed
+                // server-side from the uploaded session.
                 danceLibraryRepository.uploadDanceSession(uid = uid, session = s)
-                // The leaderboard is recomputed server-side from the session and streak.
-                streakRepository.tickToday(uid)
                 dao.markSynced(s.sessionId)
             }
         }

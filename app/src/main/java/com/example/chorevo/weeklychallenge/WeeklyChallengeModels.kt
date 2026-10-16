@@ -60,17 +60,3 @@ data class WeeklyChallengeSet(
     val bonusRewardPoints: Int = 0,
     val bonusClaimed: Boolean = false
 )
-
-/** One past session's AI-evaluated scores, used only to seed challenge generation. */
-data class RecentSessionScore(
-    val alignmentScore: Double,
-    val timingConsistencyScore: Double,
-    val smoothnessScore: Double
-)
-
-/** Result of folding one freshly completed session into a [WeeklyChallengeSet]. */
-data class WeeklyChallengeUpdateResult(
-    val challengeSet: WeeklyChallengeSet,
-    val newlyCompleted: List<WeeklyChallenge>,
-    val bonusNewlyUnlocked: Boolean
-)

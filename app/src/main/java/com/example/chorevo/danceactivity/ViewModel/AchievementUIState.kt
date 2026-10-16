@@ -22,6 +22,10 @@ data class AchievementUiState(
     val leveledUp: Boolean = false,
 
     val showAchievementDialog: Boolean = false,
+    /** The session hasn't synced yet, so its points aren't known (offline). */
+    val rewardsPending: Boolean = false,
+    /** The daily limit of rewarded sessions was reached; this session earned nothing. */
+    val rewardsCapped: Boolean = false,
     val errorMessage: String? = null
 ) {
     val nextLevel: AchievementLevel?

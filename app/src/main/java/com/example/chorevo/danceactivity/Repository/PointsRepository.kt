@@ -1,8 +1,6 @@
 package com.example.chorevo.danceactivity.Repository
 
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -17,12 +15,10 @@ import javax.inject.Singleton
  *   lastSessionPoints  – points earned in the most recent session (Int)
  *   lastUpdated        – server timestamp
  *
- * Points formula (per session):
- *   alignment  * 50
- *   timing     * 30
- *   smoothness * 20
- *   ──────────────
- *   max 100 pts / session
+ * Points are awarded by the rewardsFromSession Cloud Function from each
+ * synced session (functions/rewards.js: alignment × 50 + timing × 30 +
+ * smoothness × 20, at most 100 per session, plus weekly challenge rewards).
+ * The app only reads them.
  */
 
 data class PointsSnapshot(
@@ -38,21 +34,6 @@ class PointsRepository @Inject constructor(
         db.collection("users").document(uid)
             .collection("points").document("current")
 
-    // ── Calculation ───────────────────────────────────────────────────────────
-
-
-    /** Calculates session points. */
-    fun calculateSessionPoints(
-        alignmentScore: Double,
-        timingConsistencyScore: Double,
-        smoothnessScore: Double
-    ): Int {
-        val raw = alignmentScore * 50.0 +
-                timingConsistencyScore * 30.0 +
-                smoothnessScore * 20.0
-        return raw.toInt().coerceIn(0, 100)
-    }
-
     // ── Read ─────────────────────────────────────────────────────────────────
 
     /** Returns points. */
@@ -66,38 +47,5 @@ class PointsRepository @Inject constructor(
         } else {
             PointsSnapshot()
         }
-    }
-
-    // ── Write ─────────────────────────────────────────────────────────────────
-
-    /**
-     * Atomically adds [sessionPoints] to the running total and returns
-     * the updated [PointsSnapshot].
-     */
-    suspend fun addSessionPoints(uid: String, sessionPoints: Int): PointsSnapshot {
-        val ref = pointsRef(uid)
-        var updatedTotal = 0
-
-        db.runTransaction { tx ->
-            val snap = tx.get(ref)
-            val current = (snap.getLong("totalPoints") ?: 0L).toInt()
-            updatedTotal = current + sessionPoints
-
-            tx.set(
-                ref,
-                mapOf(
-                    "totalPoints" to updatedTotal,
-                    "lastSessionPoints" to sessionPoints,
-                    "lastUpdated" to FieldValue.serverTimestamp()
-                ),
-                SetOptions.merge()
-            )
-            null
-        }.await()
-
-        return PointsSnapshot(
-            totalPoints = updatedTotal,
-            lastSessionPoints = sessionPoints
-        )
     }
 }

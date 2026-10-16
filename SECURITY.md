@@ -16,7 +16,8 @@ Check. Nothing relies on the app behaving well.
 | Data | Who can read | Who can write |
 |---|---|---|
 | `users/{uid}` profile | signed-in users, one document at a time (no listing) | the owner. Fields are validated: no email, no role, name ≤ 60, https photo URL. A username must be claimed in `usernames/`, and the old one released. |
-| `users/{uid}/*` (points, streaks, sessions, tokens…) | the owner; a session can also be read by the creator of its dance | the owner. Streak totals rise by at most 1 per write. Session scores must be 0–1. A session's dance must exist. |
+| `users/{uid}/*` (points, badges, streaks, challenges, session rewards) | the owner | **Cloud Functions only** (awarded from synced sessions) |
+| `users/{uid}/danceLearningSessions` | the owner, and the creator of the session's dance | the owner, create only (final once uploaded). Every score is 0–1, the time-zone offset is real, and a session's dance must exist. |
 | `leaderboardStats` | signed-in users | **Cloud Functions only** (computed from sessions and streaks) |
 | `danceLibrary` | public dances: signed-in users; private dances: the uploader only | the uploader. Text is validated. Media must be the uploader's own Storage files. Upload time, media and `enabled` can't be changed later. |
 | likes / comments | whoever can read the dance | as yourself, on dances you can read. Comments carry a bounded name and the current time. |
@@ -31,8 +32,12 @@ hours for dances).
 
 ## Server side (functions/)
 
-- `leaderboardFrom*` recompute leaderboard stats. Scores are clamped and
-  active days can't exceed the session count.
+- `rewardsFromSession` awards points, badges, the weekly streak, weekly
+  challenge progress and leaderboard stats from each synced session, once per
+  session, in one transaction. Scores are clamped, days come from the
+  server's clock, active days can't exceed the session count, and at most 30
+  sessions per user per day earn anything. `weeklyChallenges` (callable)
+  creates a user's weekly challenges.
 - `notifyGroupInvitation` sends at most one push per invitation and at most
   20 per inviter per hour. Group and inviter names come from the server's own
   data, and the inviter must be a member.
@@ -175,8 +180,9 @@ committed (`*.jks`, `*.keystore` and `keystore.properties` are gitignored).
 - Download URLs of dance and group videos work for anyone who has the URL.
   Making a dance private hides it everywhere in the app, but doesn't revoke a
   URL someone already copied.
-- Practice scores are computed on the phone. The server clamps them and
-  rate-limits streaks, but a modified app could still submit good scores.
-- Points, badges and weekly challenges are stored per user and visible only to
-  that user, so changing them only affects the user themselves.
+- Practice scores are computed on the phone. Everything derived from them
+  (points, badges, streaks, challenges, leaderboard) is computed by the
+  server, which clamps scores and limits rewarded sessions per day, but a
+  modified app could still submit good scores. Fully preventing that would
+  need server-side pose scoring.
 - A removed group member stays banned. There is no "unban" button yet.

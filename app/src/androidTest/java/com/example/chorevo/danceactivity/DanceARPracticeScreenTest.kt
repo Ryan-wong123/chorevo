@@ -71,8 +71,7 @@ class DanceARPracticeScreenTest {
 
         achievementVm = AchievementViewModel(
              repository = mockk(relaxed = true),
-             pointsRepository = mockk(relaxed = true),
-             streakRepository = mockk(relaxed = true)
+             rewardsRepository = mockk(relaxed = true)
         )
 
         weeklyChallengeVm = WeeklyChallengeViewModel(
