@@ -31,6 +31,7 @@ local.properties
 .env
 .env.*
 *.jks
+keystore.properties
 *.keystore
 *.p12
 *.pem
