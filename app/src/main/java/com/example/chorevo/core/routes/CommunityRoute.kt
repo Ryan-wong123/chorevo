@@ -10,7 +10,15 @@ import com.example.chorevo.firebase.UserProfile
 fun CommunityRoute(
     profile: UserProfile,
     onOpenDance: (String) -> Unit,
+    pendingInviteCode: String?,
+    onInviteHandled: () -> Unit,
     vm: GroupsViewModel = hiltViewModel()
 ) {
-    GroupsScreen(profile = profile, vm = vm, onOpenDance = onOpenDance)
+    GroupsScreen(
+        profile = profile,
+        vm = vm,
+        onOpenDance = onOpenDance,
+        pendingInviteCode = pendingInviteCode,
+        onInviteHandled = onInviteHandled
+    )
 }

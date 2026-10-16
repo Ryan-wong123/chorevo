@@ -9,6 +9,7 @@ import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -38,6 +39,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Videocam
@@ -78,6 +80,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -94,6 +97,7 @@ import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.ui.theme.ChorevoTheme
 import com.example.chorevo.ui.theme.PillShape
@@ -120,6 +124,7 @@ fun GroupDetailScreen(
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
     var showDancePicker by rememberSaveable { mutableStateOf(false) }
     var playingUrl by rememberSaveable { mutableStateOf<String?>(null) }
+    var showQr by rememberSaveable { mutableStateOf(false) }
 
     BackHandler {
         if (state.openPostId != null) vm.closePost() else vm.closeGroup()
@@ -155,6 +160,11 @@ fun GroupDetailScreen(
                                     onClick = { menuOpen = false; showMembers = true }
                                 )
                                 if (group.isPrivate && state.isMember && group.inviteCode != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Show invite QR code") },
+                                        onClick = { menuOpen = false; showQr = true },
+                                        modifier = Modifier.testTag("showQrItem")
+                                    )
                                     DropdownMenuItem(
                                         text = { Text("Share invite") },
                                         onClick = { menuOpen = false; shareInvite(context, group) }
@@ -205,7 +215,7 @@ fun GroupDetailScreen(
         ) {
             if (group != null) {
                 item(key = "header") {
-                    GroupHeader(group = group, isMember = state.isMember, context = context)
+                    GroupHeader(group = group, isMember = state.isMember, context = context, onShowQr = { showQr = true })
                 }
             }
             if (group != null && !state.isMember && !group.isPrivate) {
@@ -288,10 +298,13 @@ fun GroupDetailScreen(
         )
     }
     playingUrl?.let { url -> VideoDialog(url = url, onDismiss = { playingUrl = null }) }
+    if (showQr && group != null && group.inviteCode != null && state.isMember) {
+        InviteQrDialog(group = group, onShare = { shareInvite(context, group) }, onDismiss = { showQr = false })
+    }
 }
 
 @Composable
-private fun GroupHeader(group: DanceGroup, isMember: Boolean, context: Context) {
+private fun GroupHeader(group: DanceGroup, isMember: Boolean, context: Context, onShowQr: () -> Unit) {
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -340,6 +353,9 @@ private fun GroupHeader(group: DanceGroup, isMember: Boolean, context: Context) 
                             fontFamily = FontFamily.Monospace,
                             modifier = Modifier.testTag("groupInviteCode")
                         )
+                    }
+                    IconButton(onClick = onShowQr, modifier = Modifier.testTag("showQrButton")) {
+                        Icon(Icons.Filled.QrCode2, contentDescription = "Show invite QR code")
                     }
                     IconButton(onClick = { copyToClipboard(context, code) }) {
                         Icon(Icons.Filled.ContentCopy, contentDescription = "Copy invite code")
@@ -825,6 +841,49 @@ private fun ConfirmDialog(
     )
 }
 
+/** The group's invite as a QR code, for a new member to scan with the app or the phone camera. */
+@Composable
+private fun InviteQrDialog(group: DanceGroup, onShare: () -> Unit, onDismiss: () -> Unit) {
+    val code = group.inviteCode ?: return
+    val qr = remember(code) { InviteQr.bitmap(ShareLinks.groupInviteLink(code)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Join ${group.name}", maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "Scan with Chorevo (Groups → scan icon) or the phone camera.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Image(
+                    bitmap = qr,
+                    contentDescription = "Invite QR code for ${group.name}",
+                    filterQuality = FilterQuality.None,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(Color.White)
+                        .testTag("inviteQrImage")
+                )
+                Text(code, style = MaterialTheme.typography.titleLarge, fontFamily = FontFamily.Monospace)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        dismissButton = {
+            TextButton(onClick = onShare) {
+                Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Share")
+            }
+        }
+    )
+}
+
 @Composable
 private fun VideoDialog(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
@@ -865,7 +924,8 @@ private fun copyToClipboard(context: Context, code: String) {
 
 private fun shareInvite(context: Context, group: DanceGroup) {
     val code = group.inviteCode ?: return
-    val text = "Join my dance group \"${group.name}\" on Chorevo. Open Groups, tap the key icon and enter code $code."
+    val text = "Join my dance group \"${group.name}\" on Chorevo: ${ShareLinks.groupInviteLink(code)}\n" +
+        "Or open Groups, tap the key icon and enter code $code."
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)

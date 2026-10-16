@@ -25,6 +25,8 @@ coilCompose = "2.5.0"         # Coil Image Loading Library (Compose integration)
 mockk = "1.13.12"
 coroutinesTest = "1.8.1"
 playServicesTasks = "18.2.0"
+codeScanner = "16.1.0"        # Google code scanner (QR invites; no camera permission)
+zxing = "3.5.3"               # QR code generation
 
 turbine = "1.1.0"
 
@@ -156,6 +158,8 @@ coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose"
 # ---- Unit test libs ----
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutinesTest" }
+play-services-code-scanner = { module = "com.google.android.gms:play-services-code-scanner", version.ref = "codeScanner" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 play-services-tasks = { module = "com.google.android.gms:play-services-tasks", version.ref = "playServicesTasks" }
 
 # ---- Android instrumentation test libs ----

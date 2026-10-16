@@ -210,9 +210,13 @@ class GroupsRepository @Inject constructor(
             val invite = firestore.collection(INVITES).document(code).get().await()
             val groupId = invite.getString("groupId")
             require(invite.exists() && !groupId.isNullOrBlank()) { "No group has that invite code." }
+            // Scanning a group's QR code again just opens it. Non-members can't
+            // read a private group's member docs, so a failed read means "not yet".
+            val memberRef = groupRef(groupId!!).collection(MEMBERS).document(uid)
+            if (runCatching { memberRef.get().await().exists() }.getOrDefault(false)) return@runCatching groupId
             val data = memberData(uid, displayName, photoUrl, GroupMember.ROLE_MEMBER, System.currentTimeMillis()) +
                 ("inviteCode" to code)
-            groupRef(groupId!!).collection(MEMBERS).document(uid).set(data).await()
+            memberRef.set(data).await()
             groupId
         }
 
