@@ -245,6 +245,10 @@ class AppViewModel @Inject constructor(
         _uiState.update { it.copy(screen = Screen.COMMUNITY, pendingGroupInvite = code) }
     }
 
+    /** The user picked or changed their username. */
+    fun onUsernameSaved(username: String) =
+        _uiState.update { s -> s.copy(profile = s.profile?.copy(username = username)) }
+
     /** The Groups screen has taken the invite code. */
     fun clearGroupInvite() = _uiState.update { it.copy(pendingGroupInvite = null) }
 

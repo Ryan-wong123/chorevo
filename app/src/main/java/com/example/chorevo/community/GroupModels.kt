@@ -2,6 +2,7 @@ package com.example.chorevo.community
 
 import android.net.Uri
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.firebase.Repository.UserSearchResult
 
 /** A dance group. Public groups are listed and open to anyone; private ones need an invite code. */
 data class DanceGroup(
@@ -80,6 +81,31 @@ data class GroupReply(
     val createdAt: Long = 0L
 )
 
+/** An invitation for one user to join a group, sent by a member (`groupInvitations/{groupId}_{inviteeUid}`). */
+data class GroupInvitation(
+    val id: String = "",
+    val groupId: String = "",
+    /** Copied from the group: the invitee can't read a private group until they join. */
+    val groupName: String = "",
+    val inviteeUid: String = "",
+    val inviteeUsername: String = "",
+    val inviterUid: String = "",
+    val inviterName: String = "",
+    val createdAt: Long = 0L
+)
+
+fun invitationId(groupId: String, inviteeUid: String): String = "${groupId}_$inviteeUid"
+
+/** "Invite by username" in an open group. */
+data class InviteSearch(
+    val query: String = "",
+    val results: List<UserSearchResult> = emptyList(),
+    val isSearching: Boolean = false,
+    /** Users invited from this dialog, so their button shows "Invited". */
+    val invitedUids: Set<String> = emptySet(),
+    val sendingUid: String? = null
+)
+
 /** The post being written in an open group. */
 data class PostComposer(
     val text: String = "",
@@ -105,6 +131,11 @@ data class GroupsUiState(
     val discoverGroups: List<DanceGroup> = emptyList(),
     val isLoadingDiscover: Boolean = false,
     val isWorking: Boolean = false,
+    /** Invitations sent to the user, newest first. */
+    val invitations: List<GroupInvitation> = emptyList(),
+    /** Invitation being accepted or declined. */
+    val answeringInvitationId: String? = null,
+    val inviteSearch: InviteSearch = InviteSearch(),
 
     // The open group.
     val openGroupId: String? = null,

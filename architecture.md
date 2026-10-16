@@ -17,7 +17,7 @@ Chorevo is a single-module native Android application:
 - 3D: SceneView for the instructor avatar overlay
 - Web share links: Firebase Hosting (`chorevo-dea05.web.app`) rewriting `/dance/**` to the `danceShare` Cloud Function in `functions/` (Node.js 22, `firebase-functions` v2 HTTPS, Admin SDK)
 - Discovery maintenance: Cloud Functions `danceDerivedFields` (Firestore trigger on `danceLibrary/{id}`), `danceLikeCount` (trigger on `danceLibrary/{id}/likes/{uid}`) and `refreshDiscovery` (scheduled every 6 hours) keep the feed fields, like counts, trending scores and `meta/danceCategories` current. The field logic is in `functions/discovery.js` (pure, tested) and the jobs in `functions/maintenance.js`, shared with the one-off `functions/scripts/backfill.js`.
-- Groups maintenance: `groupMemberCount` (trigger on `groups/{id}/members/{uid}`) keeps `memberCount`, and `groupCleanup` (on group delete) removes the invite, group files and subcollections.
+- Groups maintenance: `groupMemberCount` (trigger on `groups/{id}/members/{uid}`) keeps `memberCount`, and `groupCleanup` (on group delete) removes the invite code, pending invitations, group files and subcollections.
 
 Navigation Compose and Hilt Navigation Compose are declared as dependencies, but navigation uses a custom `Screen` enum rather than a `NavHost`. The Firebase Analytics SDK is included but logs no events.
 
@@ -86,7 +86,8 @@ Screens:
 - `LeaderboardScreen`: Global/Friends leaderboard with a top-three `Podium` (medal rings, rising blocks, `podium_rank_N` test tags), ranks 4+ in a list, and the user's "Your position" card pinned at the bottom. Add/remove-friend buttons come from `friendActionFor` for both podium and list.
 - `GroupsScreen`: "My groups" and "Discover" tabs, create-group and join-by-code dialogs, QR scanning (`InviteQr.scan`, the Google code scanner — no camera permission), and the join prompt for an invite link handed over by `AppViewModel.pendingGroupInvite`. `GroupDetailScreen`: the open group's header (visibility, member count, invite code with QR/copy/share; the QR code, drawn with ZXing by `InviteQr.bitmap`, encodes `ShareLinks.groupInviteLink`), join banner, posts (text, shared dance, group video with a full-screen player), the member composer (dance picker, gallery/record video), replies bottom sheet, members dialog, leave/delete.
 - `UserProfileScreen`: header, streak-ring avatar, stats row, streak card, level panel, weekly challenge summary, and icon tabs (Uploads and Private as thumbnail grids via `VideoUploadsTab(gridFilter = …)` with an action sheet, Liked, Activity, Learners), plus the full-screen liked-videos feed.
-- `SettingsScreen`: profile photo, notifications, reminder time, sign out.
+- `SettingsScreen`: profile photo, username (`@name · Change`), notifications, reminder time, sign out.
+- `UsernameDialog` (`firebase/`, with `UsernameViewModel`): pick or change the username with a live availability check. `AppRouter` shows it once per launch, with "Later", while the profile has no username.
 - `WeeklyChallengesScreen`, `WeeklyChallengeSummaryCard`, `WeeklyChallengeCelebrationDialog`.
 
 Shared components:
@@ -104,7 +105,7 @@ Shared components:
 
 ViewModels own screen state and user actions. All of these are `@HiltViewModel`:
 
-- `AppViewModel`: auth/profile restore, selected top-level screen, selected dance, navigation helpers (`openUpload`, `openCommunity`, `openLeaderboard`, `openProfile`, `openSettings`, `openWeeklyChallenges`, `backToHome`), reminder preferences, profile photo upload state, starting the unsynced-session retry, and share-link handling (`openDanceById`, pending link while signed out, `sharedDance`, `deepLinkLoading`, `deepLinkError`).
+- `AppViewModel`: auth/profile restore, selected top-level screen, selected dance, navigation helpers (`openUpload`, `openCommunity`, `openLeaderboard`, `openProfile`, `openSettings`, `openWeeklyChallenges`, `backToHome`), reminder preferences, profile photo upload state, starting the unsynced-session retry, and username updates (`onUsernameSaved`), group invite links (`openGroupInvite`, `pendingGroupInvite`), share-link handling (`openDanceById`, pending link while signed out, `sharedDance`, `deepLinkLoading`, `deepLinkError`).
 - `AuthViewModel`: email/password and Google sign-in state, and one-off `AuthEvent`s.
 - `DanceLibraryListViewModel`: library loading, template preparation, per-dance social cache (likes and comments, optimistic updates), and practice session submission.
 - `VideoUploadsViewModel`: upload draft (including visibility and `coverFrameMs`, reset when a new video is picked), dancer analysis and review, upload progress, edit/delete flows, and per-upload visibility toggles (`setVisibility`, `updatingVisibilityIds`).
@@ -129,7 +130,8 @@ Repositories isolate Firebase, Room, and Storage APIs:
 - `AnalyticsRepository`: learner and educator session listeners, Firestore mapping, learner display names, and reference video availability.
 - `LeaderboardRepository`: leaderboard stats, ranking, friend list management.
 - `FirebaseStreakRepository`, `AchievementRepository`, `PointsRepository`: streaks, badges, and points.
-- `GroupsRepository`: groups, members, posts and replies (snapshot listeners), creating a group with its owner membership and invite in one batch, joining by invite code via `groupInvites/{code}`, and group video uploads (720p compression, cover frame via `core/VideoMedia`).
+- `UsernameRepository`: availability checks, a free suggestion from the display name, claiming/changing a username (one batch: `usernames/{new}`, `users/{uid}.username`, delete `usernames/{old}`), and prefix search for invites. Format rules live in `firebase/Usernames.kt`.
+- `GroupsRepository`: groups, members, posts and replies (snapshot listeners), the user's invitations by username (send, accept as one batch with the membership, decline), creating a group with its owner membership and invite in one batch, joining by invite code via `groupInvites/{code}`, and group video uploads (720p compression, cover frame via `core/VideoMedia`).
 - `WeeklyChallengeRepository`: weekly challenge generation, progress, and rewards.
 
 ### Infrastructure Layer
@@ -178,7 +180,8 @@ ViewModels receive repositories through constructor injection. `VideoTemplateGen
 
 Main collections:
 
-- `users/{uid}`: profile records (uid, email, role, displayName, photoUrl, lastSeen).
+- `users/{uid}`: profile records (uid, email, role, displayName, photoUrl, lastSeen, username).
+- `usernames/{handle}`: `{uid, createdAt}`; the document ID is the username, which makes it unique.
 - `users/{uid}/danceLearningSessions/{sessionId}`: learner session results with a nested `analysis` map.
 - `users/{uid}/friends/{friendUid}`: friend references (uid, displayName, photoUrl, addedAt).
 - `users/{uid}/points/current`: totalPoints, lastSessionPoints, lastUpdated.
@@ -190,6 +193,7 @@ Main collections:
 - `danceLibrary/{danceId}/comments/{commentId}`: commentId, uid, username, text, createdAt.
 - `groups/{groupId}` with `members/{uid}`, `posts/{postId}` and `posts/{postId}/replies/{replyId}`: community groups (fields in `prd.md`). `memberCount` is written only by the `groupMemberCount` function.
 - `groupInvites/{code}`: `{groupId, createdAt}` for private groups.
+- `groupInvitations/{groupId}_{inviteeUid}`: invitations by username (groupId, groupName, inviteeUid, inviteeUsername, inviterUid, inviterName, createdAt). The group name is copied in because the invitee can't read a private group before joining.
 - `communityPosts/{postId}` and replies: the old forum; no longer read by the app.
 - `leaderboardStats/{uid}`: aggregate leaderboard stats (totalPracticeSessions, avgSimilarityScore, totalActiveDays, legacy streakDays, displayName, photoUrl, updatedAt).
 
@@ -340,10 +344,11 @@ On the web:
 1. `GroupsViewModel.bind` observes the user's memberships (collection group `members`) and loads public groups for Discover.
 2. Creating a group writes, in one batch, `groups/{id}`, the owner's `members/{uid}` (role `owner`) and, for a private group, `groupInvites/{code}` with a random 8-character code. The rules require all of these together.
 3. Invite links `https://chorevo-dea05.web.app/join/<code>` (the QR code's content) are App Links (`/join/` in the manifest filter) and `chorevo://join/<code>`. `MainActivity` passes them through `ShareLinks.parseInviteCode` (`inviteCodeFromText`, which also reads bare codes) to `AppViewModel.openGroupInvite`, which waits for sign-in if needed and opens Groups with the join dialog filled in. Hosting serves `public/join.html` for `/join/**` when the app is missing.
-4. Joining a public group writes `members/{uid}`. Joining a private group reads `groupInvites/{code}` (get only; invites cannot be listed), then writes `members/{uid}` carrying the same `inviteCode`, which the rules compare with the group's.
-5. The `groupMemberCount` function recounts members on every join or leave and writes `memberCount`.
-6. Opening a group observes the group, the user's membership, members and posts. A post is text, a shared dance (`danceId`, title, cover and video URL copied from the user's public dance; "Open dance" calls `AppViewModel.openDanceById`), or a group video (compressed to 720p if larger, uploaded to `groupVideos/{uid}/{postId}.mp4` with a cover in `groupThumbnails/`).
-7. Deleting a post removes its replies and, for the author, its files. Deleting a group triggers `groupCleanup`, which deletes the invite, every group file, and the whole subtree (`recursiveDelete`).
+4. Invitations by username: a member searches `usernames` by document-ID prefix (limit 10, then one profile read each) and writes `groupInvitations/{groupId}_{inviteeUid}`. `GroupsViewModel` is bound in `AppRouter`, so the invitee's invitations (`where inviteeUid == me`) badge the Groups tab anywhere in the app. Accepting writes `members/{uid}` and deletes the invitation in one batch; the members rule accepts a join when that invitation exists. `groupCleanup` deletes a deleted group's invitations.
+5. Joining a public group writes `members/{uid}`. Joining a private group reads `groupInvites/{code}` (get only; invites cannot be listed), then writes `members/{uid}` carrying the same `inviteCode`, which the rules compare with the group's.
+6. The `groupMemberCount` function recounts members on every join or leave and writes `memberCount`.
+7. Opening a group observes the group, the user's membership, members and posts. A post is text, a shared dance (`danceId`, title, cover and video URL copied from the user's public dance; "Open dance" calls `AppViewModel.openDanceById`), or a group video (compressed to 720p if larger, uploaded to `groupVideos/{uid}/{postId}.mp4` with a cover in `groupThumbnails/`).
+8. Deleting a post removes its replies and, for the author, its files. Deleting a group triggers `groupCleanup`, which deletes the invite, every group file, and the whole subtree (`recursiveDelete`).
 
 ### Analytics Flow
 
@@ -503,7 +508,9 @@ Implementation notes:
 Firestore rules (`firestore.rules`, matching the deployed ruleset) enforce:
 
 - signed-in access for protected data,
-- `users/{uid}`: readable by any signed-in user (including email); written only by the owner; not deletable,
+- `users/{uid}`: readable by any signed-in user (including email); written only by the owner, and a `username` only when `usernames/{username}` belongs to them after the write; not deletable,
+- `usernames/{handle}`: get by signed-in users, listed at most 20 at a time; created only by the claiming user with a well-formed handle (`^[a-z0-9_]{3,20}$`) in the batch that puts it on their profile (an existing handle can't be re-created, so names are unique); deleted only by its owner once their profile no longer uses it; no updates,
+- `groupInvitations/{groupId}_{inviteeUid}`: read by the invitee or inviter; created by a group member as themselves, for an existing user who isn't a member yet and isn't the inviter, with the group's current name; no updates; deleted by the invitee, the inviter or the group owner,
 - owner-only reads and writes for `points`, `achievements`, `streaks` (and the legacy `streak`), `weeklyChallenges`, and `friends` under `users/{uid}`,
 - `danceLearningSessions`: owner writes; reads by the owner or by the educator named in `analysis.educatorUid` (including a collection-group rule); create/update require `analysis.danceId` to reference an existing dance whose `educatorUid` equals `analysis.educatorUid`; `analysis.danceId` and `analysis.educatorUid` cannot change on update; no deletes,
 - `danceLibrary/{danceId}`: readable by signed-in users when `visibility == "public"`, otherwise only by the uploader (the rule reads the field directly, because a `get('visibility', 'public')` default lets list queries through unchecked; every dance has the field). List queries must filter on `visibility == "public"` or `educatorUid == auth.uid`. Create requires `educatorUid == auth.uid` and `danceId == docId`; update and delete only by the creator, with `educatorUid` and `danceId` unchanged. Clients may not set or change the server-managed fields (`likeCount`, `trendingScore`, `feedReady`, `danceTypeKey`, `searchTokens`, `searchTrigrams`, `shuffleKey`),
@@ -529,7 +536,7 @@ Storage rules enforce:
 Video privacy:
 
 - Enforced in Firestore rules (above), and also checked in the app (`DanceLibraryModel.isVisibleTo`; a permission-denied read of a shared private dance shows "This video is private.") and in the `danceShare` function.
-- Rules tests: `rules-tests/` (`npm install`, then `npm test`; runs the Firestore emulator) covers dance privacy, likes and comments of private dances, the liked-videos query, server-managed fields and `meta`, and groups (`groups.test.js`: creation with owner membership, public/private access, invite codes, posting, replies, leaving and removal, owner edits, my-groups query).
+- Rules tests: `rules-tests/` (`npm install`, then `npm test`; runs the Firestore emulator) covers dance privacy, likes and comments of private dances, the liked-videos query, server-managed fields and `meta`, groups (`groups.test.js`: creation with owner membership, public/private access, invite codes, posting, replies, leaving and removal, owner edits, my-groups query), and usernames and invitations (`invitations.test.js`).
 - Video files stay at token-protected Storage download URLs; making a dance private does not revoke an existing URL.
 - The `danceShare` function uses the Admin SDK (bypasses rules) and only renders public, enabled dances.
 
@@ -548,8 +555,8 @@ Unit tests (`app/src/test`):
 - `analytics`: `AnalyticsDashboardViewModelTest`, `AnalyticsRepositoryTest`, `AnalyticsStatsTest` (overview numbers, trend, heatmap days, body focus)
 - `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link and group-invite handling, system back targets, theme mode, and onboarding)
 - `dancelibrarylist`: `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` (including video privacy), `DiscoveryTest` (category grouping, search, trending score, tab ordering), `DanceLibraryDiscoveryViewModelTest` (tabs, one-time like-count load, chips, search)
-- `community`: `GroupModelsTest` (invite-code normalising, invite links and QR text, name limits, composer and state helpers), `GroupsViewModelTest` (binding, opening a group, posting by kind and membership, join by code, owner-only delete)
-- `firebase`: `FirebaseAuthRepositoryTest`
+- `community`: `GroupModelsTest` (invite-code normalising, invite links and QR text, name limits, composer and state helpers), `GroupsViewModelTest` (binding, opening a group, posting by kind and membership, join by code, owner-only delete, invitations: accept, decline, search and send)
+- `firebase`: `FirebaseAuthRepositoryTest`, `UsernamesTest` (normalising, limits, suggestions), `UsernameViewModelTest` (suggestion, availability, save)
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`
 - `posedetection`: `ByteTrackDancerTrackerTest`, `ConservativeFramePreprocessorTest`, `CropPoseGeometryTest`, `HandSimilarityEvaluatorTest`, `HandTrackAssignerTest`, `HolisticFrameLandmarksTest`, `HolisticFrameSelectorTest`, `MissingLandmarkInterpolatorTest`, `MultiPersonPoseTrackerTest`, `PersonDetectorFactoryTest`, `PoseDetectionMergerTest`, `PoseSimilarityEvaluatorTest`, `PoseTemplateJsonTest`, `TrackFragmentMergerTest`, `YoloPersonDetectionParserTest`
 - `videouploads`: `VideoUploadTest` (upload ViewModel, dancer review, confirmed templates, visibility, cover frame)

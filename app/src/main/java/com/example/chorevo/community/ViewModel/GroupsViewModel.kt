@@ -4,7 +4,9 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.chorevo.community.GroupInvitation
 import com.example.chorevo.community.GroupPost
+import com.example.chorevo.community.InviteSearch
 import com.example.chorevo.community.GroupsTab
 import com.example.chorevo.community.GroupsUiState
 import com.example.chorevo.community.INVITE_CODE_LENGTH
@@ -13,6 +15,9 @@ import com.example.chorevo.community.Repository.GroupsRepository
 import com.example.chorevo.community.isValidGroupName
 import com.example.chorevo.community.normalizeInviteCode
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.firebase.Repository.UserSearchResult
+import com.example.chorevo.firebase.Repository.UsernameRepository
+import com.example.chorevo.firebase.Usernames
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -28,7 +33,8 @@ import javax.inject.Inject
 @HiltViewModel
 class GroupsViewModel @Inject constructor(
     private val repository: GroupsRepository,
-    private val uploads: VideoUploadsRepository
+    private val uploads: VideoUploadsRepository,
+    private val usernames: UsernameRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GroupsUiState())
@@ -39,6 +45,8 @@ class GroupsViewModel @Inject constructor(
     private var groupJobs: List<Job> = emptyList()
     private var repliesJob: Job? = null
     private var discoverJob: Job? = null
+    private var invitationsJob: Job? = null
+    private var inviteSearchJob: Job? = null
 
     /** Starts watching the user's groups; call when the screen opens. */
     fun bind(uid: String, displayName: String, photoUrl: String?) {
@@ -48,6 +56,12 @@ class GroupsViewModel @Inject constructor(
         myGroupsJob = viewModelScope.launch {
             repository.observeMyGroups(uid).collect { groups ->
                 _uiState.update { it.copy(myGroups = groups, isLoadingMyGroups = false) }
+            }
+        }
+        invitationsJob?.cancel()
+        invitationsJob = viewModelScope.launch {
+            repository.observeInvitations(uid).collect { invitations ->
+                _uiState.update { it.copy(invitations = invitations) }
             }
         }
         refreshDiscover()
@@ -159,6 +173,92 @@ class GroupsViewModel @Inject constructor(
         }
     }
 
+    // ── Invitations by username ─────────────────────────────────────────
+
+    fun acceptInvitation(invitation: GroupInvitation) {
+        val me = author ?: return
+        if (_uiState.value.answeringInvitationId != null) return
+        _uiState.update { it.copy(answeringInvitationId = invitation.id) }
+        viewModelScope.launch {
+            repository.acceptInvitation(invitation, me)
+                .onSuccess { groupId ->
+                    openGroup(groupId)
+                    say("You joined ${invitation.groupName}")
+                }
+                .onFailure { e -> say(e.message ?: "Couldn't join the group.") }
+            _uiState.update { it.copy(answeringInvitationId = null) }
+        }
+    }
+
+    fun declineInvitation(invitation: GroupInvitation) {
+        if (_uiState.value.answeringInvitationId != null) return
+        _uiState.update { it.copy(answeringInvitationId = invitation.id) }
+        viewModelScope.launch {
+            repository.declineInvitation(invitation)
+                .onFailure { e -> say("Couldn't decline: ${e.message}") }
+            _uiState.update { it.copy(answeringInvitationId = null) }
+        }
+    }
+
+    /** Searches usernames for the open group's invite dialog; results load once typing pauses. */
+    fun setInviteQuery(query: String) {
+        _uiState.update { it.copy(inviteSearch = it.inviteSearch.copy(query = query)) }
+        inviteSearchJob?.cancel()
+        val prefix = Usernames.normalize(query)
+        if (prefix.isEmpty()) {
+            _uiState.update { it.copy(inviteSearch = it.inviteSearch.copy(results = emptyList(), isSearching = false)) }
+            return
+        }
+        _uiState.update { it.copy(inviteSearch = it.inviteSearch.copy(isSearching = true)) }
+        inviteSearchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            val result = usernames.search(prefix)
+            val myUid = author?.uid
+            _uiState.update { s ->
+                s.copy(
+                    inviteSearch = s.inviteSearch.copy(
+                        results = result.getOrDefault(emptyList()).filter { it.uid != myUid },
+                        isSearching = false
+                    ),
+                    message = result.exceptionOrNull()?.let { e -> "Couldn't search: ${e.message}" } ?: s.message
+                )
+            }
+        }
+    }
+
+    fun resetInviteSearch() {
+        inviteSearchJob?.cancel()
+        _uiState.update { it.copy(inviteSearch = InviteSearch()) }
+    }
+
+    fun sendInvitation(user: UserSearchResult) {
+        val me = author ?: return
+        val state = _uiState.value
+        val group = state.openGroup ?: return
+        if (!state.isMember || state.inviteSearch.sendingUid != null) return
+        if (state.members.any { it.uid == user.uid }) {
+            say("@${user.username} is already in this group")
+            return
+        }
+        _uiState.update { it.copy(inviteSearch = it.inviteSearch.copy(sendingUid = user.uid)) }
+        viewModelScope.launch {
+            val result = repository.sendInvitation(group, me, user)
+            _uiState.update { s ->
+                s.copy(
+                    inviteSearch = s.inviteSearch.copy(
+                        sendingUid = null,
+                        invitedUids = if (result.isSuccess) s.inviteSearch.invitedUids + user.uid else s.inviteSearch.invitedUids
+                    ),
+                    message = if (result.isSuccess) {
+                        "Invited @${user.username}"
+                    } else {
+                        "Couldn't invite @${user.username}. They may already be invited or in the group."
+                    }
+                )
+            }
+        }
+    }
+
     // ── The open group ──────────────────────────────────────────────────
 
     fun openGroup(groupId: String) {
@@ -176,7 +276,8 @@ class GroupsViewModel @Inject constructor(
                 isLoadingPosts = true,
                 composer = PostComposer(),
                 openPostId = null,
-                replies = emptyList()
+                replies = emptyList(),
+                inviteSearch = InviteSearch()
             )
         }
         groupJobs = listOf(

@@ -4,16 +4,19 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import com.example.chorevo.community.DanceGroup
+import com.example.chorevo.community.GroupInvitation
 import com.example.chorevo.community.GroupMember
 import com.example.chorevo.community.GroupPost
 import com.example.chorevo.community.GroupPostKind
 import com.example.chorevo.community.GroupReply
 import com.example.chorevo.community.INVITE_CODE_ALPHABET
 import com.example.chorevo.community.INVITE_CODE_LENGTH
+import com.example.chorevo.community.invitationId
 import com.example.chorevo.community.isValidGroupName
 import com.example.chorevo.core.VideoMedia
 import com.example.chorevo.core.VideoMedia.putFileWithProgress
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.firebase.Repository.UserSearchResult
 import com.example.chorevo.videouploads.VideoCompressor
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
@@ -145,6 +148,76 @@ class GroupsRepository @Inject constructor(
                 trySend(if (err != null) emptyList() else snap?.documents.orEmpty().mapNotNull { it.toReplyOrNull(postId) })
             }
         awaitClose { reg.remove() }
+    }
+
+    // ── Invitations by username ─────────────────────────────────────────
+
+    /** Invitations sent to [uid], newest first. */
+    fun observeInvitations(uid: String): Flow<List<GroupInvitation>> = callbackFlow {
+        val reg = firestore.collection(INVITATIONS)
+            .whereEqualTo("inviteeUid", uid)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    Log.w(TAG, "observeInvitations failed", error)
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents.orEmpty().mapNotNull { d ->
+                    d.toObject(GroupInvitation::class.java)?.copy(id = d.id)
+                }.sortedByDescending { it.createdAt }
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    /** Invites [invitee] to [group] from [inviter], who must be a member. */
+    suspend fun sendInvitation(group: DanceGroup, inviter: Author, invitee: UserSearchResult): Result<Unit> = runCatching {
+        val ref = firestore.collection(INVITATIONS).document(invitationId(group.id, invitee.uid))
+        ref.set(
+            mapOf(
+                "groupId" to group.id,
+                "groupName" to group.name,
+                "inviteeUid" to invitee.uid,
+                "inviteeUsername" to invitee.username,
+                "inviterUid" to inviter.uid,
+                "inviterName" to inviter.displayName,
+                "createdAt" to System.currentTimeMillis()
+            )
+        ).await()
+    }
+
+    /** Joins the invitation's group and removes the invitation, in one batch. */
+    suspend fun acceptInvitation(invitation: GroupInvitation, me: Author): Result<String> = runCatching {
+        val groupRef = groupRef(invitation.groupId)
+        val invitationRef = firestore.collection(INVITATIONS).document(invitation.id)
+        val batch = firestore.batch()
+        batch.set(
+            groupRef.collection(MEMBERS).document(me.uid),
+            memberData(me.uid, me.displayName, me.photoUrl, GroupMember.ROLE_MEMBER, System.currentTimeMillis())
+        )
+        batch.delete(invitationRef)
+        try {
+            batch.commit().await()
+        } catch (e: Exception) {
+            // Already a member (joined another way): just clear the invitation.
+            val alreadyMember = runCatching {
+                groupRef.collection(MEMBERS).document(me.uid).get().await().exists()
+            }.getOrDefault(false)
+            if (!alreadyMember) {
+                val groupGone = runCatching { !groupRef.get().await().exists() }.getOrDefault(false)
+                if (groupGone) {
+                    runCatching { invitationRef.delete().await() }
+                    throw IllegalStateException("This group no longer exists.")
+                }
+                throw e
+            }
+            invitationRef.delete().await()
+        }
+        invitation.groupId
+    }
+
+    suspend fun declineInvitation(invitation: GroupInvitation): Result<Unit> = runCatching {
+        firestore.collection(INVITATIONS).document(invitation.id).delete().await()
     }
 
     // ── Create, join, leave ─────────────────────────────────────────────
@@ -434,6 +507,7 @@ class GroupsRepository @Inject constructor(
         const val TAG = "GroupsRepository"
         const val GROUPS = "groups"
         const val MEMBERS = "members"
+        const val INVITATIONS = "groupInvitations"
         const val POSTS = "posts"
         const val REPLIES = "replies"
         const val INVITES = "groupInvites"

@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.VpnKey
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -181,7 +182,15 @@ fun GroupsScreen(
                 Tab(
                     selected = state.tab == GroupsTab.MY_GROUPS,
                     onClick = { vm.selectTab(GroupsTab.MY_GROUPS) },
-                    text = { Text("My groups") },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("My groups")
+                            if (state.invitations.isNotEmpty()) {
+                                Spacer(Modifier.width(6.dp))
+                                Badge { Text(state.invitations.size.toString()) }
+                            }
+                        }
+                    },
                     modifier = Modifier.testTag("groupsTab_my")
                 )
                 Tab(
@@ -196,6 +205,8 @@ fun GroupsScreen(
                 GroupsTab.MY_GROUPS -> MyGroupsList(
                     state = state,
                     onOpen = vm::openGroup,
+                    onAccept = vm::acceptInvitation,
+                    onDecline = vm::declineInvitation,
                     onCreate = { showCreate = true },
                     onDiscover = { vm.selectTab(GroupsTab.DISCOVER) }
                 )
@@ -234,6 +245,96 @@ fun GroupsScreen(
 
 @Composable
 private fun MyGroupsList(
+    state: GroupsUiState,
+    onOpen: (String) -> Unit,
+    onAccept: (GroupInvitation) -> Unit,
+    onDecline: (GroupInvitation) -> Unit,
+    onCreate: () -> Unit,
+    onDiscover: () -> Unit
+) {
+    Column(Modifier.fillMaxSize()) {
+        if (state.invitations.isNotEmpty()) {
+            InvitationsSection(
+                invitations = state.invitations,
+                answeringId = state.answeringInvitationId,
+                onAccept = onAccept,
+                onDecline = onDecline
+            )
+        }
+        Box(Modifier.weight(1f)) {
+            MyGroupsContent(state, onOpen, onCreate, onDiscover)
+        }
+    }
+}
+
+/** Invitations sent to the user by username, with Accept / Decline. */
+@Composable
+private fun InvitationsSection(
+    invitations: List<GroupInvitation>,
+    answeringId: String?,
+    onAccept: (GroupInvitation) -> Unit,
+    onDecline: (GroupInvitation) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp)
+            .testTag("invitationsSection"),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            if (invitations.size == 1) "1 invitation" else "${invitations.size} invitations",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        invitations.take(5).forEach { inv ->
+            val busy = answeringId == inv.id
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = ChorevoTheme.colors.accent.copy(alpha = 0.12f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("invitation_${inv.groupId}")
+            ) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    GroupAvatar(inv.groupName, size = 40)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            inv.groupName,
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            "${inv.inviterName} invited you",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    TextButton(
+                        onClick = { onDecline(inv) },
+                        enabled = answeringId == null,
+                        modifier = Modifier.testTag("declineInvitation_${inv.groupId}")
+                    ) { Text("Decline") }
+                    Button(
+                        onClick = { onAccept(inv) },
+                        enabled = answeringId == null,
+                        shape = PillShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ChorevoTheme.colors.accent,
+                            contentColor = ChorevoTheme.colors.onAccent
+                        ),
+                        modifier = Modifier.testTag("acceptInvitation_${inv.groupId}")
+                    ) { Text(if (busy) "…" else "Join") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MyGroupsContent(
     state: GroupsUiState,
     onOpen: (String) -> Unit,
     onCreate: () -> Unit,

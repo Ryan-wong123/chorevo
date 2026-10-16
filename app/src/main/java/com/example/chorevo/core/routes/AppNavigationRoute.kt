@@ -44,6 +44,7 @@ fun AppNavigationRoute(
     onCommunitySelected: () -> Unit,
     onLeaderboardSelected: () -> Unit,
     onProfileSelected: () -> Unit,
+    groupsBadge: Int = 0,
     content: @Composable (PaddingValues) -> Unit
 ) {
     val showBar = screen.shouldShowBottomBar()
@@ -81,6 +82,7 @@ fun AppNavigationRoute(
                 ) {
                     AppBottomNavBar(
                         selected = screen.toBottomNavItem(),
+                        groupsBadge = groupsBadge,
                         onSelect = { tab ->
                             when (tab) {
                                 BottomNavItem.HOME -> onHomeSelected()
