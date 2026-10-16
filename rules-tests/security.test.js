@@ -98,13 +98,14 @@ test("nobody can write leaderboard stats from the app", async () => {
   await assertSucceeds(getDoc(doc(as("bob"), "leaderboardStats/alice")));
 });
 
-test("streak totals only go up by one per write", async () => {
-  const s = (total) => ({ weekStart: "2026-10-12", daysMask: 1, totalStreakActivities: total, lastActivityDate: "2026-10-16" });
+test("points, badges, streaks, challenges and session rewards are read-only for the app", async () => {
   const bob = as("bob");
-  await assertSucceeds(setDoc(doc(bob, "users/bob/streaks/current"), s(1)));
-  await assertSucceeds(setDoc(doc(bob, "users/bob/streaks/current"), s(2)));
-  await assertFails(setDoc(doc(bob, "users/bob/streaks/current"), s(500)));
-  await assertFails(setDoc(doc(bob, "users/bob/streaks/current"), { ...s(3), daysMask: 9999 }));
+  for (const path of ["points/current", "achievements/current", "streaks/current",
+    "weeklyChallenges/2026-10-12", "sessionRewards/s1"]) {
+    await assertFails(setDoc(doc(bob, `users/bob/${path}`), { totalPoints: 999999 }), path);
+    await assertSucceeds(getDoc(doc(bob, `users/bob/${path}`)));
+    await assertFails(getDoc(doc(as("mallory"), `users/bob/${path}`)));
+  }
 });
 
 test("practice sessions need a real 0..1 score; analysis is optional but must be genuine", async () => {
@@ -118,6 +119,12 @@ test("practice sessions need a real 0..1 score; analysis is optional but must be
     { ...base, sessionId: "s4", analysis: { danceId: "d1", educatorUid: "alice" } }));
   await assertFails(setDoc(doc(bob, "users/bob/danceLearningSessions/s5"),
     { ...base, sessionId: "s5", analysis: { danceId: "d1", educatorUid: "bob" } }));
+  // Every score is 0..1, the time-zone offset is a real one, and sessions are final.
+  await assertFails(setDoc(doc(bob, "users/bob/danceLearningSessions/s6"), { ...base, sessionId: "s6", timingConsistencyScore: 9 }));
+  await assertFails(setDoc(doc(bob, "users/bob/danceLearningSessions/s7"), { ...base, sessionId: "s7", smoothnessScore: -1 }));
+  await assertSucceeds(setDoc(doc(bob, "users/bob/danceLearningSessions/s8"), { ...base, sessionId: "s8", tzOffsetMinutes: 480 }));
+  await assertFails(setDoc(doc(bob, "users/bob/danceLearningSessions/s9"), { ...base, sessionId: "s9", tzOffsetMinutes: 5000 }));
+  await assertFails(setDoc(doc(bob, "users/bob/danceLearningSessions/s1"), { ...base, alignmentScore: 1 }));
 });
 
 // ── Dances and comments ─────────────────────────────────────────────────────

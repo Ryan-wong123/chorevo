@@ -160,6 +160,36 @@ class DanceLibraryRepositoryTest {
         verify(exactly = 1) { sessDoc.set(any<Map<String, Any?>>()) }
     }
 
+    @Test
+    fun uploadDanceSession_skipsSessionsAlreadyUploaded_andSendsTheTimeZone() = runTest {
+        val usersCol = mockk<CollectionReference>()
+        val sessCol = mockk<CollectionReference>()
+        val sessDoc = mockk<DocumentReference>()
+        val existing = mockk<DocumentSnapshot>()
+
+        every { firestore.collection("users") } returns usersCol
+        every { usersCol.document("uid123") } returns mockk {
+            every { collection("danceLearningSessions") } returns sessCol
+        }
+        every { sessCol.document("sess1") } returns sessDoc
+        every { sessDoc.get() } returns Tasks.forResult(existing)
+        every { sessDoc.set(any<Map<String, Any?>>()) } returns Tasks.forResult(null)
+        val session = mockk<DanceSessionEntity>(relaxed = true)
+        every { session.sessionId } returns "sess1"
+        every { session.analysisJson } returns "{}"
+
+        // Already uploaded (sessions are final): nothing is written again.
+        every { existing.exists() } returns true
+        repo.uploadDanceSession(uid = "uid123", session = session)
+        verify(exactly = 0) { sessDoc.set(any<Map<String, Any?>>()) }
+
+        every { existing.exists() } returns false
+        repo.uploadDanceSession(uid = "uid123", session = session)
+        verify(exactly = 1) {
+            sessDoc.set(match<Map<String, Any?>> { it["tzOffsetMinutes"] is Int })
+        }
+    }
+
     // ── Video privacy ─────────────────────────────────────────────────────────
 
     private fun mockDanceDoc(model: DanceLibraryModel) {

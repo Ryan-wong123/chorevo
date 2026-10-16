@@ -315,7 +315,9 @@ class DanceLibraryRepository @Inject constructor(
             "balanceScore"            to session.balanceScore,
             "timingConsistencyScore"  to session.timingConsistencyScore,
             "alignmentScore"          to session.alignmentScore,
-            "qualityFlag"             to session.qualityFlag
+            "qualityFlag"             to session.qualityFlag,
+            // Lets the server put the session on the user's local day/week.
+            "tzOffsetMinutes"         to java.util.TimeZone.getDefault().getOffset(session.tsEnd) / 60_000
         )
 
         if (extraAnalytics.isNotEmpty()) {
@@ -328,6 +330,9 @@ class DanceLibraryRepository @Inject constructor(
             payload["analysis"] = analysisMap
         }
 
+        // Sessions are final once uploaded (they earn points server-side), so a
+        // retry of a session that already made it is a no-op.
+        if (runCatching { doc.get().await().exists() }.getOrDefault(false)) return
         doc.set(payload).await()
     }
 

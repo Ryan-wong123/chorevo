@@ -67,14 +67,23 @@ service cloud.firestore {
     // A practice session. Scores feed the server-computed leaderboard, so the
     // headline score must be a real 0..1 value. `analysis` (which dance and
     // creator it was) is optional; when present it must name a real dance.
+    function isScore(v) {
+      return v is number && v >= 0 && v <= 1;
+    }
+
     function validSessionDoc(data, sessionId) {
       return data.keys().hasOnly(['sessionId', 'tsStart', 'tsEnd', 'activityName', 'activityType', 'durationMs',
           'smoothnessScore', 'balanceScore', 'timingConsistencyScore', 'alignmentScore', 'qualityFlag',
-          'extraAnalytics', 'analysis'])
+          'extraAnalytics', 'analysis', 'tzOffsetMinutes'])
         && data.sessionId == sessionId
-        && data.alignmentScore is number
-        && data.alignmentScore >= 0
-        && data.alignmentScore <= 1
+        && isScore(data.alignmentScore)
+        && isScore(data.get('timingConsistencyScore', 0))
+        && isScore(data.get('smoothnessScore', 0))
+        && isScore(data.get('balanceScore', 0))
+        && data.get('durationMs', 0) is int
+        && data.get('durationMs', 0) >= 0
+        && (!('tzOffsetMinutes' in data)
+          || (data.tzOffsetMinutes is int && data.tzOffsetMinutes >= -840 && data.tzOffsetMinutes <= 840))
         && isShortText(data.get('activityName', ''), 200)
         && isShortText(data.get('activityType', ''), 100)
         && isShortText(data.get('qualityFlag', ''), 100)
@@ -167,8 +176,18 @@ service cloud.firestore {
         && oldUsernameReleased();
       allow delete: if false;
 
+      // Rewards are computed by Cloud Functions from synced practice
+      // sessions (functions/rewards.js); the app can only read them.
       match /points/{docId} {
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
+
+      // Per-session reward summaries (points, badges, challenges) the app
+      // shows after practice.
+      match /sessionRewards/{sessionId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
       }
 
       // Push tokens of the user's devices (read by Cloud Functions).
@@ -180,7 +199,8 @@ service cloud.firestore {
       }
 
       match /achievements/{docId} {
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
+        allow write: if false;
       }
 
       // Legacy path; nothing writes it any more.
@@ -189,26 +209,17 @@ service cloud.firestore {
         allow write: if false;
       }
 
-      // Weekly streak. The activity total feeds the leaderboard, so it can
-      // only go up by one per write.
+      // Weekly streak, kept by Cloud Functions from synced sessions.
       match /streaks/{docId} {
         allow read: if isOwner(uid);
-        allow create, update: if isOwner(uid)
-          && request.resource.data.keys().hasOnly(['weekStart', 'daysMask', 'totalStreakActivities', 'lastActivityDate', 'updatedAt'])
-          && request.resource.data.daysMask is int
-          && request.resource.data.daysMask >= 0
-          && request.resource.data.daysMask <= 127
-          && request.resource.data.totalStreakActivities is int
-          && request.resource.data.totalStreakActivities >= 0
-          && request.resource.data.totalStreakActivities
-            <= (resource == null ? 0 : resource.data.get('totalStreakActivities', 0)) + 1
-          && isShortText(request.resource.data.get('weekStart', ''), 20)
-          && isShortText(request.resource.data.get('lastActivityDate', ''), 20);
-        allow delete: if false;
+        allow write: if false;
       }
 
+      // Created and updated by Cloud Functions (weeklyChallenges callable,
+      // rewardsFromSession).
       match /weeklyChallenges/{weekId} {
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
+        allow write: if false;
       }
 
       match /friends/{friendUid} {
@@ -226,10 +237,9 @@ service cloud.firestore {
         allow create: if isOwner(uid)
           && validSessionDoc(request.resource.data, sessionId);
 
-        // Re-uploads may not move a session to another dance or creator.
-        allow update: if isOwner(uid)
-          && validSessionDoc(request.resource.data, sessionId)
-          && request.resource.data.get('analysis', null) == resource.data.get('analysis', null);
+        // Sessions are final once uploaded: they drive points, badges and the
+        // leaderboard (rewardsFromSession runs once, on create).
+        allow update: if false;
 
         allow delete: if false;
       }

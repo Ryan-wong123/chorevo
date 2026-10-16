@@ -14,6 +14,7 @@ import com.example.chorevo.weeklychallenge.Repository.WeeklyChallengeRepository
 import com.google.android.datatransport.runtime.dagger.Provides
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.storage.FirebaseStorage
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -97,11 +98,9 @@ object RepositoryModule {
     @Singleton
     fun provideWeeklyChallengeRepository(
         firestore: FirebaseFirestore,
-        danceLibraryRepository: DanceLibraryRepository,
-        pointsRepository: PointsRepository
+        functions: FirebaseFunctions
     ): WeeklyChallengeRepository = WeeklyChallengeRepository(
         db = firestore,
-        danceLibraryRepository = danceLibraryRepository,
-        pointsRepository = pointsRepository
+        functions = functions
     )
 }
