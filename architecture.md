@@ -586,7 +586,7 @@ GitHub Actions (`.github/workflows/android.yml`) runs on push and pull request t
 2. Integration tests: `connectedDebugAndroidTest` on an API 29 x86_64 `pixel_5` emulator (2 GB AVD disk, 300 s boot timeout).
 3. Build: `assembleDebug assembleRelease`.
 
-Artifacts (kept 7 days): `chorevo-debug-apk`, `chorevo-release-apk`, and `instrumented-test-results` (uploaded even on failure).
+Artifacts (kept 3 days; uploads never fail the build): `chorevo-debug-apk`, `chorevo-release-apk`, `chorevo-release-aab` (when signing secrets are set), and `instrumented-test-results` (only when emulator tests fail).
 
 CI notes:
 
