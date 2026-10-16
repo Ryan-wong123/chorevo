@@ -1,5 +1,6 @@
 package com.example.chorevo.weeklychallenge
 
+import com.example.chorevo.dancelibrarylist.danceTypeKey
 import kotlin.random.Random
 import kotlin.math.roundToInt
 
@@ -264,8 +265,10 @@ object WeeklyChallengeEngine {
     private fun applyStyleExplorer(challenge: WeeklyChallenge, sessionStyle: String): WeeklyChallenge {
         if (sessionStyle.isBlank()) return challenge
 
-        val matches = challenge.requiredStyles.any { it.equals(sessionStyle, ignoreCase = true) }
-        val alreadySatisfied = challenge.satisfiedStyles.any { it.equals(sessionStyle, ignoreCase = true) }
+        // Compare style keys so "Hip Hop", "hip-hop" and "HIPHOP" count as the same style.
+        val sessionKey = danceTypeKey(sessionStyle)
+        val matches = challenge.requiredStyles.any { danceTypeKey(it) == sessionKey }
+        val alreadySatisfied = challenge.satisfiedStyles.any { danceTypeKey(it) == sessionKey }
 
         if (!matches || alreadySatisfied) return challenge
 
