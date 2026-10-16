@@ -118,6 +118,14 @@ service cloud.firestore {
         allow read, write: if isOwner(uid);
       }
 
+      // Push tokens of the user's devices (read by Cloud Functions).
+      match /fcmTokens/{token} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['token', 'platform', 'updatedAt'])
+          && request.resource.data.token == token;
+      }
+
       match /achievements/{docId} {
         allow read, write: if isOwner(uid);
       }

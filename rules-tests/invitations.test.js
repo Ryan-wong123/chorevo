@@ -149,3 +149,13 @@ test("the invitee can decline; others can't delete the invitation", async () => 
   await assertFails(deleteDoc(doc(as("mallory"), "groupInvitations/priv_bob")));
   await assertSucceeds(deleteDoc(doc(as("bob"), "groupInvitations/priv_bob")));
 });
+
+test("users keep their own push tokens; nobody else can read or write them", async () => {
+  const bob = as("bob");
+  await assertSucceeds(setDoc(doc(bob, "users/bob/fcmTokens/tok1"), { token: "tok1", platform: "android", updatedAt: now }));
+  await assertFails(setDoc(doc(bob, "users/bob/fcmTokens/tok2"), { token: "other", platform: "android", updatedAt: now }));
+  await assertFails(setDoc(doc(bob, "users/bob/fcmTokens/tok3"), { token: "tok3", extra: true }));
+  await assertFails(getDoc(doc(as("mallory"), "users/bob/fcmTokens/tok1")));
+  await assertFails(setDoc(doc(as("mallory"), "users/bob/fcmTokens/tokm"), { token: "tokm", platform: "android", updatedAt: now }));
+  await assertSucceeds(deleteDoc(doc(bob, "users/bob/fcmTokens/tok1")));
+});

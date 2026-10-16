@@ -160,7 +160,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Posts show newest first (up to 100). Members reply to posts (up to 500 characters) in a bottom sheet; non-members of a public group can read replies but not write.
 - Posts and replies cannot be edited. Authors can delete their own posts; the owner can delete any post.
 - Members can leave a group. The owner can see the member list, remove members and delete the group; deleting removes its posts, replies, invite and group videos. The owner cannot leave without deleting.
-- Invite by username: any member can open "Invite by username" from the group menu, type the start of a username, and tap Invite next to a person (people already in the group show "Member"). The invited user sees the invitation at the top of "My groups" ("Ana invited you", Join / Decline), with a count badge on the Groups tab and the "My groups" tab. Joining adds them to the group (private groups too) and removes the invitation; declining removes it. Deleting the group removes its pending invitations. There is no push notification for invitations yet.
+- Invite by username: any member can open "Invite by username" from the group menu, type the start of a username, and tap Invite next to a person (people already in the group show "Member"). The invited user sees the invitation at the top of "My groups" ("Ana invited you", Join / Decline), with a count badge on the Groups tab and the "My groups" tab. Joining adds them to the group (private groups too) and removes the invitation; declining removes it. Deleting the group removes its pending invitations.
+- Push notifications: the invited user also gets a push notification ("Ana invited you to join Salsa Crew") on every device where they're signed in. Tapping it opens Groups, where the invitation is waiting. On Android 13+ the app asks for notification permission after sign-in; it can be turned off per channel ("Group invitations") in the phone's settings. Signing out stops pushes for that account on the device.
 - The member count is kept by a Cloud Function, so it can lag a join by a second or two.
 - The old forum (`communityPosts`) is no longer shown; its data is kept.
 
@@ -314,6 +315,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 ### Firestore Collections
 
 - `users/{uid}`: uid, email, role (`USER`), displayName, photoUrl, lastSeen, username.
+- `users/{uid}/fcmTokens/{token}`: token, platform, updatedAt (one per signed-in device, for push notifications).
 - `usernames/{username}`: uid, createdAt (one document per claimed username, so each can belong to only one user).
 - `users/{uid}/danceLearningSessions/{sessionId}`: practice session summary (sessionId, timestamps, activity name/type, duration, alignment/balance/timing/smoothness scores, qualityFlag) and a nested `analysis` map (danceId, educatorUid, scores, average pose error, video URL and position, reference track, feedback messages, timeline points, performance segments).
 - `users/{uid}/friends/{friendUid}`: uid, displayName, photoUrl, addedAt.

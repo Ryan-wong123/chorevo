@@ -359,6 +359,23 @@ class AppViewModelTest {
         assertEquals("ABCD2345", vm.uiState.value.pendingGroupInvite)
     }
 
+    @Test
+    fun openGroupInvitations_fromAPush_opensGroups_evenBeforeSignIn() = runTest {
+        advanceUntilIdle()
+        vm.openGroupInvitations()
+        assertEquals(Screen.AUTH, vm.uiState.value.screen)
+
+        vm.onAuthed(makeProfile())
+        assertEquals(Screen.COMMUNITY, vm.uiState.value.screen)
+    }
+
+    @Test
+    fun onUsernameSaved_updatesTheProfile() = runTest {
+        vm.onAuthed(makeProfile())
+        vm.onUsernameSaved("ryan_w")
+        assertEquals("ryan_w", vm.uiState.value.profile?.username)
+    }
+
     // ── navigateBack (system back gesture) ────────────────────────────────────
 
     @Test
