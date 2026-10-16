@@ -1,10 +1,14 @@
 package com.example.chorevo.community
 
+import android.Manifest
 import android.content.ClipData
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.PersistableBundle
 import android.text.format.DateUtils
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -100,6 +104,7 @@ import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.isTrustedMediaUrl
 import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.Repository.UserSearchResult
@@ -458,7 +463,7 @@ private fun PostCard(
                     }
                 }
                 GroupPostKind.VIDEO -> {
-                    val url = post.videoUrl
+                    val url = post.videoUrl?.takeIf(::isTrustedMediaUrl)
                     Thumbnail(
                         url = post.thumbnailUrl,
                         label = null,
@@ -539,7 +544,7 @@ private fun Thumbnail(
             .aspectRatio(16f / 10f)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (!url.isNullOrBlank()) {
+            if (isTrustedMediaUrl(url)) {
                 AsyncImage(
                     model = url,
                     contentDescription = null,
@@ -593,6 +598,16 @@ private fun Composer(
     val recordVideo = rememberLauncherForActivityResult(ActivityResultContracts.CaptureVideo()) { saved ->
         val uri = captureUri
         if (saved && uri != null) onVideo(uri)
+    }
+    val launchRecording = {
+        VideoCaptureFileProvider.createVideoCaptureUri(context)?.let {
+            captureUri = it
+            recordVideo.launch(it)
+        }
+    }
+    // The app declares CAMERA, so the camera app intent needs that permission first.
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) launchRecording()
     }
 
     Surface(
@@ -651,9 +666,12 @@ private fun Composer(
                             leadingIcon = { Icon(Icons.Filled.Videocam, contentDescription = null) },
                             onClick = {
                                 showVideoChoice = false
-                                VideoCaptureFileProvider.createVideoCaptureUri(context)?.let {
-                                    captureUri = it
-                                    recordVideo.launch(it)
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                                    PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    launchRecording()
+                                } else {
+                                    cameraPermission.launch(Manifest.permission.CAMERA)
                                 }
                             }
                         )
@@ -1014,7 +1032,11 @@ private fun relativeTime(millis: Long): String =
 
 private fun copyToClipboard(context: Context, code: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-    clipboard.setPrimaryClip(ClipData.newPlainText("Chorevo invite code", code))
+    val clip = ClipData.newPlainText("Chorevo invite code", code).apply {
+        // Android 13+ hides sensitive clips in the clipboard preview.
+        description.extras = PersistableBundle().apply { putBoolean("android.content.extra.IS_SENSITIVE", true) }
+    }
+    clipboard.setPrimaryClip(clip)
 }
 
 private fun shareInvite(context: Context, group: DanceGroup) {

@@ -103,8 +103,15 @@ fun GroupsScreen(
     val scanInvite: () -> Unit = {
         InviteQr.scan(
             context,
+            // Confirm before joining: a QR code someone shows you shouldn't
+            // add you to a group without a tap.
             onResult = { code ->
-                if (code != null) vm.joinWithCode(code) else vm.showMessage("That QR code isn't a Chorevo group invite.")
+                if (code != null) {
+                    joinCodePrefill = code
+                    showJoinCode = true
+                } else {
+                    vm.showMessage("That QR code isn't a Chorevo group invite.")
+                }
             },
             onError = { e -> vm.showMessage("Couldn't open the scanner: ${e.message}") }
         )

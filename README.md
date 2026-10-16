@@ -769,7 +769,7 @@ The repository currently contains tests around:
 - The app is implemented as a single Android module.
 - Hilt is used for dependency injection.
 - Firebase App Check debug provider is enabled in debug builds.
-- Release minification is currently disabled.
+- Release builds use R8 (minify + resource shrinking); keep rules are in `app/proguard-rules.pro`.
 
 ## Automatic Firebase deploys
 

@@ -4,7 +4,7 @@
 
 Chorevo is a native Android dance-learning app that helps learners practise dance routines with AI-assisted body pose and hand/finger feedback. The product combines a vertical dance video feed with likes, comments and sharing, creator uploads with public/private visibility, multi-dancer reference analysis, live camera practice with an instructor avatar, post-session analytics, points, levels, badges, streaks, weekly challenges, community groups, reminders, profiles, and leaderboards.
 
-The current implementation is a single-module Kotlin Android app using Jetpack Compose (Material 3), Hilt, Firebase Authentication (email/password and Google via Credential Manager), Firestore, Firebase Storage, Firebase App Check (debug provider), CameraX, Media3 (ExoPlayer and Transformer), Room, WorkManager, DataStore, Coil, MediaPipe Tasks Vision (Pose and Holistic Landmarker), TensorFlow Lite (YOLO person detector) and SceneView (3D instructor avatar). Shareable dance links are served by Firebase Hosting and a Cloud Function (`functions/`).
+The current implementation is a single-module Kotlin Android app using Jetpack Compose (Material 3), Hilt, Firebase Authentication (email/password and Google via Credential Manager), Firestore, Firebase Storage, Firebase App Check (Play Integrity in release builds), CameraX, Media3 (ExoPlayer and Transformer), Room, WorkManager, DataStore, Coil, MediaPipe Tasks Vision (Pose and Holistic Landmarker), TensorFlow Lite (YOLO person detector) and SceneView (3D instructor avatar). Shareable dance links are served by Firebase Hosting and a Cloud Function (`functions/`).
 
 ## 2. Product Goals
 
@@ -49,7 +49,9 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - The sign-in screen uses the same stage background and dancer, a gradient "Chorevo" wordmark and tagline, and a card with icon text fields, a gradient Login / Create Account button (with a spinner while signing in), a Google button, inline error messages, and a "Sign up here" / "Login here" switch. It scrolls above the keyboard.
 - Email/password sign up and sign in through Firebase Auth.
 - "Continue with Google" sign-in: a Google ID token from Credential Manager is exchanged for a Firebase credential.
-- Every sign-in and session restore merge-writes the profile to `users/{uid}` and mirrors display name and photo into `leaderboardStats/{uid}`.
+- Every sign-in and session restore merge-writes the profile to `users/{uid}` (no email is stored there; other users can read a profile's name, photo and username).
+- Sign-up needs a password of at least 8 characters and sends a verification email. "Forgot password?" on the sign-in screen emails a reset link (the message doesn't reveal whether the email has an account).
+- Settings → Delete account permanently deletes the account and the user's data (see SECURITY.md); the same steps are published at https://chorevo-dea05.web.app/delete-account.html.
 - The current user is restored on app startup before authenticated routes are shown.
 - Profile screen: name, settings and logout in the header; the profile photo inside a gradient streak ring (with a flame badge showing days practised this week); a stats row (Uploads, Liked, Streak days this week, Points); the weekly streak card, achievements level panel, and weekly challenges summary card; and icon tabs for Uploads (public uploads as a thumbnail grid), Private (private uploads, with lock badges), Liked, Activity (own analytics), and Learners (learners practising my uploads). Tapping an upload opens an action sheet: Play, Edit details, Make public/private, Delete.
 - The Liked tab is a three-column grid; tapping a video opens a full-screen vertical feed with like/unlike and Share. Private dances are hidden unless they belong to the viewer.
@@ -177,7 +179,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Global and Friends scopes, ranked by Sessions (total practice sessions), Similarity (average alignment score), or Active Days. Tied users share a rank.
 - The top three stand on a podium (2nd left, 1st raised in the middle with a trophy, 3rd right) with gold, silver and bronze avatar rings, their metric value, and blocks that rise in on load. Everyone from 4th down is listed below with their rank. The user's own rank is pinned in a "Your position" card at the bottom of the screen; on the Global board it shows the real rank even outside the top 100 (one count of users with a higher score).
 - Users add friends (+) from the Global board (podium or list) and remove them from the Friends board. The Friends view is the current user plus saved friends, read directly by user ID (so friends outside the global top 100 are included); the metric.
-- Stats in `leaderboardStats/{uid}` are recomputed on the client after each synced session.
+- Stats in `leaderboardStats/{uid}` are computed by Cloud Functions from synced sessions and the streak; the app can't write them.
 
 ### Reminders
 
@@ -290,7 +292,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Learner session reads must be limited to the owner or the educator linked in the analysis payload.
 - Any signed-in user can read any `users/{uid}` profile document, including its email.
 - Storage rules must enforce owner-only writes and content-type/size limits, including for pose templates (`danceTemplates/{uid}/…`).
-- App Check debug provider is installed only for debug builds.
+- App Check uses Play Integrity in release builds and the debug provider only in debug builds. Release builds are shrunk and obfuscated with R8.
 - Video privacy is enforced by Firestore rules: a private dance, its likes and its comments can only be read by its uploader, and feed queries must filter on `visibility == "public"`. The app and the share Cloud Function also check it.
 - Server-managed dance fields (`likeCount`, `trendingScore`, `feedReady`, `danceTypeKey`, `searchTokens`, `shuffleKey`) can only be written by Cloud Functions.
 - The share Cloud Function reads Firestore with the Admin SDK and must never expose private or disabled dances.

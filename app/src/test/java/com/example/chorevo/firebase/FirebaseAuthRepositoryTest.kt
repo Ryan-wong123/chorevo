@@ -10,6 +10,7 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
@@ -105,18 +106,19 @@ class FirebaseAuthRepositoryTest {
             auth.createUserWithEmailAndPassword("a@b.com", "pass123")
         }
         verify(exactly = 1) { db.collection("users") }
-        verify(exactly = 1) { db.collection("leaderboardStats") }
+        verify(exactly = 0) { db.collection("leaderboardStats") }
         verify(exactly = 1) { usersCollection.document("uid123") }
         verify(exactly = 1) {
             docRef.set(
                 match<Map<String, Any?>> { m: Map<String, Any?> ->
-                    m["displayName"] == "Mark"
+                    // No email or role in the readable profile.
+                    m["displayName"] == "Mark" && m["email"] is FieldValue && !m.containsKey("role")
                 },
                 SetOptions.merge()
             )
         }
         verify(exactly = 1) { docRef.get() }
-        verify(exactly = 1) { leaderboardCollection.document("uid123") }
+        verify(exactly = 0) { leaderboardCollection.document("uid123") }
     }
 
     @Test
@@ -199,7 +201,7 @@ class FirebaseAuthRepositoryTest {
 
         verify(exactly = 1) { auth.signInWithEmailAndPassword("x@y.com", "pw") }
         verify(exactly = 1) { db.collection("users") }
-        verify(exactly = 1) { db.collection("leaderboardStats") }
+        verify(exactly = 0) { db.collection("leaderboardStats") }
         verify(exactly = 1) { usersCollection.document("uid999") }
         verify(exactly = 1) { docRef.get() }
         verify(exactly = 1) { snapshot.getString("displayName") }
@@ -212,7 +214,7 @@ class FirebaseAuthRepositoryTest {
                 SetOptions.merge()
             )
         }
-        verify(exactly = 1) { leaderboardCollection.document("uid999") }
+        verify(exactly = 0) { leaderboardCollection.document("uid999") }
     }
 
     @Test
@@ -261,7 +263,7 @@ class FirebaseAuthRepositoryTest {
 
         verify(exactly = 1) { auth.signInWithCredential(any<AuthCredential>()) }
         verify(exactly = 1) { db.collection("users") }
-        verify(exactly = 1) { db.collection("leaderboardStats") }
+        verify(exactly = 0) { db.collection("leaderboardStats") }
     }
 
     /** Wires a signed-in Google user whose stored profile has [storedName] / [storedPhoto]. */

@@ -7,6 +7,8 @@ import com.example.chorevo.notification.PushTokens
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
@@ -29,6 +31,8 @@ class FirebaseAuthRepository @Inject constructor(
     ): Result<UserProfile> = runCatching {
         val res = auth.createUserWithEmailAndPassword(email, password).await()
         val user = res.user ?: error("Signup failed")
+        // Lets the user prove they own the address (and recover the account).
+        runCatching { user.sendEmailVerification() }
         syncUserProfile(
             user = user,
             fallbackEmail = email,
@@ -91,12 +95,6 @@ class FirebaseAuthRepository @Inject constructor(
             .get()
             .await()
 
-        syncLeaderboardProfile(
-            uid = user.uid,
-            displayName = snap.getString("displayName")?.trim(),
-            photoUrl = downloadUrl
-        )
-
         UserProfile(
             uid = user.uid,
             email = user.email,
@@ -107,24 +105,27 @@ class FirebaseAuthRepository @Inject constructor(
         )
     }
 
-    /** Handles sync leaderboard profile. */
-    private suspend fun syncLeaderboardProfile(
-        uid: String,
-        displayName: String?,
-        photoUrl: String?
-    ) {
-        db.collection("leaderboardStats")
-            .document(uid)
-            .set(
-                mapOf(
-                    "uid" to uid,
-                    "displayName" to (displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User"),
-                    "photoUrl" to photoUrl,
-                    "updatedAt" to System.currentTimeMillis()
-                ),
-                SetOptions.merge()
+    /**
+     * Permanently deletes the signed-in account. The deleteUserData Cloud
+     * Function then removes the user's data and files. Firebase asks for a
+     * recent sign-in first; that failure comes back as a friendly message.
+     */
+    suspend fun deleteAccount(): Result<Unit> = runCatching {
+        val user = auth.currentUser ?: error("You're not signed in.")
+        try {
+            user.delete().await()
+        } catch (e: FirebaseAuthRecentLoginRequiredException) {
+            throw IllegalStateException(
+                "For your security, sign out and sign in again, then delete your account.", e
             )
-            .await()
+        }
+        PushTokens.unregister()
+        auth.signOut()
+    }
+
+    /** Sends a password reset email; failures (such as no such account) are not reported. */
+    suspend fun sendPasswordReset(email: String) {
+        runCatching { auth.sendPasswordResetEmail(email).await() }
     }
 
     /** Handles sign out. */
@@ -154,15 +155,17 @@ class FirebaseAuthRepository @Inject constructor(
         val storedPhotoUrl = existing.getString("photoUrl")?.takeUnless { it.isBlank() }
         val username = existing.getString("username")?.takeUnless { it.isBlank() }
 
-        val displayName = explicitDisplayName?.trim().takeUnless { it.isNullOrBlank() }
+        val displayName = explicitDisplayName?.trim()?.take(MAX_NAME_LENGTH).takeUnless { it.isNullOrBlank() }
             ?: storedDisplayName
-            ?: fallbackDisplayName?.trim().takeUnless { it.isNullOrBlank() }
+            ?: fallbackDisplayName?.trim()?.take(MAX_NAME_LENGTH).takeUnless { it.isNullOrBlank() }
         val photoUrl = storedPhotoUrl ?: fallbackPhotoUrl?.takeUnless { it.isBlank() }
 
+        // Profiles are readable by other users, so no email here (it comes from
+        // Firebase Auth); older versions stored it, so remove it. The role is
+        // never written by the app.
         val fields = mutableMapOf<String, Any?>(
             "uid" to user.uid,
-            "email" to (user.email ?: fallbackEmail),
-            "role" to UserRole.USER.name,
+            "email" to FieldValue.delete(),
             "lastSeen" to System.currentTimeMillis()
         )
         // Only write name/photo when there is a value, so merge never nulls them out.
@@ -170,12 +173,7 @@ class FirebaseAuthRepository @Inject constructor(
         if (photoUrl != null) fields["photoUrl"] = photoUrl
 
         userRef.set(fields, SetOptions.merge()).await()
-
-        syncLeaderboardProfile(
-            uid = user.uid,
-            displayName = displayName,
-            photoUrl = photoUrl
-        )
+        // The leaderboard copy of name and photo is kept by a Cloud Function.
 
         return UserProfile(
             uid = user.uid,
@@ -185,5 +183,10 @@ class FirebaseAuthRepository @Inject constructor(
             photoUrl = photoUrl,
             username = username
         )
+    }
+
+    private companion object {
+        /** Same limit as firestore.rules (isName). */
+        const val MAX_NAME_LENGTH = 60
     }
 }

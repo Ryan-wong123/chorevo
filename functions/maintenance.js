@@ -107,8 +107,24 @@ async function updateCategoryCounts(db, before, after) {
   await db.doc(CATEGORIES_DOC).set(data, { merge: true });
 }
 
+/**
+ * Removes email addresses that older app versions stored on users/{uid}
+ * (profiles are readable by other users; the app now gets the email from
+ * Firebase Auth). Idempotent; returns how many profiles were cleaned.
+ */
+async function removeProfileEmails(db) {
+  const snap = await db.collection("users").where("email", "!=", null).get();
+  for (let i = 0; i < snap.docs.length; i += BATCH_LIMIT) {
+    const batch = db.batch();
+    for (const doc of snap.docs.slice(i, i + BATCH_LIMIT)) batch.update(doc.ref, { email: FieldValue.delete() });
+    await batch.commit();
+  }
+  return { profilesWithoutEmail: snap.size };
+}
+
 module.exports = {
   CATEGORIES_DOC,
+  removeProfileEmails,
   countLikes,
   refreshAllDances,
   backfillLikeUids,

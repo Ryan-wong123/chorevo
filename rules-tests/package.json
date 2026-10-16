@@ -2,11 +2,15 @@
   "name": "chorevo-rules-tests",
   "private": true,
   "scripts": {
-    "test": "firebase emulators:exec --only firestore --project demo-chorevo \"node --test\""
+    "test": "firebase emulators:exec --only firestore,storage --project demo-chorevo \"node --test\""
   },
   "devDependencies": {
-    "@firebase/rules-unit-testing": "^4.0.1",
-    "firebase": "^11.0.0",
-    "firebase-tools": "^15.33.0"
+    "@firebase/rules-unit-testing": "^6.0.0",
+    "firebase": "^13.0.0",
+    "firebase-tools": "^15.34.0"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.6",
+    "re2": "^1.27.0"
   }
 }

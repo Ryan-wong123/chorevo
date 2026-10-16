@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.chorevo.core.LocalUserFiles
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.firebase.AutoRetryUploaderService
@@ -135,7 +136,7 @@ class AppViewModel @Inject constructor(
 
         result.fold(
             onSuccess = { dance ->
-                Log.d("DeepLink", "Dance fetched successfully: $dance")
+                Log.d("DeepLink", "Dance fetched: ${dance.danceId}")
                 _uiState.update {
                     it.copy(
                         sharedDance = dance,
@@ -278,6 +279,30 @@ class AppViewModel @Inject constructor(
     /** Signs the user out and resets screen state that depends on an active session. */
     fun logout() {
         authRepository.signOut()
+        clearSessionState()
+    }
+
+    /**
+     * Permanently deletes the account (Settings → Delete account). [onDone]
+     * gets null on success (the app returns to sign-in) or an error message.
+     */
+    fun deleteAccount(onDone: (String?) -> Unit) {
+        viewModelScope.launch {
+            authRepository.deleteAccount()
+                .onSuccess {
+                    clearSessionState()
+                    onDone(null)
+                }
+                .onFailure { e -> onDone(e.message ?: "Couldn't delete your account.") }
+        }
+    }
+
+    /** Forgets everything tied to the signed-out account, including links waiting for sign-in. */
+    private fun clearSessionState() {
+        pendingDeepLinkDanceId = null
+        pendingInviteCode = null
+        pendingOpenGroups = false
+        LocalUserFiles.clear(appContext)
         _uiState.update {
             it.copy(
                 profile = null,

@@ -101,8 +101,8 @@ test("the liked-videos query only returns the caller's own likes", async () => {
 
 test("clients cannot set or change server-managed fields", async () => {
   const db = as("owner");
-  await assertSucceeds(setDoc(doc(db, "danceLibrary/new1"), { danceId: "new1", educatorUid: "owner", title: "x" }));
-  await assertFails(setDoc(doc(db, "danceLibrary/new2"), { danceId: "new2", educatorUid: "owner", likeCount: 99 }));
+  await assertSucceeds(setDoc(doc(db, "danceLibrary/new1"), { danceId: "new1", educatorUid: "owner", title: "x", createdAt: Date.now() }));
+  await assertFails(setDoc(doc(db, "danceLibrary/new2"), { danceId: "new2", educatorUid: "owner", likeCount: 99, createdAt: Date.now() }));
   await assertSucceeds(updateDoc(doc(db, "danceLibrary/pub"), { title: "Renamed", visibility: "private" }));
   await assertFails(updateDoc(doc(db, "danceLibrary/pub"), { likeCount: 1000 }));
   await assertFails(updateDoc(doc(db, "danceLibrary/pub"), { feedReady: false }));

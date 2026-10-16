@@ -501,7 +501,8 @@ class DanceLibraryRepository @Inject constructor(
     ): Result<Unit> {
         return try {
             val commentId = java.util.UUID.randomUUID().toString()
-            val comment   = DanceComment(commentId, uid, username, text)
+            // Limits match firestore.rules (name 1-60, text 1-1000 characters).
+            val comment   = DanceComment(commentId, uid, username.trim().ifBlank { "User" }.take(60), text.take(1_000))
             firestore.collection("danceLibrary")
                 .document(danceId).collection("comments")
                 .document(commentId).set(comment).await()

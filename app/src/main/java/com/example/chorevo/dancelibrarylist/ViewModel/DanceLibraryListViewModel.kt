@@ -219,13 +219,8 @@ class DanceLibraryListViewModel @Inject constructor(
 
             res.fold(
                 onSuccess = {
-                    runCatching {
-                        val updatedStreak = streakRepository.tickToday(uid)
-                        leaderboardRepository.refreshUserStats(
-                            uid = uid,
-                            totalActiveDays = updatedStreak.totalStreakActivities
-                        )
-                    }
+                    // The leaderboard is recomputed server-side from the session and streak.
+                    runCatching { streakRepository.tickToday(uid) }
                     _uploadState.update { it.copy(isWorking = false, message = "Submitted practice result") }
                     onSuccess?.invoke()
                 },

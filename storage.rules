@@ -10,64 +10,81 @@ service firebase.storage {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function isUpload(maxBytes, contentTypePattern) {
+      return request.resource.size < maxBytes
+        && request.resource.contentType.matches(contentTypePattern);
+    }
+
+    // `read` is split into get and list: nobody can list a folder (that would
+    // reveal every file name, including private dances). The app plays other
+    // users' videos through their download URLs, so direct reads by path are
+    // only needed by the owner.
+
+    // Dance videos: danceVideos/{uid}/{danceId}.mp4
     match /danceVideos/{userId}/{fileName} {
-      allow read: if true;
-
-      allow write: if isOwner(userId)
-        && request.resource.size < 200 * 1024 * 1024
-        && request.resource.contentType.matches('video/.*');
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create, update: if isOwner(userId)
+        && fileName.matches('[A-Za-z0-9_-]{1,128}[.]mp4')
+        && isUpload(200 * 1024 * 1024, 'video/.*');
+      allow delete: if isOwner(userId);
     }
 
+    // Cover frames: danceThumbnails/{uid}/{danceId}.jpg
     match /danceThumbnails/{userId}/{fileName} {
-      allow read: if true;
-
-      allow write: if isOwner(userId)
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create, update: if isOwner(userId)
+        && fileName.matches('[A-Za-z0-9_-]{1,128}[.]jpg')
+        && isUpload(10 * 1024 * 1024, 'image/.*');
+      allow delete: if isOwner(userId);
     }
 
-    // Group-only videos and their thumbnails. Only the uploader writes; any
-    // signed-in user may read (the URLs are only stored in group posts,
-    // which Firestore rules limit to the group's readers).
+    // Group-only videos and covers: groupVideos/{uid}/{postId}.mp4,
+    // groupThumbnails/{uid}/{postId}.jpg. Their download URLs are only stored
+    // in group posts, which Firestore rules limit to the group's readers.
     match /groupVideos/{userId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isOwner(userId)
-        && (request.resource == null
-          || (request.resource.size < 200 * 1024 * 1024
-            && request.resource.contentType.matches('video/.*')));
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create, update: if isOwner(userId)
+        && fileName.matches('[A-Za-z0-9_-]{1,128}[.]mp4')
+        && isUpload(200 * 1024 * 1024, 'video/.*');
+      allow delete: if isOwner(userId);
     }
 
     match /groupThumbnails/{userId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isOwner(userId)
-        && (request.resource == null
-          || (request.resource.size < 10 * 1024 * 1024
-            && request.resource.contentType.matches('image/.*')));
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create, update: if isOwner(userId)
+        && fileName.matches('[A-Za-z0-9_-]{1,128}[.]jpg')
+        && isUpload(10 * 1024 * 1024, 'image/.*');
+      allow delete: if isOwner(userId);
     }
 
     match /profilePhotos/{userId}/{fileName} {
-      allow read: if isSignedIn();
-
-      allow write: if isOwner(userId)
-        && request.resource.size < 10 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create, update: if isOwner(userId)
+        && isUpload(10 * 1024 * 1024, 'image/.*');
+      allow delete: if isOwner(userId);
     }
 
-    // Generated pose templates, scoped to the uploader.
+    // Generated pose templates, scoped to the uploader. Practising someone
+    // else's dance reads its template by path.
     match /danceTemplates/{userId}/{fileName} {
-      allow read: if isSignedIn();
-
+      allow get: if isSignedIn();
+      allow list: if false;
       allow create, update: if isOwner(userId)
+        && fileName.matches('[A-Za-z0-9_-]{1,128}[.]json')
         && request.resource.size < 20 * 1024 * 1024
         && request.resource.contentType == 'application/json';
-
       allow delete: if isOwner(userId);
     }
 
     // Templates written before uploader scoping: readable, no longer writable.
     match /danceTemplates/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if false;
+      allow get: if isSignedIn();
+      allow list, write: if false;
     }
 
     match /{allPaths=**} {

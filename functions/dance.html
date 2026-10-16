@@ -45,45 +45,6 @@
       <p id="hint" class="hint"></p>
     </main>
 
-    <script>
-      (function () {
-        var ANDROID_PACKAGE = 'com.example.chorevo';
-
-        // /dance/<id>  →  <id>
-        var match = location.pathname.match(/^\/dance\/([^\/?#]+)/);
-        var danceId = match ? match[1] : '';
-        var params = new URLSearchParams(location.search);
-        var isAndroid = /android/i.test(navigator.userAgent);
-
-        var schemeUrl = 'chorevo://dance/' + danceId;
-        var fallback = location.origin + location.pathname + '?app=missing';
-        var intentUrl = 'intent://dance/' + danceId +
-          '#Intent;scheme=chorevo;package=' + ANDROID_PACKAGE +
-          ';S.browser_fallback_url=' + encodeURIComponent(fallback) + ';end';
-
-        var openBtn = document.getElementById('open');
-        var hint = document.getElementById('hint');
-        openBtn.href = isAndroid ? intentUrl : schemeUrl;
-
-        if (!danceId) {
-          hint.textContent = 'This link looks incomplete.';
-          openBtn.style.display = 'none';
-        } else if (params.get('app') === 'missing') {
-          hint.textContent = 'Chorevo isn’t installed on this device yet.';
-        } else if (isAndroid) {
-          // Try to jump straight into the app, like TikTok/Instagram links do.
-          location.replace(intentUrl);
-        }
-
-        document.getElementById('copy').addEventListener('click', function () {
-          var link = location.origin + location.pathname;
-          if (navigator.clipboard) {
-            navigator.clipboard.writeText(link).then(function () { hint.textContent = 'Link copied'; });
-          } else {
-            hint.textContent = link;
-          }
-        });
-      })();
-    </script>
+    <script src="/js/dance.js"></script>
   </body>
 </html>

@@ -36,7 +36,7 @@ test.after(async () => {
 });
 
 const as = (uid) => env.authenticatedContext(uid).firestore();
-const now = 1_700_000_000_000;
+const now = Date.now();
 
 function claim(db, uid, handle, old) {
   const batch = writeBatch(db);
