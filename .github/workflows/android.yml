@@ -103,15 +103,18 @@ jobs:
           emulator-options: -no-window -noaudio -no-boot-anim -gpu swiftshader_indirect -no-snapshot-save -no-metrics
           script: ./gradlew --stacktrace connectedDebugAndroidTest --no-daemon
 
+      # Reports are only needed to debug failures. Uploads never fail the build
+      # (e.g. when the account's artifact storage quota is full).
       - name: Upload instrumented test results
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: always()
+        if: failure()
+        continue-on-error: true
         with:
           name: instrumented-test-results
           path: |
             app/build/outputs/androidTest-results/
             app/build/reports/androidTests/
-          retention-days: 7
+          retention-days: 3
 
   build:
     name: Build (assemble)
@@ -173,26 +176,29 @@ jobs:
         run: rm -f "$RUNNER_TEMP/upload-key.jks"
 
       - name: Upload debug APK
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: chorevo-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
       - name: Upload release APK
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: chorevo-release-apk
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
       - name: Upload release App Bundle
         if: steps.signing.outputs.signed == 'true'
+        continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: chorevo-release-aab
           path: app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
