@@ -1,6 +1,7 @@
 package com.example.chorevo.core.share
 
 import android.net.Uri
+import com.example.chorevo.community.inviteCodeFromText
 
 /**
  * Single source of truth for Chorevo share links.
@@ -27,6 +28,15 @@ object ShareLinks {
     /** Public https link to a dance, safe to paste anywhere. */
     fun danceLink(danceId: String): String =
         "https://$WEB_HOST/dance/${Uri.encode(danceId)}"
+
+    /**
+     * Link to join a private group; group members show it as a QR code.
+     * The Hosting page at /join/<code> hands off to chorevo://join/<code>.
+     */
+    fun groupInviteLink(code: String): String = "https://$WEB_HOST/join/$code"
+
+    /** The invite code in a group invite link (https or chorevo://join/), or null. */
+    fun parseInviteCode(uri: Uri): String? = inviteCodeFromText(uri.toString())
 
     /**
      * Extracts the dance ID from any supported link:

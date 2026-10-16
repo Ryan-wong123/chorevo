@@ -26,6 +26,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -58,57 +59,6 @@ class DanceLibraryRepositoryTest {
     @After
     fun tearDown() {
         unmockkAll()
-    }
-
-    @Test
-    fun listEnabled_success_returnsModels() = runTest {
-        val col = mockk<CollectionReference>()
-        val query = mockk<Query>()
-        val snap = mockk<QuerySnapshot>()
-        val d1 = mockk<DocumentSnapshot>()
-        val d2 = mockk<DocumentSnapshot>()
-
-        every { firestore.collection("danceLibrary") } returns col
-        every { col.whereEqualTo("enabled", true) } returns query
-        every { query.get() } returns Tasks.forResult(snap)
-        every { snap.documents } returns listOf(d1, d2)
-
-        val m1 = DanceLibraryModel(danceId = "d1", title = "A", educatorName = "E1", enabled = true)
-        val m2 = DanceLibraryModel(danceId = "d2", title = "B", educatorName = "E2", enabled = true)
-
-        every { d1.toObject(DanceLibraryModel::class.java) } returns m1
-        every { d2.toObject(DanceLibraryModel::class.java) } returns m2
-
-        val res = repo.listEnabled()
-
-        assertTrue(res.isSuccess)
-        val list = res.getOrThrow()
-        assertEquals(2, list.size)
-        assertEquals("d1", list[0].danceId)
-        assertEquals("d2", list[1].danceId)
-
-        verify(exactly = 1) { firestore.collection("danceLibrary") }
-        verify(exactly = 1) { col.whereEqualTo("enabled", true) }
-        verify(exactly = 1) { query.get() }
-    }
-
-    @Test
-    fun listEnabled_failure_returnsFailure() = runTest {
-        val col = mockk<CollectionReference>()
-        val query = mockk<Query>()
-
-        every { firestore.collection("danceLibrary") } returns col
-        every { col.whereEqualTo("enabled", true) } returns query
-        every { query.get() } returns Tasks.forException(RuntimeException("boom"))
-
-        val res = repo.listEnabled()
-
-        assertTrue(res.isFailure)
-        assertNotNull(res.exceptionOrNull())
-
-        verify(exactly = 1) { firestore.collection("danceLibrary") }
-        verify(exactly = 1) { col.whereEqualTo("enabled", true) }
-        verify(exactly = 1) { query.get() }
     }
 
     @Test
@@ -212,28 +162,6 @@ class DanceLibraryRepositoryTest {
 
     // ── Video privacy ─────────────────────────────────────────────────────────
 
-    @Test
-    fun listEnabled_excludesPrivateVideos() = runTest {
-        val col = mockk<CollectionReference>()
-        val query = mockk<Query>()
-        val snap = mockk<QuerySnapshot>()
-        val publicDoc = mockk<DocumentSnapshot>()
-        val privateDoc = mockk<DocumentSnapshot>()
-
-        every { firestore.collection("danceLibrary") } returns col
-        every { col.whereEqualTo("enabled", true) } returns query
-        every { query.get() } returns Tasks.forResult(snap)
-        every { snap.documents } returns listOf(publicDoc, privateDoc)
-        every { publicDoc.toObject(DanceLibraryModel::class.java) } returns
-            DanceLibraryModel(danceId = "pub", educatorUid = "u1")
-        every { privateDoc.toObject(DanceLibraryModel::class.java) } returns
-            DanceLibraryModel(danceId = "priv", educatorUid = "u1", visibility = DanceLibraryModel.VISIBILITY_PRIVATE)
-
-        val list = repo.listEnabled().getOrThrow()
-
-        assertEquals(listOf("pub"), list.map { it.danceId })
-    }
-
     private fun mockDanceDoc(model: DanceLibraryModel) {
         val col = mockk<CollectionReference>()
         val ref = mockk<DocumentReference>()
@@ -266,5 +194,130 @@ class DanceLibraryRepositoryTest {
         val res = repo.getDanceById("priv", viewerUid = "owner")
 
         assertEquals("priv", res.getOrThrow().danceId)
+    }
+
+    // ── Paged feed ───────────────────────────────────────────────────────────
+
+    private lateinit var feedCol: CollectionReference
+    private lateinit var feedQuery: Query
+
+    private fun docFor(model: DanceLibraryModel): DocumentSnapshot {
+        val doc = mockk<DocumentSnapshot>()
+        every { doc.toObject(DanceLibraryModel::class.java) } returns model
+        return doc
+    }
+
+    /** A query chain where every call returns the same query; get() returns [pages] in turn. */
+    private fun mockFeedQuery(vararg pages: List<DocumentSnapshot>) {
+        feedCol = mockk()
+        feedQuery = mockk()
+        every { firestore.collection("danceLibrary") } returns feedCol
+        every { feedCol.whereEqualTo(any<String>(), any()) } returns feedQuery
+        every { feedQuery.whereEqualTo(any<String>(), any()) } returns feedQuery
+        every { feedQuery.whereArrayContains(any<String>(), any()) } returns feedQuery
+        every { feedQuery.whereArrayContainsAny(any<String>(), any()) } returns feedQuery
+        every { feedQuery.whereGreaterThanOrEqualTo(any<String>(), any()) } returns feedQuery
+        every { feedQuery.whereLessThan(any<String>(), any()) } returns feedQuery
+        every { feedQuery.orderBy(any<String>()) } returns feedQuery
+        every { feedQuery.orderBy(any<String>(), any()) } returns feedQuery
+        every { feedQuery.startAfter(any<DocumentSnapshot>()) } returns feedQuery
+        every { feedQuery.limit(any()) } returns feedQuery
+        val snaps = pages.map { docs ->
+            mockk<QuerySnapshot>().also { every { it.documents } returns docs }
+        }
+        every { feedQuery.get() } returnsMany snaps.map { Tasks.forResult(it) }
+    }
+
+    @Test
+    fun loadFeedPage_newTab_queriesPublicFeedReadyByDate_andEndsOnShortPage() = runTest {
+        mockFeedQuery(
+            listOf(
+                docFor(DanceLibraryModel(danceId = "a", educatorUid = "u")),
+                docFor(DanceLibraryModel(danceId = "b", educatorUid = "u", templateGenerationStatus = "queued"))
+            )
+        )
+
+        val page = repo.loadFeedPage(DiscoveryFilter(tab = FeedTab.NEW), seed = 0.5, cursor = null).getOrThrow()
+
+        assertEquals(listOf("a"), page.items.map { it.danceId }) // not-ready template dropped
+        assertNull(page.next)
+        verify { feedCol.whereEqualTo("visibility", "public") }
+        verify { feedQuery.whereEqualTo("feedReady", true) }
+        verify { feedQuery.orderBy("createdAt", Query.Direction.DESCENDING) }
+    }
+
+    @Test
+    fun loadFeedPage_categoryAndSearch_queryKeysAndMatchOtherWordsOnDevice() = runTest {
+        mockFeedQuery(
+            listOf(
+                docFor(DanceLibraryModel(danceId = "one", title = "Groove One", educatorUid = "u")),
+                docFor(DanceLibraryModel(danceId = "two", title = "Groove Two", educatorUid = "u"))
+            )
+        )
+        val filter = DiscoveryFilter(tab = FeedTab.TRENDING, categoryKey = "hiphop", query = "Groo two")
+
+        val page = repo.loadFeedPage(filter, seed = 0.5, cursor = null).getOrThrow()
+
+        assertEquals(listOf("two"), page.items.map { it.danceId })
+        verify { feedQuery.whereEqualTo("danceTypeKey", "hiphop") }
+        verify { feedQuery.whereArrayContains("searchTokens", "groo") }
+        verify { feedQuery.orderBy("trendingScore", Query.Direction.DESCENDING) }
+    }
+
+    @Test
+    fun loadFeedPage_forYou_startsAtSeed_thenWrapsAroundOnce() = runTest {
+        mockFeedQuery(
+            listOf(docFor(DanceLibraryModel(danceId = "late", educatorUid = "u"))),  // shuffleKey >= seed
+            emptyList()                                                                // shuffleKey < seed
+        )
+
+        val first = repo.loadFeedPage(DiscoveryFilter(), seed = 0.5, cursor = null, pageSize = 5).getOrThrow()
+        assertEquals(listOf("late"), first.items.map { it.danceId })
+        assertEquals(FeedCursor(wrapped = true), first.next)
+        verify { feedQuery.whereGreaterThanOrEqualTo("shuffleKey", 0.5) }
+
+        val second = repo.loadFeedPage(DiscoveryFilter(), seed = 0.5, cursor = first.next, pageSize = 5).getOrThrow()
+        assertTrue(second.items.isEmpty())
+        assertNull(second.next)
+        verify { feedQuery.whereLessThan("shuffleKey", 0.5) }
+    }
+
+    @Test
+    fun loadFeedPage_fullPage_returnsCursorAfterLastDoc() = runTest {
+        val docs = listOf(
+            docFor(DanceLibraryModel(danceId = "a", educatorUid = "u")),
+            docFor(DanceLibraryModel(danceId = "b", educatorUid = "u"))
+        )
+        mockFeedQuery(docs)
+
+        val page = repo.loadFeedPage(DiscoveryFilter(tab = FeedTab.NEW), seed = 0.5, cursor = null, pageSize = 2).getOrThrow()
+
+        assertEquals(docs.last(), page.next?.lastDoc)
+    }
+
+    @Test
+    fun loadFeedPage_failure_returnsFailure() = runTest {
+        mockFeedQuery()
+        every { feedQuery.get() } returns Tasks.forException(RuntimeException("boom"))
+
+        assertTrue(repo.loadFeedPage(DiscoveryFilter(), seed = 0.5, cursor = null).isFailure)
+    }
+
+    @Test
+    fun search_typoTolerant_findsMisspelledWords_andRanksExactMatchesFirst() = runTest {
+        mockFeedQuery(
+            listOf(
+                docFor(DanceLibraryModel(danceId = "exact", title = "Hip Hop Grove", danceType = "Hip Hop", educatorUid = "u")),
+                docFor(DanceLibraryModel(danceId = "typo", title = "Hip Hop Groove", danceType = "Hip Hop", educatorUid = "u")),
+                docFor(DanceLibraryModel(danceId = "other", title = "Swan Lake", danceType = "Ballet", educatorUid = "u"))
+            )
+        )
+
+        val page = repo.loadFeedPage(DiscoveryFilter(query = "hiphp grove"), seed = 0.5, cursor = null).getOrThrow()
+
+        assertEquals(listOf("exact", "typo"), page.items.map { it.danceId })
+        assertNull(page.next)
+        verify { feedQuery.whereArrayContains("searchTokens", "hiphp") }
+        verify { feedQuery.whereArrayContainsAny("searchTrigrams", listOf("hip", "iph", "php")) }
     }
 }

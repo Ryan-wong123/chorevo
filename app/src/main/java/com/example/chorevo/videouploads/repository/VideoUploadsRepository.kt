@@ -7,6 +7,8 @@ import androidx.work.Data
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
+import com.example.chorevo.core.VideoMedia
+import com.example.chorevo.core.VideoMedia.putFileWithProgress
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
@@ -18,12 +20,9 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 import java.io.File
 import java.util.UUID
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -135,6 +134,13 @@ class VideoUploadsRepository @Inject constructor(
             )
             val videoUrl = videoRef.downloadUrl.await().toString()
 
+            // Cover-frame thumbnail for grids and link previews. Best effort:
+            // an upload without one still works (grids fall back to the video).
+            onStageChanged?.invoke("Saving cover image")
+            val thumbnailUrl = runCatching {
+                uploadThumbnail(ctx, videoUri, uid, danceId, coverFrameMs)
+            }.getOrNull().orEmpty()
+
             // 4) Save Firestore doc immediately, then build template in background.
             onStageChanged?.invoke("Saving details")
             onProgress?.invoke(0.98f)
@@ -158,7 +164,8 @@ class VideoUploadsRepository @Inject constructor(
                 templateGenerationStatus = initialStatus,
                 templateReviewStatus = reviewStatus,
                 visibility = visibility,
-                coverFrameMs = coverFrameMs
+                coverFrameMs = coverFrameMs,
+                thumbnailUrl = thumbnailUrl
             )
 
             db.collection("danceLibrary")
@@ -276,27 +283,7 @@ class VideoUploadsRepository @Inject constructor(
         baseProgress: Float,
         maxProgress: Float,
         onProgress: ((Float) -> Unit)?
-    ) = suspendCancellableCoroutine<Unit> { cont ->
-        val uploadTask = videoRef.putFile(uploadUri, metadata)
-
-        uploadTask
-            .addOnProgressListener { snapshot ->
-                val total = snapshot.totalByteCount.takeIf { it > 0L } ?: return@addOnProgressListener
-                val fraction = snapshot.bytesTransferred.toFloat() / total.toFloat()
-                val scaled = baseProgress + (maxProgress - baseProgress) * fraction.coerceIn(0f, 1f)
-                onProgress?.invoke(scaled)
-            }
-            .addOnSuccessListener {
-                if (cont.isActive) cont.resume(Unit)
-            }
-            .addOnFailureListener { error ->
-                if (cont.isActive) cont.resumeWithException(error)
-            }
-
-        cont.invokeOnCancellation {
-            uploadTask.cancel()
-        }
-    }
+    ) = videoRef.putFileWithProgress(uploadUri, metadata, baseProgress, maxProgress, onProgress)
 
     // ============================================================
     // My uploads list
@@ -379,7 +366,9 @@ class VideoUploadsRepository @Inject constructor(
 
             val videoRef = storage.reference.child("danceVideos/$uid/$danceId.mp4")
             val templateRef = storage.reference.child(PoseTemplateStorage.jsonPath(uid, danceId))
+            val thumbnailRef = storage.reference.child(thumbnailPath(uid, danceId))
             runCatching { videoRef.delete().await() }
+            runCatching { thumbnailRef.delete().await() }
             runCatching { templateRef.delete().await() }
 
             // Then likes and comments, which Firestore does not delete with the parent.
@@ -395,5 +384,29 @@ class VideoUploadsRepository @Inject constructor(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private fun thumbnailPath(uid: String, danceId: String) = "danceThumbnails/$uid/$danceId.jpg"
+
+    /**
+     * Grabs the frame at [coverFrameMs] from the local video, scales it to at
+     * most [THUMBNAIL_MAX_SIDE] px, uploads it as a JPEG and returns its URL.
+     */
+    private suspend fun uploadThumbnail(
+        context: Context,
+        videoUri: Uri,
+        uid: String,
+        danceId: String,
+        coverFrameMs: Long
+    ): String {
+        val jpeg = VideoMedia.coverJpeg(context, videoUri, coverFrameMs, THUMBNAIL_MAX_SIDE, THUMBNAIL_JPEG_QUALITY)
+        val ref = storage.reference.child(thumbnailPath(uid, danceId))
+        ref.putBytes(jpeg, StorageMetadata.Builder().setContentType("image/jpeg").build()).await()
+        return ref.downloadUrl.await().toString()
+    }
+
+    private companion object {
+        const val THUMBNAIL_MAX_SIDE = 720
+        const val THUMBNAIL_JPEG_QUALITY = 82
     }
 }

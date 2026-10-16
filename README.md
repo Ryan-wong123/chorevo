@@ -394,6 +394,17 @@ SHA-256: ...
 
 - After adding fingerprints in Firebase, always download a fresh `google-services.json` again.
 - Make sure the new file replaces the existing file at `app/google-services.json`.
+
+#### Share links opening the app (App Links)
+
+Share links (`https://chorevo-dea05.web.app/dance/...`) open the app directly only on builds whose signing certificate is listed in `public/.well-known/assetlinks.json`:
+
+1. Copy the `SHA-256` value from `signingReport` (see above).
+2. Add it to the `sha256_cert_fingerprints` array in `public/.well-known/assetlinks.json` (keep the file UTF-8).
+3. Deploy Hosting: `firebase deploy --only hosting`.
+4. Reinstall the app, or run `adb shell pm verify-app-links --re-verify com.example.chorevo`.
+
+Builds signed with an unlisted key (including CI's per-run debug key) still open links, through the app chooser or the browser page.
 - If the fingerprint is missing or wrong, Google sign-in may fail even if the app builds correctly.
 
 ### Firestore indexes
@@ -759,3 +770,16 @@ The repository currently contains tests around:
 - Hilt is used for dependency injection.
 - Firebase App Check debug provider is enabled in debug builds.
 - Release minification is currently disabled.
+
+## Automatic Firebase deploys
+
+`.github/workflows/firebase.yml` runs the Cloud Function tests and the Firestore rules tests on every push and pull request. On pushes to `main` it then deploys Firestore indexes, Storage rules, Cloud Functions and Hosting, runs the data backfill (`functions/scripts/backfill.js`, safe to repeat), and deploys the Firestore rules last.
+
+The deploy needs a service account key stored as a GitHub secret. Without it the deploy job is skipped with a notice.
+
+1. Google Cloud Console → IAM & Admin → Service Accounts (project `chorevo-dea05`) → Create service account, e.g. `github-deploy`.
+2. Grant it these roles: Firebase Admin, Cloud Functions Admin, Service Account User, Cloud Scheduler Admin, Artifact Registry Administrator, and Cloud Datastore User (for the backfill).
+3. Open the account → Keys → Add key → JSON. A file downloads.
+4. GitHub → repository Settings → Secrets and variables → Actions → New repository secret: name `FIREBASE_SERVICE_ACCOUNT`, value = the whole JSON file.
+5. Delete the downloaded key file. Merging to `main` now deploys.
+

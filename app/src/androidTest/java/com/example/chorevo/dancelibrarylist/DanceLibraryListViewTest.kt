@@ -61,7 +61,7 @@ class DanceLibraryListViewTest {
 
     @Test
     fun emptyState_showsStatusText() {
-        coEvery { repo.listEnabled() } returns Result.success(emptyList())
+        repo.stubFeed(emptyList())
 
         composeRule.setContent {
             DanceLibraryListView(
@@ -92,7 +92,7 @@ class DanceLibraryListViewTest {
             )
         )
 
-        coEvery { repo.listEnabled() } returns Result.success(items)
+        repo.stubFeed(items)
 
         composeRule.setContent {
             DanceLibraryListView(
@@ -134,7 +134,7 @@ class DanceLibraryListViewTest {
             )
         )
 
-        coEvery { repo.listEnabled() } returns Result.success(items)
+        repo.stubFeed(items)
 
         composeRule.setContent {
             DanceLibraryListView(
@@ -177,7 +177,7 @@ class DanceLibraryListViewTest {
             )
         )
 
-        coEvery { repo.listEnabled() } returns Result.success(items)
+        repo.stubFeed(items)
         coEvery { repo.loadTemplate(any()) } returns Result.success(PoseTemplate())
 
         var picked: DanceLibraryModel? = null
@@ -215,7 +215,7 @@ class DanceLibraryListViewTest {
 
     @Test
     fun discoveryBar_showsTabsAndCategoryChips() {
-        coEvery { repo.listEnabled() } returns Result.success(discoveryItems())
+        repo.stubFeed(discoveryItems())
 
         composeRule.setContent {
             DanceLibraryListView(onPickDance = { }, onBack = { }, vm = vm, uid = "uid123")
@@ -232,7 +232,7 @@ class DanceLibraryListViewTest {
 
     @Test
     fun categoryChip_filtersFeedToThatStyle() {
-        coEvery { repo.listEnabled() } returns Result.success(discoveryItems())
+        repo.stubFeed(discoveryItems())
 
         composeRule.setContent {
             DanceLibraryListView(onPickDance = { }, onBack = { }, vm = vm, uid = "uid123")
@@ -248,7 +248,7 @@ class DanceLibraryListViewTest {
 
     @Test
     fun searchWithNoMatch_showsEmptyState_andClearFiltersRestoresFeed() {
-        coEvery { repo.listEnabled() } returns Result.success(discoveryItems())
+        repo.stubFeed(discoveryItems())
 
         composeRule.setContent {
             DanceLibraryListView(onPickDance = { }, onBack = { }, vm = vm, uid = "uid123")

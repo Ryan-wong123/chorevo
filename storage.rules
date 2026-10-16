@@ -26,6 +26,25 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Group-only videos and their thumbnails. Only the uploader writes; any
+    // signed-in user may read (the URLs are only stored in group posts,
+    // which Firestore rules limit to the group's readers).
+    match /groupVideos/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId)
+        && (request.resource == null
+          || (request.resource.size < 200 * 1024 * 1024
+            && request.resource.contentType.matches('video/.*')));
+    }
+
+    match /groupThumbnails/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId)
+        && (request.resource == null
+          || (request.resource.size < 10 * 1024 * 1024
+            && request.resource.contentType.matches('image/.*')));
+    }
+
     match /profilePhotos/{userId}/{fileName} {
       allow read: if isSignedIn();
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.compose.SubcomposeAsyncImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -44,11 +45,14 @@ fun VideoThumbnailTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     frameTimeMs: Long = 1_000L,
+    /** Uploaded cover JPEG; when set it is shown instead of decoding a frame from the video. */
+    thumbnailUrl: String = "",
     badge: (@Composable BoxScope.() -> Unit)? = null
 ) {
     var bitmap by remember(videoUrl, frameTimeMs) { mutableStateOf<Bitmap?>(null) }
 
-    LaunchedEffect(videoUrl, frameTimeMs) {
+    LaunchedEffect(videoUrl, frameTimeMs, thumbnailUrl) {
+        if (thumbnailUrl.isNotBlank()) return@LaunchedEffect
         bitmap = withContext(Dispatchers.IO) {
             runCatching {
                 val retriever = MediaMetadataRetriever()
@@ -70,7 +74,15 @@ fun VideoThumbnailTile(
             contentAlignment = Alignment.Center
         ) {
             val frame = bitmap
-            if (frame != null) {
+            if (thumbnailUrl.isNotBlank()) {
+                SubcomposeAsyncImage(
+                    model = thumbnailUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    loading = { Box(Modifier.fillMaxSize().shimmer()) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else if (frame != null) {
                 Image(
                     bitmap = frame.asImageBitmap(),
                     contentDescription = null,

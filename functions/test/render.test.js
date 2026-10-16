@@ -44,3 +44,26 @@ test("falls back to generic text for missing, disabled or private dances", () =>
     assert.doesNotMatch(html, /Secret|s\.mp4/);
   }
 });
+
+test("uses the dance's cover thumbnail as the preview image", () => {
+  const html = renderDancePage(
+    { title: "Salsa", enabled: true, videoUrl: "https://x/v.mp4", thumbnailUrl: "https://x/t.jpg" },
+    "https://chorevo-dea05.web.app/dance/abc"
+  );
+  assert.match(html, /<meta property="og:image" content="https:\/\/x\/t.jpg">/);
+  assert.match(html, /<meta name="twitter:image" content="https:\/\/x\/t.jpg">/);
+  assert.match(html, /<meta name="twitter:card" content="summary_large_image">/);
+  assert.match(html, /poster="https:\/\/x\/t.jpg"/);
+});
+
+test("falls back to the branded preview image without a thumbnail or for private dances", () => {
+  const { DEFAULT_IMAGE } = require("../render");
+  const plain = renderDancePage({ title: "Salsa", enabled: true }, "https://chorevo-dea05.web.app/dance/a");
+  assert.ok(plain.includes(`<meta property="og:image" content="${DEFAULT_IMAGE}">`));
+  const priv = renderDancePage(
+    { title: "Secret", enabled: true, visibility: "private", thumbnailUrl: "https://x/secret.jpg" },
+    "https://chorevo-dea05.web.app/dance/b"
+  );
+  assert.doesNotMatch(priv, /secret\.jpg/);
+  assert.ok(priv.includes(DEFAULT_IMAGE));
+});

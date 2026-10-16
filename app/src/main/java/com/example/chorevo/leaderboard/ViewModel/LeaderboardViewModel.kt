@@ -63,15 +63,23 @@ class LeaderboardViewModel @Inject constructor(
                     )
                 )
             } else {
+                // On the global board, "Your position" still shows when you're
+                // outside the loaded top 100.
+                val myGlobalEntry = if (inputs.scope == LeaderboardScope.GLOBAL) {
+                    repo.observeMyGlobalEntry(inputs.metric, myUid).onStart { emit(null) }
+                } else {
+                    flowOf(null)
+                }
                 combine(
                     repo.observeLeaderboard(inputs.scope, inputs.metric, myUid),
-                    repo.observeFriendIds(myUid)
-                ) { entries, friendIds ->
+                    repo.observeFriendIds(myUid),
+                    myGlobalEntry
+                ) { entries, friendIds, outsideEntry ->
                     LeaderboardUiState(
                         scope = inputs.scope,
                         metric = inputs.metric,
                         entries = entries,
-                        myEntry = entries.firstOrNull { it.isMe },
+                        myEntry = entries.firstOrNull { it.isMe } ?: outsideEntry,
                         friendIds = friendIds,
                         addingFriendUid = inputs.addingFriendUid,
                         removingFriendUid = inputs.removingFriendUid,

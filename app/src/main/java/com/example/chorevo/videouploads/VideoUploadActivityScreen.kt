@@ -256,14 +256,10 @@ fun VideoUploadActivityScreen(
                                     testTag = "titleField",
                                     brandTeal = brandTeal
                                 )
-                                UploadFormField(
+                                DanceStylePicker(
                                     value = uploadDraft.danceType,
                                     onValueChange = videoUploadVm::uploadDanceTypeChanged,
-                                    label = "Dance Type",
-                                    placeholder = "e.g. Hip Hop, Salsa, Ballet",
-                                    icon = Icons.Outlined.MusicNote,
-                                    testTag = "danceTypeField",
-                                    brandTeal = brandTeal
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                                 UploadFormField(
                                     value = uploadDraft.description,

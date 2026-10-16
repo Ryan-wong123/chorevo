@@ -81,13 +81,49 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/danceLibrary/$(danceId)).data.educatorUid == request.auth.uid;
     }
 
+    // A dance is readable when it is public or the reader uploaded it. Read
+    // visibility directly: a get('visibility', 'public') default lets list
+    // queries through unchecked. Every dance has the field (set on upload,
+    // by the danceDerivedFields function and by the backfill script).
+    function canReadDance(dance) {
+      return signedIn()
+        && (dance.visibility == 'public'
+          || dance.educatorUid == request.auth.uid);
+    }
+
+    function canReadDanceById(danceId) {
+      return canReadDance(get(/databases/$(database)/documents/danceLibrary/$(danceId)).data);
+    }
+
+    // Kept up to date by Cloud Functions (functions/discovery.js); clients may
+    // not set or change them.
+    function serverManagedDanceFields() {
+      return ['likeCount', 'trendingScore', 'feedReady', 'danceTypeKey', 'searchTokens', 'searchTrigrams', 'shuffleKey'];
+    }
+
+    // A username on a profile must be claimed by that user in /usernames.
+    function usernameClaimOk(uid) {
+      return !('username' in request.resource.data)
+        || (resource != null && resource.data.get('username', null) == request.resource.data.username)
+        || (request.resource.data.username is string
+          && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid);
+    }
+
     match /users/{uid} {
       allow read: if isOwner(uid) || (signedIn() && request.auth.uid != uid);
-      allow create, update: if isOwner(uid);
+      allow create, update: if isOwner(uid) && usernameClaimOk(uid);
       allow delete: if false;
 
       match /points/{docId} {
         allow read, write: if isOwner(uid);
+      }
+
+      // Push tokens of the user's devices (read by Cloud Functions).
+      match /fcmTokens/{token} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['token', 'platform', 'updatedAt'])
+          && request.resource.data.token == token;
       }
 
       match /achievements/{docId} {
@@ -142,19 +178,22 @@ service cloud.firestore {
     match /danceLibrary/{danceId} {
       // Likes: one document per user, keyed by their uid.
       match /likes/{likerUid} {
-        allow read: if signedIn();
+        allow read: if canReadDanceById(danceId);
+        // uid/createdAt let the liked-videos query find a user's likes.
         allow create, update: if signedIn()
           && request.auth.uid == likerUid
-          && request.resource.data.keys().hasOnly(['liked'])
-          && request.resource.data.liked == true;
+          && request.resource.data.keys().hasOnly(['liked', 'uid', 'createdAt'])
+          && request.resource.data.liked == true
+          && request.resource.data.get('uid', likerUid) == likerUid
+          && canReadDanceById(danceId);
         allow delete: if signedIn()
           && (request.auth.uid == likerUid || isDanceOwner(danceId));
       }
 
       // Comments: authored by the caller, no edits, deletable by the author.
       match /comments/{commentId} {
-        allow read: if signedIn();
-        allow create: if signedIn()
+        allow read: if canReadDanceById(danceId);
+        allow create: if canReadDanceById(danceId)
           && request.resource.data.keys().hasOnly(['commentId', 'uid', 'username', 'text', 'createdAt'])
           && request.resource.data.commentId == commentId
           && request.resource.data.uid == request.auth.uid
@@ -168,19 +207,34 @@ service cloud.firestore {
           && (resource.data.uid == request.auth.uid || isDanceOwner(danceId));
       }
 
-      allow read: if signedIn();
+      // Private dances are readable only by their uploader. List queries must
+      // filter on visibility == "public" or on educatorUid == the reader.
+      allow read: if canReadDance(resource.data);
 
       allow create: if signedIn()
         && request.resource.data.educatorUid == request.auth.uid
-        && request.resource.data.danceId == danceId;
+        && request.resource.data.danceId == danceId
+        && !request.resource.data.keys().hasAny(serverManagedDanceFields());
 
       allow update: if signedIn()
         && resource.data.educatorUid == request.auth.uid
         && request.resource.data.educatorUid == resource.data.educatorUid
-        && request.resource.data.danceId == resource.data.danceId;
+        && request.resource.data.danceId == resource.data.danceId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(serverManagedDanceFields());
 
       allow delete: if signedIn()
         && resource.data.educatorUid == request.auth.uid;
+    }
+
+    // Liked videos: a user's own like documents across all dances.
+    match /{path=**}/likes/{likerUid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Written only by Cloud Functions (category chip counts).
+    match /meta/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
     }
 
     match /leaderboardStats/{uid} {
@@ -189,6 +243,205 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Groups ────────────────────────────────────────────────────────────
+    // Public groups (and their posts) are readable by anyone signed in;
+    // private groups only by members. Members join public groups freely and
+    // private groups with the group's invite code. Member counts and cleanup
+    // after a group is deleted are handled by Cloud Functions.
+
+    function groupPath(groupId) {
+      return /databases/$(database)/documents/groups/$(groupId);
+    }
+
+    function isGroupMember(groupId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+    }
+
+    function canReadGroup(groupId) {
+      return signedIn()
+        && (get(groupPath(groupId)).data.visibility == 'public' || isGroupMember(groupId));
+    }
+
+    function isGroupOwner(groupId) {
+      return signedIn() && get(groupPath(groupId)).data.ownerUid == request.auth.uid;
+    }
+
+    function validGroupText(data) {
+      return data.name is string
+        && data.name.size() >= 3
+        && data.name.size() <= 60
+        && data.nameLower == data.name.lower()
+        && data.description is string
+        && data.description.size() <= 500;
+    }
+
+    match /groups/{groupId} {
+      allow read: if signedIn()
+        && (resource.data.visibility == 'public' || isGroupMember(groupId));
+
+      // Created in one batch with the owner's membership (and, for private
+      // groups, the invite document).
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['id', 'name', 'nameLower', 'description', 'visibility', 'ownerUid', 'ownerName', 'inviteCode', 'createdAt'])
+        && request.resource.data.id == groupId
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerName is string
+        && request.resource.data.createdAt is int
+        && validGroupText(request.resource.data)
+        && ((request.resource.data.visibility == 'public' && !request.resource.data.keys().hasAny(['inviteCode']))
+          || (request.resource.data.visibility == 'private'
+            && request.resource.data.inviteCode is string
+            && request.resource.data.inviteCode.size() == 8))
+        && existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
+
+      allow update: if signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'nameLower', 'description'])
+        && validGroupText(request.resource.data);
+
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+
+      match /members/{memberUid} {
+        allow read: if canReadGroup(groupId);
+
+        allow create: if signedIn()
+          && memberUid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid', 'displayName', 'photoUrl', 'role', 'joinedAt', 'inviteCode'])
+          && request.resource.data.uid == memberUid
+          && request.resource.data.displayName is string
+          && request.resource.data.joinedAt is int
+          && (
+            // The creator, in the batch that creates the group.
+            (request.resource.data.role == 'owner'
+              && !exists(groupPath(groupId))
+              && getAfter(groupPath(groupId)).data.ownerUid == request.auth.uid)
+            ||
+            // Anyone joining a public group, or a private one with its code
+            // or an invitation sent to them.
+            (request.resource.data.role == 'member'
+              && exists(groupPath(groupId))
+              && (get(groupPath(groupId)).data.visibility == 'public'
+                || (request.resource.data.inviteCode is string
+                  && request.resource.data.inviteCode == get(groupPath(groupId)).data.inviteCode)
+                || exists(/databases/$(database)/documents/groupInvitations/$(groupId + '_' + memberUid))))
+          );
+
+        allow update: if false;
+
+        // Members leave (the owner can't leave their own group); the owner
+        // can remove members.
+        allow delete: if signedIn()
+          && ((memberUid == request.auth.uid && resource.data.role != 'owner')
+            || (memberUid != request.auth.uid && isGroupOwner(groupId)));
+      }
+
+      match /posts/{postId} {
+        allow read: if canReadGroup(groupId);
+
+        allow create: if isGroupMember(groupId)
+          && request.resource.data.keys().hasOnly(['id', 'uid', 'displayName', 'photoUrl', 'body', 'kind', 'danceId', 'danceTitle', 'videoUrl', 'thumbnailUrl', 'storagePath', 'thumbnailPath', 'createdAt'])
+          && request.resource.data.id == postId
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.displayName is string
+          && request.resource.data.body is string
+          && request.resource.data.body.size() <= 1500
+          && request.resource.data.createdAt is int
+          && ((request.resource.data.kind == 'text' && request.resource.data.body.size() > 0)
+            || (request.resource.data.kind == 'dance' && request.resource.data.danceId is string)
+            || (request.resource.data.kind == 'video' && request.resource.data.videoUrl is string));
+
+        allow update: if false;
+
+        allow delete: if signedIn()
+          && (resource.data.uid == request.auth.uid || isGroupOwner(groupId));
+
+        match /replies/{replyId} {
+          allow read: if canReadGroup(groupId);
+
+          allow create: if isGroupMember(groupId)
+            && exists(/databases/$(database)/documents/groups/$(groupId)/posts/$(postId))
+            && request.resource.data.keys().hasOnly(['id', 'postId', 'uid', 'displayName', 'photoUrl', 'body', 'createdAt'])
+            && request.resource.data.id == replyId
+            && request.resource.data.postId == postId
+            && request.resource.data.uid == request.auth.uid
+            && request.resource.data.displayName is string
+            && request.resource.data.body is string
+            && request.resource.data.body.size() > 0
+            && request.resource.data.body.size() <= 500
+            && request.resource.data.createdAt is int;
+
+          allow update: if false;
+
+          allow delete: if signedIn()
+            && (resource.data.uid == request.auth.uid || isGroupOwner(groupId));
+        }
+      }
+    }
+
+    // Unique usernames: the document ID is the handle. Claimed in the same
+    // batch that sets users/{uid}.username; the old handle is released in the
+    // batch that changes it. A create on a taken handle is an update, so it fails.
+    match /usernames/{handle} {
+      allow get: if signedIn();
+      allow list: if signedIn() && request.query.limit <= 20;
+      allow create: if signedIn()
+        && handle.matches('^[a-z0-9_]{3,20}$')
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt is int
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('username', null) == handle;
+      allow update: if false;
+      allow delete: if signedIn()
+        && resource.data.uid == request.auth.uid
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('username', null) != handle;
+    }
+
+    // Invitations to a group for one user, sent by a member. The ID is
+    // <groupId>_<inviteeUid>. The invitee accepts by joining (see members) and
+    // deleting it, or declines by deleting it.
+    match /groupInvitations/{invitationId} {
+      allow read: if signedIn()
+        && (resource.data.inviteeUid == request.auth.uid || resource.data.inviterUid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['groupId', 'groupName', 'inviteeUid', 'inviteeUsername', 'inviterUid', 'inviterName', 'createdAt'])
+        && request.resource.data.groupId is string
+        && request.resource.data.inviteeUid is string
+        && invitationId == request.resource.data.groupId + '_' + request.resource.data.inviteeUid
+        && request.resource.data.inviterUid == request.auth.uid
+        && request.resource.data.inviteeUid != request.auth.uid
+        && request.resource.data.inviterName is string
+        && request.resource.data.createdAt is int
+        && isGroupMember(request.resource.data.groupId)
+        && request.resource.data.groupName == get(groupPath(request.resource.data.groupId)).data.name
+        && !exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId)/members/$(request.resource.data.inviteeUid))
+        && exists(/databases/$(database)/documents/users/$(request.resource.data.inviteeUid));
+      allow update: if false;
+      allow delete: if signedIn()
+        && (resource.data.inviteeUid == request.auth.uid
+          || resource.data.inviterUid == request.auth.uid
+          || isGroupOwner(resource.data.groupId));
+    }
+
+    // Invite code -> group, so a code can open a private group the user can't
+    // read yet. Only single lookups by code are allowed (no listing).
+    match /groupInvites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['groupId', 'createdAt'])
+        && getAfter(groupPath(request.resource.data.groupId)).data.ownerUid == request.auth.uid
+        && getAfter(groupPath(request.resource.data.groupId)).data.inviteCode == code;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // "My groups": a user's own memberships across all groups.
+    match /{path=**}/members/{memberUid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Legacy forum (replaced by groups). Data is kept; the app no longer shows it.
     match /communityPosts/{postId} {
       allow read: if signedIn();
       allow create: if signedIn()

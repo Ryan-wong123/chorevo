@@ -41,6 +41,12 @@ class AppViewModel @Inject constructor(
      */
     private var pendingDeepLinkDanceId: String? = null
 
+    /** Group invite code from a link that arrived before sign-in. */
+    private var pendingInviteCode: String? = null
+
+    /** A group-invitation push was tapped before auth was ready. */
+    private var pendingOpenGroups = false
+
     init {
         viewModelScope.launch {
             val p = authRepository.getCurrentUserProfile()
@@ -59,6 +65,7 @@ class AppViewModel @Inject constructor(
                     pendingDeepLinkDanceId = null
                     fetchAndOpenDance(id)
                 }
+                consumePendingInvite()
             }
         }
 
@@ -223,6 +230,49 @@ class AppViewModel @Inject constructor(
             pendingDeepLinkDanceId = null
             viewModelScope.launch { fetchAndOpenDance(id) }
         }
+        consumePendingInvite()
+    }
+
+    /**
+     * Called by [MainActivity] when a group invite link (or its QR code, scanned
+     * with the phone camera) is opened: shows Groups with the join prompt. While
+     * signed out the code is kept until sign-in.
+     */
+    fun openGroupInvite(code: String) {
+        val state = _uiState.value
+        if (!state.didAuthCheck || state.profile == null) {
+            pendingInviteCode = code
+            if (state.didAuthCheck) _uiState.update { it.copy(screen = Screen.AUTH) }
+            return
+        }
+        _uiState.update { it.copy(screen = Screen.COMMUNITY, pendingGroupInvite = code) }
+    }
+
+    /** The user picked or changed their username. */
+    fun onUsernameSaved(username: String) =
+        _uiState.update { s -> s.copy(profile = s.profile?.copy(username = username)) }
+
+    /** The Groups screen has taken the invite code. */
+    fun clearGroupInvite() = _uiState.update { it.copy(pendingGroupInvite = null) }
+
+    /** Called by [MainActivity] when a group invitation push notification is tapped. */
+    fun openGroupInvitations() {
+        val state = _uiState.value
+        if (!state.didAuthCheck || state.profile == null) {
+            pendingOpenGroups = true
+            return
+        }
+        _uiState.update { it.copy(screen = Screen.COMMUNITY) }
+    }
+
+    private fun consumePendingInvite() {
+        if (pendingOpenGroups) {
+            pendingOpenGroups = false
+            _uiState.update { it.copy(screen = Screen.COMMUNITY) }
+        }
+        val code = pendingInviteCode ?: return
+        pendingInviteCode = null
+        _uiState.update { it.copy(screen = Screen.COMMUNITY, pendingGroupInvite = code) }
     }
 
     /** Signs the user out and resets screen state that depends on an active session. */
@@ -234,6 +284,7 @@ class AppViewModel @Inject constructor(
                 screen = Screen.AUTH,
                 selectedDanceItem = null,
                 sharedDance = null,
+                pendingGroupInvite = null,
                 isUploadingProfilePhoto = false,
                 profilePhotoUploadError = null,
                 deepLinkLoading = false,

@@ -16,6 +16,9 @@ Chorevo is a single-module native Android application:
 - Pose analysis: MediaPipe Tasks Vision 0.10.26.1 (Pose Landmarker and Holistic Landmarker) and TensorFlow Lite 2.17.0 (YOLO person detector)
 - 3D: SceneView for the instructor avatar overlay
 - Web share links: Firebase Hosting (`chorevo-dea05.web.app`) rewriting `/dance/**` to the `danceShare` Cloud Function in `functions/` (Node.js 22, `firebase-functions` v2 HTTPS, Admin SDK)
+- Discovery maintenance: Cloud Functions `danceDerivedFields` (Firestore trigger on `danceLibrary/{id}`), `danceLikeCount` (trigger on `danceLibrary/{id}/likes/{uid}`) and `refreshDiscovery` (scheduled every 6 hours) keep the feed fields, like counts, trending scores and `meta/danceCategories` current. The field logic is in `functions/discovery.js` (pure, tested) and the jobs in `functions/maintenance.js`, shared with the one-off `functions/scripts/backfill.js`.
+- Push notifications: `notifyGroupInvitation` (trigger on creating `groupInvitations/{id}`) sends the invitee an FCM message (`notification` + `data {type: "group_invitation", groupId}`, Android channel `group_invites`) to the tokens in `users/{uid}/fcmTokens` and deletes tokens FCM reports as dead. Message building is in `functions/groups.js` (`invitationMessage`, `deadTokens`, tested).
+- Groups maintenance: `groupMemberCount` (trigger on `groups/{id}/members/{uid}`) keeps `memberCount`, and `groupCleanup` (on group delete) removes the invite code, pending invitations, group files and subcollections.
 
 Navigation Compose and Hilt Navigation Compose are declared as dependencies, but navigation uses a custom `Screen` enum rather than a `NavHost`. The Firebase Analytics SDK is included but logs no events.
 
@@ -63,7 +66,7 @@ The manifest also declares a `<queries>` block so the share sheet can detect ins
 - switches with `when (screen)` inside an `AnimatedContent` (practice slides up over the feed and back down; other screen changes fade through with a slight scale; the practice content keeps the last selected dance while it animates out) over the `Screen` enum: `AUTH`, `HOME`, `DANCE_PRACTICE`, `UPLOAD`, `COMMUNITY`, `LEADERBOARD`, and the profile section (`PROFILE`, `SETTINGS`, `WEEKLY_CHALLENGES`, all rendered by `ProfileSectionRoute`),
 - passes `AppUiState.sharedDance` to `HomeRoute` so a dance opened from a share link is pinned first in the feed,
 - shows share-link errors (missing, disabled, private, not ready) as a snackbar,
-- handles system back with a `PredictiveBackHandler` (enabled when `Screen.backTarget` is non-null): drag progress scales the content down with rounded corners, and release calls `AppViewModel.navigateBack()` (Practice/Upload/Forum/Score/Profile → Home, Settings/Weekly Challenges → Profile; Home and Auth fall through so the system closes the app). `android:enableOnBackInvokedCallback="true"` is set in the manifest. Screens with inner states register their own `BackHandler`, which takes priority: upload steps, forum post/editor, and the profile's liked-videos player.
+- handles system back with a `PredictiveBackHandler` (enabled when `Screen.backTarget` is non-null): drag progress scales the content down with rounded corners, and release calls `AppViewModel.navigateBack()` (Practice/Upload/Groups/Score/Profile → Home, Settings/Weekly Challenges → Profile; Home and Auth fall through so the system closes the app). `android:enableOnBackInvokedCallback="true"` is set in the manifest. Screens with inner states register their own `BackHandler`, which takes priority: upload steps, an open group (its replies sheet first), and the profile's liked-videos player.
 
 ## 3. Layered Structure
 
@@ -78,12 +81,14 @@ Screens:
 - `DancingFigure` / `StageBackground` (`core/DancingFigure.kt`): a pose skeleton looping through keyframed poses (smoothstep interpolation, brand-gradient bones with a glow) and a dark background with two drifting brand glows; used by onboarding and sign-in.
 - `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet. `DiscoveryBar` (`dancelibrarylist/DiscoveryBar.kt`) is drawn over the top of the feed: tabs (`feedTab_*` tags), a search field (`searchButton`, `searchField`) and category chips (`categoryChip_all`, `categoryChip_<key>`). The feed shows `DanceLibraryUiState.visibleItems`, and a filter with no matches shows an empty state with `clearFilters` while keeping the bar mounted.
 - `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
+- `DanceStylePicker` (`videouploads/DanceStylePicker.kt`): dance-type dropdown of `STANDARD_DANCE_STYLES` plus "Other…" free text with a "Did you mean …?" suggestion from `closestStandardStyle`; used by the upload Details step and the Edit dialog.
 - `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
 - `AnalyticsDashboardView`: learner and creator analytics. With `showOverview = true` (the profile's Activity and Learners tabs) it renders `AnalyticsOverview` above the list: stat tiles with a sparkline, a draw-in trend chart, an 8-week activity heatmap, and a body diagram. The numbers come from `computeOverviewStats` and the body focus from `bodyFocusFromFeedback` (`analytics/AnalyticsStats.kt`, plain Kotlin, unit tested), which counts corrections per `BodyArea` in each session's stored feedback messages.
 - `LeaderboardScreen`: Global/Friends leaderboard with a top-three `Podium` (medal rings, rising blocks, `podium_rank_N` test tags), ranks 4+ in a list, and the user's "Your position" card pinned at the bottom. Add/remove-friend buttons come from `friendActionFor` for both podium and list.
-- `CommunityScreen`: forum posts and replies.
+- `GroupsScreen`: "My groups" and "Discover" tabs, create-group and join-by-code dialogs, QR scanning (`InviteQr.scan`, the Google code scanner — no camera permission), and the join prompt for an invite link handed over by `AppViewModel.pendingGroupInvite`. `GroupDetailScreen`: the open group's header (visibility, member count, invite code with QR/copy/share; the QR code, drawn with ZXing by `InviteQr.bitmap`, encodes `ShareLinks.groupInviteLink`), join banner, posts (text, shared dance, group video with a full-screen player), the member composer (dance picker, gallery/record video), replies bottom sheet, members dialog, leave/delete.
 - `UserProfileScreen`: header, streak-ring avatar, stats row, streak card, level panel, weekly challenge summary, and icon tabs (Uploads and Private as thumbnail grids via `VideoUploadsTab(gridFilter = …)` with an action sheet, Liked, Activity, Learners), plus the full-screen liked-videos feed.
-- `SettingsScreen`: profile photo, notifications, reminder time, sign out.
+- `SettingsScreen`: profile photo, username (`@name · Change`), notifications, reminder time, sign out.
+- `UsernameDialog` (`firebase/`, with `UsernameViewModel`): pick or change the username with a live availability check. `AppRouter` shows it once per launch, with "Later", while the profile has no username.
 - `WeeklyChallengesScreen`, `WeeklyChallengeSummaryCard`, `WeeklyChallengeCelebrationDialog`.
 
 Shared components:
@@ -92,7 +97,7 @@ Shared components:
 - `ShareBottomSheet` (`core/share/ShareSheet.kt`): share sheet used by the home feed and the liked-videos feed.
 - `VideoVisibilitySelector` (`videouploads/VideoVisibilitySelector.kt`): Public/Private chips used by the upload form and the Edit dialog.
 - `InstructorAvatarOverlay` (`posedetection`): 3D avatar driven by reference landmarks.
-- `VideoThumbnailTile` (`core/VideoThumbnailTile.kt`): 9:16 video thumbnail (the frame at the dance's `coverFrameMs`) with title and an optional badge, used by the liked and uploads grids; shimmers while the frame loads.
+- `VideoThumbnailTile` (`core/VideoThumbnailTile.kt`): 9:16 video thumbnail — the uploaded `thumbnailUrl` JPEG via Coil when present, otherwise the frame at the dance's `coverFrameMs` with title and an optional badge, used by the liked and uploads grids; shimmers while the frame loads.
 - `Shimmer.kt` (`core`): `Modifier.shimmer()` plus `ShimmerBlock`, `ShimmerList` and `ShimmerGrid` loading placeholders (used by the feed skeleton, profile/uploads grids, leaderboard, weekly challenges and analytics detail).
 - `AnimatedEmptyState` (`core/EmptyState.kt`): floating icon in a pulsing halo, title and hint, faded in on first show; used for empty feed, uploads, liked, leaderboard and challenges.
 - `Haptics` / `rememberHaptics()` (`core/Haptics.kt`): `tick()` (likes) and `success()` (combo milestones, results grade, finished publish) via the view's haptic feedback.
@@ -101,7 +106,7 @@ Shared components:
 
 ViewModels own screen state and user actions. All of these are `@HiltViewModel`:
 
-- `AppViewModel`: auth/profile restore, selected top-level screen, selected dance, navigation helpers (`openUpload`, `openCommunity`, `openLeaderboard`, `openProfile`, `openSettings`, `openWeeklyChallenges`, `backToHome`), reminder preferences, profile photo upload state, starting the unsynced-session retry, and share-link handling (`openDanceById`, pending link while signed out, `sharedDance`, `deepLinkLoading`, `deepLinkError`).
+- `AppViewModel`: auth/profile restore, selected top-level screen, selected dance, navigation helpers (`openUpload`, `openCommunity`, `openLeaderboard`, `openProfile`, `openSettings`, `openWeeklyChallenges`, `backToHome`), reminder preferences, profile photo upload state, starting the unsynced-session retry, and username updates (`onUsernameSaved`), group invite links (`openGroupInvite`, `pendingGroupInvite`), share-link handling (`openDanceById`, pending link while signed out, `sharedDance`, `deepLinkLoading`, `deepLinkError`).
 - `AuthViewModel`: email/password and Google sign-in state, and one-off `AuthEvent`s.
 - `DanceLibraryListViewModel`: library loading, template preparation, per-dance social cache (likes and comments, optimistic updates), and practice session submission.
 - `VideoUploadsViewModel`: upload draft (including visibility and `coverFrameMs`, reset when a new video is picked), dancer analysis and review, upload progress, edit/delete flows, and per-upload visibility toggles (`setVisibility`, `updatingVisibilityIds`).
@@ -109,7 +114,7 @@ ViewModels own screen state and user actions. All of these are `@HiltViewModel`:
 - `LeaderboardViewModel`: leaderboard scope, metric, friend actions.
 - `ProfileViewModel`: streak, points, and liked dances for the profile.
 - `AchievementViewModel`: per-session points, badges, and level-ups.
-- `CommunityViewModel`: community posts and replies.
+- `GroupsViewModel`: my groups (live), discover search (300 ms debounce), create/join/leave/delete, the open group's live group, membership, members and posts, the composer (text, one of the user's public ready dances, or a local video with upload progress), and replies of the open post.
 - `WeeklyChallengeViewModel`: the week's challenge set, progress, and celebration dialog.
 
 `StreakViewModel` and `StreakViewModelFactory` (`danceactivity`) are legacy and unused.
@@ -126,7 +131,8 @@ Repositories isolate Firebase, Room, and Storage APIs:
 - `AnalyticsRepository`: learner and educator session listeners, Firestore mapping, learner display names, and reference video availability.
 - `LeaderboardRepository`: leaderboard stats, ranking, friend list management.
 - `FirebaseStreakRepository`, `AchievementRepository`, `PointsRepository`: streaks, badges, and points.
-- `CommunityRepository`: real-time community posts and replies.
+- `UsernameRepository`: availability checks, a free suggestion from the display name, claiming/changing a username (one batch: `usernames/{new}`, `users/{uid}.username`, delete `usernames/{old}`), and prefix search for invites. Format rules live in `firebase/Usernames.kt`.
+- `GroupsRepository`: groups, members, posts and replies (snapshot listeners), the user's invitations by username (send, accept as one batch with the membership, decline), creating a group with its owner membership and invite in one batch, joining by invite code via `groupInvites/{code}`, and group video uploads (720p compression, cover frame via `core/VideoMedia`).
 - `WeeklyChallengeRepository`: weekly challenge generation, progress, and rewards.
 
 ### Infrastructure Layer
@@ -156,7 +162,7 @@ Screens should read colours from `MaterialTheme.colorScheme` or `ChorevoTheme.co
 
 Theme choice: `MainActivity` reads `AppUiState.themeMode` (Dark by default, Light, or System) and passes `darkTheme` to `ChorevoTheme`; it re-calls `enableEdgeToEdge` with `SystemBarStyle.auto { darkTheme }` so status and navigation bar icons match the app theme rather than the phone's. Both `values` and `values-night` window backgrounds are dark so launch matches the default. Settings shows the choice in an Appearance card (`themeMode_dark|light|system` tags).
 
-Navigation chrome: `AppNavigationRoute` floats `AppBottomNavBar` (a 64dp translucent pill, 12dp above the system bar) over the content. Tabs are Home, Score (leaderboard), a raised gradient "+" Upload button, Forum (community), and Profile. The bar is hidden on `AUTH` and `DANCE_PRACTICE`. Regular screens receive extra bottom padding; the home feed is drawn full-bleed and reads `LocalFloatingBarInset` to keep its overlay above the bar, and sets `LocalFloatingBarState.hidden` while the pager is scrolling so the bar slides away. `res/values(-night)/themes.xml` set matching window backgrounds to avoid a white flash on launch.
+Navigation chrome: `AppNavigationRoute` floats `AppBottomNavBar` (a 64dp translucent pill, 12dp above the system bar) over the content. Tabs are Home, Score (leaderboard), a raised gradient "+" Upload button, Groups (community), and Profile. The bar is hidden on `AUTH` and `DANCE_PRACTICE`. Regular screens receive extra bottom padding; the home feed is drawn full-bleed and reads `LocalFloatingBarInset` to keep its overlay above the bar, and sets `LocalFloatingBarState.hidden` while the pager is scrolling so the bar slides away. `res/values(-night)/themes.xml` set matching window backgrounds to avoid a white flash on launch.
 
 ## 4. Dependency Injection
 
@@ -175,7 +181,9 @@ ViewModels receive repositories through constructor injection. `VideoTemplateGen
 
 Main collections:
 
-- `users/{uid}`: profile records (uid, email, role, displayName, photoUrl, lastSeen).
+- `users/{uid}`: profile records (uid, email, role, displayName, photoUrl, lastSeen, username).
+- `users/{uid}/fcmTokens/{token}`: `{token, platform, updatedAt}` for push notifications, written by `notification/PushTokens` after sign-in and on token refresh (`ChorevoMessagingService.onNewToken`). Sign-out deletes the device token (`FirebaseMessaging.deleteToken`), and the function removes tokens that stop working.
+- `usernames/{handle}`: `{uid, createdAt}`; the document ID is the username, which makes it unique.
 - `users/{uid}/danceLearningSessions/{sessionId}`: learner session results with a nested `analysis` map.
 - `users/{uid}/friends/{friendUid}`: friend references (uid, displayName, photoUrl, addedAt).
 - `users/{uid}/points/current`: totalPoints, lastSessionPoints, lastUpdated.
@@ -185,22 +193,29 @@ Main collections:
 - `danceLibrary/{danceId}`: uploaded dance metadata, including `visibility` (`"public"` or `"private"`; a missing field reads as `"public"` through the `DanceLibraryModel` default), `coverFrameMs` (cover thumbnail position; missing reads as 1000), template status fields, and upload size details.
 - `danceLibrary/{danceId}/likes/{uid}`: `{liked: true}`.
 - `danceLibrary/{danceId}/comments/{commentId}`: commentId, uid, username, text, createdAt.
-- `communityPosts/{postId}` and `communityPosts/{postId}/replies/{replyId}`: forum posts and replies.
+- `groups/{groupId}` with `members/{uid}`, `posts/{postId}` and `posts/{postId}/replies/{replyId}`: community groups (fields in `prd.md`). `memberCount` is written only by the `groupMemberCount` function.
+- `groupInvites/{code}`: `{groupId, createdAt}` for private groups.
+- `groupInvitations/{groupId}_{inviteeUid}`: invitations by username (groupId, groupName, inviteeUid, inviteeUsername, inviterUid, inviterName, createdAt). The group name is copied in because the invitee can't read a private group before joining.
+- `communityPosts/{postId}` and replies: the old forum; no longer read by the app.
 - `leaderboardStats/{uid}`: aggregate leaderboard stats (totalPracticeSessions, avgSimilarityScore, totalActiveDays, legacy streakDays, displayName, photoUrl, updatedAt).
 
 `DanceLibraryModel` exposes `isPrivate` (annotated `@get:Exclude` so it is not written back to Firestore) and `isVisibleTo(viewerUid)`, which returns true for public dances and for private dances viewed by their uploader. `isTemplateReady` is also excluded.
 
 Important query patterns:
 
-- Enabled library items: `danceLibrary where enabled == true`, then filtered client-side to ready templates and non-private dances. The query does not filter on `visibility` because older documents have no such field.
-- Discovery (search, category chips, For You / Trending / New) runs client-side over that full list in `applyDiscovery` (`dancelibrarylist/Discovery.kt`, plain Kotlin), so it needs no extra Firestore indexes. Trending uses `DanceLibraryRepository.likeCounts`: one server-side `count()` aggregation on `danceLibrary/{id}/likes` per dance, run in parallel and cached in `DanceLibraryListViewModel` (`likeCounts`) after the first Trending open. Category keys come from `danceTypeKey` (lower-case letters and digits only).
-- Liked dances: the enabled-library query, then one `likes/{uid}` read per dance.
+- Feed pages (`DanceLibraryRepository.loadFeedPage`, 12 per page): `danceLibrary where visibility == "public" and feedReady == true`, plus `danceTypeKey == key` for a chip and `searchTokens array-contains <first search word>` for a search, ordered by `shuffleKey` (For You), `createdAt desc` (New) or `trendingScore desc` (Trending), continued with `startAfter`. For You starts at a random seed (`shuffleKey >= seed`), then wraps once (`shuffleKey < seed`). Further search words are matched on the device (`matchesSearch`). All 12 combinations have composite indexes in `firestore.indexes.json`. `DanceLibraryListViewModel` appends pages (`loadMore`, triggered three videos from the end), keeps fetching while pages come back empty after search filtering (up to 5), and debounces search by 300 ms.
+- Search (`DanceLibraryRepository.searchFeed`, used when the search box has text): two queries run in parallel — `searchTokens array-contains <first word>` in tab order (limit 40) and `searchTrigrams array-contains-any <first word's 3-letter pieces>` (limit 60, best effort) — then every candidate is scored with `searchScore` (each query word must prefix, sit inside, or be within `allowedTypos` edits of a word in the title, type, creator, description or style key) and sorted by score. One page, no paging. The trigram queries have their own composite indexes.
+- Category chips: `meta/danceCategories` (`counts` and `labels` per `danceTypeKey`), maintained by Cloud Functions.
+- Likes: the like count is the dance's `likeCount` (falling back to a `count()` query before the function has set it) and "liked" is one read of `likes/{uid}`. Like documents store `{liked, uid, createdAt}`.
+- Liked dances: `collectionGroup("likes") where uid == me`, newest first, then one read per dance (private or deleted dances are skipped).
 - Comments: `orderBy createdAt desc limit 20`; "Load more" continues with the same order and `startAfter(cursor)`.
 - Creator uploads: `danceLibrary where educatorUid == uid orderBy createdAt desc`.
 - Learner sessions: `users/{uid}/danceLearningSessions orderBy tsStart desc limit 30`.
 - Creator analytics: collection group `danceLearningSessions where analysis.educatorUid == uid`, optionally also `analysis.danceId`.
 - Weekly challenge generation: `users/{uid}/danceLearningSessions orderBy tsStart desc limit 40`.
-- Community: `communityPosts orderBy createdAt desc limit 50`; replies `orderBy createdAt asc limit 100`.
+- My groups: `collectionGroup("members") where uid == me`, then one read per group.
+- Discover: `groups where visibility == "public" orderBy memberCount desc limit 50`, or with a search `orderBy nameLower` between the prefix and prefix + `\uf8ff` (both indexed).
+- Group posts: `orderBy createdAt desc limit 100`; replies `orderBy createdAt asc limit 100`.
 - Leaderboard: `leaderboardStats orderBy metric desc limit 100`.
 
 `firestore.indexes.json` holds the composite indexes for creator uploads (`educatorUid`, `createdAt desc`) and filtered creator analytics (`analysis.educatorUid`, `analysis.danceId`).
@@ -212,7 +227,8 @@ Main paths:
 - `danceVideos/{uid}/{danceId}.mp4`
 - `danceTemplates/{uid}/{danceId}.json` (built by `PoseTemplateStorage.jsonPath`; older templates live at `danceTemplates/{danceId}.json`)
 - `profilePhotos/{uid}/profile.jpg`
-- `danceThumbnails/{uid}/{fileName}` (allowed by the rules; not used by the app yet)
+- `danceThumbnails/{uid}/{danceId}.jpg` (cover thumbnails)
+- `groupVideos/{uid}/{postId}.mp4` and `groupThumbnails/{uid}/{postId}.jpg` (group-only videos and their covers)
 
 Storage rules validate content type and file size, and owner writes for videos, thumbnails and profile photos (see section 8).
 
@@ -325,11 +341,16 @@ On the web:
 1. The profile calls `WeeklyChallengeViewModel.loadForWeek`, which calls `getOrCreateCurrentWeek`. If the week has no document yet, `WeeklyChallengeEngine` generates three challenges from the last 40 sessions and the dance types in the library.
 2. After each practice session, `recordCompletedSession` updates progress in a transaction, credits reward and bonus points through `PointsRepository`, and shows `WeeklyChallengeCelebrationDialog` for completions.
 
-### Community Flow
+### Groups Flow
 
-1. `CommunityViewModel` observes the latest 50 posts through a snapshot listener.
-2. Creating a post or reply writes `communityPosts/{postId}` or `communityPosts/{postId}/replies/{replyId}` with the author's uid, name, and photo.
-3. Opening a post observes its replies (oldest first, up to 100).
+1. `GroupsViewModel.bind` observes the user's memberships (collection group `members`) and loads public groups for Discover.
+2. Creating a group writes, in one batch, `groups/{id}`, the owner's `members/{uid}` (role `owner`) and, for a private group, `groupInvites/{code}` with a random 8-character code. The rules require all of these together.
+3. Invite links `https://chorevo-dea05.web.app/join/<code>` (the QR code's content) are App Links (`/join/` in the manifest filter) and `chorevo://join/<code>`. `MainActivity` passes them through `ShareLinks.parseInviteCode` (`inviteCodeFromText`, which also reads bare codes) to `AppViewModel.openGroupInvite`, which waits for sign-in if needed and opens Groups with the join dialog filled in. Hosting serves `public/join.html` for `/join/**` when the app is missing.
+4. Invitations by username: a member searches `usernames` by document-ID prefix (limit 10, then one profile read each) and writes `groupInvitations/{groupId}_{inviteeUid}`. `GroupsViewModel` is bound in `AppRouter`, so the invitee's invitations (`where inviteeUid == me`) badge the Groups tab anywhere in the app. Accepting writes `members/{uid}` and deletes the invitation in one batch; the members rule accepts a join when that invitation exists. `groupCleanup` deletes a deleted group's invitations. Creating an invitation also triggers `notifyGroupInvitation`; `ChorevoMessagingService` shows the push when the app is in the foreground (the system shows it otherwise), and tapping it calls `AppViewModel.openGroupInvitations` from `MainActivity` (held until sign-in if needed). `AppRouter` registers the device token and, on Android 13+, asks for `POST_NOTIFICATIONS` once per launch.
+5. Joining a public group writes `members/{uid}`. Joining a private group reads `groupInvites/{code}` (get only; invites cannot be listed), then writes `members/{uid}` carrying the same `inviteCode`, which the rules compare with the group's.
+6. The `groupMemberCount` function recounts members on every join or leave and writes `memberCount`.
+7. Opening a group observes the group, the user's membership, members and posts. A post is text, a shared dance (`danceId`, title, cover and video URL copied from the user's public dance; "Open dance" calls `AppViewModel.openDanceById`), or a group video (compressed to 720p if larger, uploaded to `groupVideos/{uid}/{postId}.mp4` with a cover in `groupThumbnails/`).
+8. Deleting a post removes its replies and, for the author, its files. Deleting a group triggers `groupCleanup`, which deletes the invite, every group file, and the whole subtree (`recursiveDelete`).
 
 ### Analytics Flow
 
@@ -344,8 +365,8 @@ On the web:
 
 1. After a successful session sync, `DanceLibraryListViewModel.saveSessionAndUpload` (and `AutoRetryUploaderService`) calls `LeaderboardRepository.refreshUserStats`.
 2. The repository reads the profile and sessions, computes session count, average alignment ("similarity"), and active days, and writes `leaderboardStats/{uid}` (including the legacy `streakDays`).
-3. Leaderboard UI observes the top 100 ordered by the selected metric.
-4. Friends scope filters that top-100 list to the current user plus `users/{uid}/friends`.
+3. Global scope observes the top 100 ordered by the selected metric. If the user isn't in it, `observeMyGlobalEntry` watches their own stats and computes their rank as 1 + a `count()` of users with a higher score, for the pinned "Your position" card.
+4. Friends scope reads `leaderboardStats` for the current user plus `users/{uid}/friends` directly by document ID (`whereIn`, chunks of 30), so friends outside the top 100 appear.
 5. Ranking is computed client-side; ties share a rank.
 
 ### Reminder Flow
@@ -489,30 +510,42 @@ Implementation notes:
 Firestore rules (`firestore.rules`, matching the deployed ruleset) enforce:
 
 - signed-in access for protected data,
-- `users/{uid}`: readable by any signed-in user (including email); written only by the owner; not deletable,
+- `users/{uid}`: readable by any signed-in user (including email); written only by the owner, and a `username` only when `usernames/{username}` belongs to them after the write; not deletable,
+- `users/{uid}/fcmTokens/{token}`: owner only; the document ID must equal `token`; fields token, platform, updatedAt,
+- `usernames/{handle}`: get by signed-in users, listed at most 20 at a time; created only by the claiming user with a well-formed handle (`^[a-z0-9_]{3,20}$`) in the batch that puts it on their profile (an existing handle can't be re-created, so names are unique); deleted only by its owner once their profile no longer uses it; no updates,
+- `groupInvitations/{groupId}_{inviteeUid}`: read by the invitee or inviter; created by a group member as themselves, for an existing user who isn't a member yet and isn't the inviter, with the group's current name; no updates; deleted by the invitee, the inviter or the group owner,
 - owner-only reads and writes for `points`, `achievements`, `streaks` (and the legacy `streak`), `weeklyChallenges`, and `friends` under `users/{uid}`,
 - `danceLearningSessions`: owner writes; reads by the owner or by the educator named in `analysis.educatorUid` (including a collection-group rule); create/update require `analysis.danceId` to reference an existing dance whose `educatorUid` equals `analysis.educatorUid`; `analysis.danceId` and `analysis.educatorUid` cannot change on update; no deletes,
-- `danceLibrary/{danceId}`: readable by any signed-in user; create requires `educatorUid == auth.uid` and `danceId == docId`; update and delete only by the creator, with `educatorUid` and `danceId` unchanged,
+- `danceLibrary/{danceId}`: readable by signed-in users when `visibility == "public"`, otherwise only by the uploader (the rule reads the field directly, because a `get('visibility', 'public')` default lets list queries through unchecked; every dance has the field). List queries must filter on `visibility == "public"` or `educatorUid == auth.uid`. Create requires `educatorUid == auth.uid` and `danceId == docId`; update and delete only by the creator, with `educatorUid` and `danceId` unchanged. Clients may not set or change the server-managed fields (`likeCount`, `trendingScore`, `feedReady`, `danceTypeKey`, `searchTokens`, `searchTrigrams`, `shuffleKey`),
+- `meta/{docId}`: readable by signed-in users, written only by Cloud Functions,
 - `leaderboardStats/{uid}`: readable by any signed-in user, written only by the owner, no deletes,
-- `communityPosts/{postId}` and `replies/{replyId}`: readable by signed-in users; create validated (allowed fields only, author is the caller, title ≤ 120, body ≤ 1,500, reply ≤ 500, replies only on existing posts); no updates; delete only by the author.
+- `groups/{groupId}`: readable when `visibility == "public"` or the caller is a member (read directly, so list queries must filter on `visibility == "public"`). Create only together with the caller's owner membership (`existsAfter`), allowed fields only, `ownerUid == auth.uid`, name 3–60 with `nameLower` matching, description ≤ 500, an 8-character `inviteCode` exactly when private. Only the owner updates (name, nameLower, description only) or deletes; `memberCount` is server-only.
+- `groups/{groupId}/members/{uid}`: readable when the group is; users only add themselves — as `owner` only while creating their own group (`getAfter`), otherwise as `member` of a public group or with the matching `inviteCode`. No updates. Members leave (except the owner); the owner removes others. A collection-group rule lets users list their own memberships.
+- `groups/{groupId}/posts/{postId}` and `replies/{replyId}`: readable when the group is; created only by members as themselves, allowed fields only, body ≤ 1,500 (reply 1–500), `kind` text (non-empty body), dance (`danceId`) or video (`videoUrl`); no updates; delete by the author or the group owner.
+- `groupInvites/{code}`: `get` by signed-in users, never listed; created only by the group owner with the code matching the group's; no updates or deletes from clients.
+- `communityPosts/{postId}` and `replies/{replyId}` (old forum, no longer used by the app): readable by signed-in users; create validated; no updates; delete only by the author.
 
-- `danceLibrary/{danceId}/likes/{uid}`: readable by signed-in users; users like (`{liked: true}` only) and unlike only as themselves; the dance owner may delete likes on their dance.
-- `danceLibrary/{danceId}/comments/{commentId}`: readable by signed-in users; create validated (allowed fields only, author is the caller, ID matches, text 1–1,000 characters); no updates; delete by the author or the dance owner.
+- `danceLibrary/{danceId}/likes/{uid}`: readable when the dance is readable; users like (`liked: true`, optional `uid` equal to their own and `createdAt`) and unlike only as themselves, and only dances they can read; the dance owner may delete likes on their dance. A collection-group rule lets users query their own likes (`uid == auth.uid`).
+- `danceLibrary/{danceId}/comments/{commentId}`: readable, and creatable, when the dance is readable; create validated (allowed fields only, author is the caller, ID matches, text 1–1,000 characters); no updates; delete by the author or the dance owner.
 
 Storage rules enforce:
 
-- owner-only writes for `danceVideos/{uid}/` (video, < 200 MB), `danceThumbnails/{uid}/` (image, < 10 MB), and `profilePhotos/{uid}/` (image, < 10 MB),
+- owner-only writes for `danceVideos/{uid}/` and `groupVideos/{uid}/` (video, < 200 MB), `danceThumbnails/{uid}/`, `groupThumbnails/{uid}/` and `profilePhotos/{uid}/` (image, < 10 MB),
+- signed-in reads for group videos and covers. Their download URLs are only stored in member-readable posts, but anyone holding a URL can play it (same as dance videos),
 - public reads for dance videos and thumbnails, and authenticated reads for profile photos and templates,
 - `danceTemplates/{userId}/{fileName}`: written and deleted only by that user (JSON, < 20 MB); legacy `danceTemplates/{fileName}` files are read-only. Older app builds that still write to the legacy path can no longer save templates.
 - deny-by-default fallback.
 
 Video privacy:
 
-- Enforced in the app (`DanceLibraryRepository`, `DanceLibraryModel.isVisibleTo`) and in the `danceShare` function, not in Firestore rules. `danceLibrary` documents remain readable by any signed-in user, so a private dance's metadata can still be read directly through the Firebase API.
+- Enforced in Firestore rules (above), and also checked in the app (`DanceLibraryModel.isVisibleTo`; a permission-denied read of a shared private dance shows "This video is private.") and in the `danceShare` function.
+- Rules tests: `rules-tests/` (`npm install`, then `npm test`; runs the Firestore emulator) covers dance privacy, likes and comments of private dances, the liked-videos query, server-managed fields and `meta`, groups (`groups.test.js`: creation with owner membership, public/private access, invite codes, posting, replies, leaving and removal, owner edits, my-groups query), and usernames, invitations and push tokens (`invitations.test.js`).
 - Video files stay at token-protected Storage download URLs; making a dance private does not revoke an existing URL.
 - The `danceShare` function uses the Admin SDK (bypasses rules) and only renders public, enabled dances.
 
 ## 9. Testing and CI
+
+GitHub Actions has two workflows. `android.yml` runs JVM unit tests, emulator tests and the APK build. `firebase.yml` runs the Cloud Function tests (`functions/`) and the Firestore rules tests (`rules-tests/`, Firestore emulator) on every push, and on pushes to `main` deploys indexes, Storage rules, functions and Hosting, runs `functions/scripts/backfill.js`, then deploys the Firestore rules — using the `FIREBASE_SERVICE_ACCOUNT` secret (skipped when it is not set; setup in the README).
 
 Test locations:
 
@@ -523,9 +556,10 @@ Test locations:
 Unit tests (`app/src/test`):
 
 - `analytics`: `AnalyticsDashboardViewModelTest`, `AnalyticsRepositoryTest`, `AnalyticsStatsTest` (overview numbers, trend, heatmap days, body focus)
-- `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link handling, system back targets, theme mode, and onboarding)
+- `core`: `AppUiStateTest`, `AppViewModelTest` (including share-link and group-invite handling, system back targets, theme mode, and onboarding)
 - `dancelibrarylist`: `DanceLibraryModelTest`, `DanceLibraryRepositoryTest` (including video privacy), `DiscoveryTest` (category grouping, search, trending score, tab ordering), `DanceLibraryDiscoveryViewModelTest` (tabs, one-time like-count load, chips, search)
-- `firebase`: `FirebaseAuthRepositoryTest`
+- `community`: `GroupModelsTest` (invite-code normalising, invite links and QR text, name limits, composer and state helpers), `GroupsViewModelTest` (binding, opening a group, posting by kind and membership, join by code, owner-only delete, invitations: accept, decline, search and send)
+- `firebase`: `FirebaseAuthRepositoryTest`, `UsernamesTest` (normalising, limits, suggestions), `UsernameViewModelTest` (suggestion, availability, save)
 - `leaderboard`: `LeaderboardRepositoryTest`, `LeaderboardViewModelTest`
 - `posedetection`: `ByteTrackDancerTrackerTest`, `ConservativeFramePreprocessorTest`, `CropPoseGeometryTest`, `HandSimilarityEvaluatorTest`, `HandTrackAssignerTest`, `HolisticFrameLandmarksTest`, `HolisticFrameSelectorTest`, `MissingLandmarkInterpolatorTest`, `MultiPersonPoseTrackerTest`, `PersonDetectorFactoryTest`, `PoseDetectionMergerTest`, `PoseSimilarityEvaluatorTest`, `PoseTemplateJsonTest`, `TrackFragmentMergerTest`, `YoloPersonDetectionParserTest`
 - `videouploads`: `VideoUploadTest` (upload ViewModel, dancer review, confirmed templates, visibility, cover frame)
@@ -533,7 +567,7 @@ Unit tests (`app/src/test`):
 
 Instrumented tests (`app/src/androidTest`): `AnalyticsDashboardViewTest`, `DanceARPracticeScreenTest`, `DanceSessionDaoTest` (Room DAO), `DanceLibraryListViewTest`, `AuthScreenTest`, `OnboardingScreenTest`, `LeaderboardScreenTest`, `VideoUploadActivityScreenTest`.
 
-Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances), run with `npm test` in `functions/`. They are not part of GitHub Actions.
+Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances) and `functions/test/discovery.test.js` (search tokens, feedReady, trending score, derived-field updates without loops, category counts) and preview images, and `functions/test/groups.test.js` (group storage paths to clean up, invitation push message, dead-token cleanup), run with `npm test` in `functions/` and by the `firebase.yml` workflow.
 
 GitHub Actions (`.github/workflows/android.yml`) runs on push and pull request to all branches, cancelling in-progress runs for the same ref, with JDK 17 (Temurin). Jobs run in order:
 
@@ -563,10 +597,11 @@ Deployment:
 - Leaderboard values are client-written; high-trust ranking would need server-side verification.
 - Template generation is compute-heavy and runs off the main thread (`Dispatchers.Default` or WorkManager).
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
-- The feed and discovery load every public dance in one query and filter on the device. That is fine for a small library; a large one would need paged queries, a stored `likeCount` (maintained by a Cloud Function) for Trending, and a search service, since Firestore has no full-text search. Trending also costs one `count()` query per dance on first open.
-- Video privacy is client-enforced; rules-level enforcement needs a `visibility` backfill and a `visibility == "public"` feed query.
-- App Links are declared with `autoVerify`. `public/.well-known/assetlinks.json` exists, but the `firebase.json` hosting `ignore` rule `**/.*` excludes it from deploys, so links are not verified. A copy in `app/src/main/assets/assetlinks.json` is bundled in the APK and serves no purpose.
-- The share function and Hosting are not deployed by CI, so web changes must be deployed manually after merging.
+- Search is built on Firestore: candidates come from word-prefix tokens and trigrams, and are scored on the device, so it handles prefixes and small typos but not synonyms, stemming or relevance learned from usage. Results are capped (40 exact + 60 typo candidates per search). A hosted search service (Algolia, Typesense) would be the next step for a much larger library.
+- Older uploads have no `thumbnailUrl` (nothing generates thumbnails for existing videos); their grids decode a video frame and their link previews use the default image.
+- Like counts and trending scores are written by Cloud Functions, so they lag a like by a second or two, and trending ages every 6 hours.
+- Older app builds query the feed with `enabled == true` only; once the privacy rules are deployed that query is denied, so those builds show an empty feed until updated.
+- App Links: `public/.well-known/assetlinks.json` is UTF-8 and deployed with Hosting (the old `**/.*` ignore rule that skipped it is gone). Verification only succeeds for builds signed by a certificate whose SHA-256 fingerprint is listed there; CI builds are signed with a throwaway debug key per run, so links from CI APKs open the chooser or browser.
 - `PoseEstimator`/`NoOpPoseEstimator` and `PoseTemplateRepository` in `posedetection` are unused scaffolding.
 
 ## 11. Multi-Dancer AI Architecture
