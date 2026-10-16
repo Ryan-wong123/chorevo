@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -65,7 +66,7 @@ class SessionRewardsTest {
         val vm = vm(flow)
         var passedOn: SessionRewards? = null
         vm.awaitSessionRewards("u1", "s1") { passedOn = it }
-        advanceUntilIdle()
+        runCurrent() // not advanceUntilIdle: that would skip past the 20 s timeout
         assertFalse(vm.uiState.value.showAchievementDialog) // still waiting for the server
 
         val r = SessionRewards(
@@ -73,7 +74,7 @@ class SessionRewardsTest {
             newBadges = listOf(BadgeId.DEDICATED)
         )
         flow.value = r
-        advanceUntilIdle()
+        runCurrent()
 
         val s = vm.uiState.value
         assertTrue(s.showAchievementDialog)
