@@ -16,6 +16,7 @@ Chorevo is a single-module native Android application:
 - Pose analysis: MediaPipe Tasks Vision 0.10.26.1 (Pose Landmarker and Holistic Landmarker) and TensorFlow Lite 2.17.0 (YOLO person detector)
 - 3D: SceneView for the instructor avatar overlay
 - Web share links: Firebase Hosting (`chorevo-dea05.web.app`) rewriting `/dance/**` to the `danceShare` Cloud Function in `functions/` (Node.js 22, `firebase-functions` v2 HTTPS, Admin SDK)
+- Discovery maintenance: Cloud Functions `danceDerivedFields` (Firestore trigger on `danceLibrary/{id}`), `danceLikeCount` (trigger on `danceLibrary/{id}/likes/{uid}`) and `refreshDiscovery` (scheduled every 6 hours) keep the feed fields, like counts, trending scores and `meta/danceCategories` current. The field logic is in `functions/discovery.js` (pure, tested) and the jobs in `functions/maintenance.js`, shared with the one-off `functions/scripts/backfill.js`.
 
 Navigation Compose and Hilt Navigation Compose are declared as dependencies, but navigation uses a custom `Screen` enum rather than a `NavHost`. The Firebase Analytics SDK is included but logs no events.
 
@@ -192,9 +193,10 @@ Main collections:
 
 Important query patterns:
 
-- Enabled library items: `danceLibrary where enabled == true`, then filtered client-side to ready templates and non-private dances. The query does not filter on `visibility` because older documents have no such field.
-- Discovery (search, category chips, For You / Trending / New) runs client-side over that full list in `applyDiscovery` (`dancelibrarylist/Discovery.kt`, plain Kotlin), so it needs no extra Firestore indexes. Trending uses `DanceLibraryRepository.likeCounts`: one server-side `count()` aggregation on `danceLibrary/{id}/likes` per dance, run in parallel and cached in `DanceLibraryListViewModel` (`likeCounts`) after the first Trending open. Category keys come from `danceTypeKey` (lower-case letters and digits only).
-- Liked dances: the enabled-library query, then one `likes/{uid}` read per dance.
+- Feed pages (`DanceLibraryRepository.loadFeedPage`, 12 per page): `danceLibrary where visibility == "public" and feedReady == true`, plus `danceTypeKey == key` for a chip and `searchTokens array-contains <first search word>` for a search, ordered by `shuffleKey` (For You), `createdAt desc` (New) or `trendingScore desc` (Trending), continued with `startAfter`. For You starts at a random seed (`shuffleKey >= seed`), then wraps once (`shuffleKey < seed`). Further search words are matched on the device (`matchesSearch`). All 12 combinations have composite indexes in `firestore.indexes.json`. `DanceLibraryListViewModel` appends pages (`loadMore`, triggered three videos from the end), keeps fetching while pages come back empty after search filtering (up to 5), and debounces search by 300 ms.
+- Category chips: `meta/danceCategories` (`counts` and `labels` per `danceTypeKey`), maintained by Cloud Functions.
+- Likes: the like count is the dance's `likeCount` (falling back to a `count()` query before the function has set it) and "liked" is one read of `likes/{uid}`. Like documents store `{liked, uid, createdAt}`.
+- Liked dances: `collectionGroup("likes") where uid == me`, newest first, then one read per dance (private or deleted dances are skipped).
 - Comments: `orderBy createdAt desc limit 20`; "Load more" continues with the same order and `startAfter(cursor)`.
 - Creator uploads: `danceLibrary where educatorUid == uid orderBy createdAt desc`.
 - Learner sessions: `users/{uid}/danceLearningSessions orderBy tsStart desc limit 30`.
@@ -344,8 +346,8 @@ On the web:
 
 1. After a successful session sync, `DanceLibraryListViewModel.saveSessionAndUpload` (and `AutoRetryUploaderService`) calls `LeaderboardRepository.refreshUserStats`.
 2. The repository reads the profile and sessions, computes session count, average alignment ("similarity"), and active days, and writes `leaderboardStats/{uid}` (including the legacy `streakDays`).
-3. Leaderboard UI observes the top 100 ordered by the selected metric.
-4. Friends scope filters that top-100 list to the current user plus `users/{uid}/friends`.
+3. Global scope observes the top 100 ordered by the selected metric. If the user isn't in it, `observeMyGlobalEntry` watches their own stats and computes their rank as 1 + a `count()` of users with a higher score, for the pinned "Your position" card.
+4. Friends scope reads `leaderboardStats` for the current user plus `users/{uid}/friends` directly by document ID (`whereIn`, chunks of 30), so friends outside the top 100 appear.
 5. Ranking is computed client-side; ties share a rank.
 
 ### Reminder Flow
@@ -492,12 +494,13 @@ Firestore rules (`firestore.rules`, matching the deployed ruleset) enforce:
 - `users/{uid}`: readable by any signed-in user (including email); written only by the owner; not deletable,
 - owner-only reads and writes for `points`, `achievements`, `streaks` (and the legacy `streak`), `weeklyChallenges`, and `friends` under `users/{uid}`,
 - `danceLearningSessions`: owner writes; reads by the owner or by the educator named in `analysis.educatorUid` (including a collection-group rule); create/update require `analysis.danceId` to reference an existing dance whose `educatorUid` equals `analysis.educatorUid`; `analysis.danceId` and `analysis.educatorUid` cannot change on update; no deletes,
-- `danceLibrary/{danceId}`: readable by any signed-in user; create requires `educatorUid == auth.uid` and `danceId == docId`; update and delete only by the creator, with `educatorUid` and `danceId` unchanged,
+- `danceLibrary/{danceId}`: readable by signed-in users when `visibility == "public"`, otherwise only by the uploader (the rule reads the field directly, because a `get('visibility', 'public')` default lets list queries through unchecked; every dance has the field). List queries must filter on `visibility == "public"` or `educatorUid == auth.uid`. Create requires `educatorUid == auth.uid` and `danceId == docId`; update and delete only by the creator, with `educatorUid` and `danceId` unchanged. Clients may not set or change the server-managed fields (`likeCount`, `trendingScore`, `feedReady`, `danceTypeKey`, `searchTokens`, `shuffleKey`),
+- `meta/{docId}`: readable by signed-in users, written only by Cloud Functions,
 - `leaderboardStats/{uid}`: readable by any signed-in user, written only by the owner, no deletes,
 - `communityPosts/{postId}` and `replies/{replyId}`: readable by signed-in users; create validated (allowed fields only, author is the caller, title ≤ 120, body ≤ 1,500, reply ≤ 500, replies only on existing posts); no updates; delete only by the author.
 
-- `danceLibrary/{danceId}/likes/{uid}`: readable by signed-in users; users like (`{liked: true}` only) and unlike only as themselves; the dance owner may delete likes on their dance.
-- `danceLibrary/{danceId}/comments/{commentId}`: readable by signed-in users; create validated (allowed fields only, author is the caller, ID matches, text 1–1,000 characters); no updates; delete by the author or the dance owner.
+- `danceLibrary/{danceId}/likes/{uid}`: readable when the dance is readable; users like (`liked: true`, optional `uid` equal to their own and `createdAt`) and unlike only as themselves, and only dances they can read; the dance owner may delete likes on their dance. A collection-group rule lets users query their own likes (`uid == auth.uid`).
+- `danceLibrary/{danceId}/comments/{commentId}`: readable, and creatable, when the dance is readable; create validated (allowed fields only, author is the caller, ID matches, text 1–1,000 characters); no updates; delete by the author or the dance owner.
 
 Storage rules enforce:
 
@@ -508,7 +511,8 @@ Storage rules enforce:
 
 Video privacy:
 
-- Enforced in the app (`DanceLibraryRepository`, `DanceLibraryModel.isVisibleTo`) and in the `danceShare` function, not in Firestore rules. `danceLibrary` documents remain readable by any signed-in user, so a private dance's metadata can still be read directly through the Firebase API.
+- Enforced in Firestore rules (above), and also checked in the app (`DanceLibraryModel.isVisibleTo`; a permission-denied read of a shared private dance shows "This video is private.") and in the `danceShare` function.
+- Rules tests: `rules-tests/` (`npm install`, then `npm test`; runs the Firestore emulator) covers dance privacy, likes and comments of private dances, the liked-videos query, server-managed fields and `meta`.
 - Video files stay at token-protected Storage download URLs; making a dance private does not revoke an existing URL.
 - The `danceShare` function uses the Admin SDK (bypasses rules) and only renders public, enabled dances.
 
@@ -533,7 +537,7 @@ Unit tests (`app/src/test`):
 
 Instrumented tests (`app/src/androidTest`): `AnalyticsDashboardViewTest`, `DanceARPracticeScreenTest`, `DanceSessionDaoTest` (Room DAO), `DanceLibraryListViewTest`, `AuthScreenTest`, `OnboardingScreenTest`, `LeaderboardScreenTest`, `VideoUploadActivityScreenTest`.
 
-Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances), run with `npm test` in `functions/`. They are not part of GitHub Actions.
+Cloud Function tests: `functions/test/render.test.js` (link parsing, title rendering, HTML escaping, fallbacks for missing/disabled/private dances) and `functions/test/discovery.test.js` (search tokens, feedReady, trending score, derived-field updates without loops, category counts), run with `npm test` in `functions/`. They are not part of GitHub Actions.
 
 GitHub Actions (`.github/workflows/android.yml`) runs on push and pull request to all branches, cancelling in-progress runs for the same ref, with JDK 17 (Temurin). Jobs run in order:
 
@@ -563,9 +567,10 @@ Deployment:
 - Leaderboard values are client-written; high-trust ranking would need server-side verification.
 - Template generation is compute-heavy and runs off the main thread (`Dispatchers.Default` or WorkManager).
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
-- The feed and discovery load every public dance in one query and filter on the device. That is fine for a small library; a large one would need paged queries, a stored `likeCount` (maintained by a Cloud Function) for Trending, and a search service, since Firestore has no full-text search. Trending also costs one `count()` query per dance on first open.
-- Video privacy is client-enforced; rules-level enforcement needs a `visibility` backfill and a `visibility == "public"` feed query.
-- App Links are declared with `autoVerify`. `public/.well-known/assetlinks.json` exists, but the `firebase.json` hosting `ignore` rule `**/.*` excludes it from deploys, so links are not verified. A copy in `app/src/main/assets/assetlinks.json` is bundled in the APK and serves no purpose.
+- Search is word-prefix search on stored tokens, not full-text search: the first word must start a word in the title, dance type or creator name. Typo tolerance or relevance ranking would need a search service.
+- Like counts and trending scores are written by Cloud Functions, so they lag a like by a second or two, and trending ages every 6 hours.
+- Older app builds query the feed with `enabled == true` only; once the privacy rules are deployed that query is denied, so those builds show an empty feed until updated.
+- App Links: `public/.well-known/assetlinks.json` is UTF-8 and deployed with Hosting (the old `**/.*` ignore rule that skipped it is gone). Verification only succeeds for builds signed by a certificate whose SHA-256 fingerprint is listed there; CI builds are signed with a throwaway debug key per run, so links from CI APKs open the chooser or browser.
 - The share function and Hosting are not deployed by CI, so web changes must be deployed manually after merging.
 - `PoseEstimator`/`NoOpPoseEstimator` and `PoseTemplateRepository` in `posedetection` are unused scaffolding.
 

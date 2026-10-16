@@ -66,7 +66,8 @@ import com.example.chorevo.ui.theme.PillShape
 fun DiscoveryBar(
     filter: DiscoveryFilter,
     categories: List<DanceCategory>,
-    isLoadingTrending: Boolean,
+    /** Shows a small spinner on the selected tab while its first page loads. */
+    isLoading: Boolean,
     onSelectTab: (FeedTab) -> Unit,
     onSelectCategory: (String?) -> Unit,
     onQueryChange: (String) -> Unit,
@@ -119,7 +120,7 @@ fun DiscoveryBar(
                             FeedTabLabel(
                                 tab = tab,
                                 selected = filter.tab == tab,
-                                loading = tab == FeedTab.TRENDING && isLoadingTrending,
+                                loading = filter.tab == tab && isLoading,
                                 onClick = { onSelectTab(tab) }
                             )
                         }

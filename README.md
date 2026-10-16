@@ -394,6 +394,17 @@ SHA-256: ...
 
 - After adding fingerprints in Firebase, always download a fresh `google-services.json` again.
 - Make sure the new file replaces the existing file at `app/google-services.json`.
+
+#### Share links opening the app (App Links)
+
+Share links (`https://chorevo-dea05.web.app/dance/...`) open the app directly only on builds whose signing certificate is listed in `public/.well-known/assetlinks.json`:
+
+1. Copy the `SHA-256` value from `signingReport` (see above).
+2. Add it to the `sha256_cert_fingerprints` array in `public/.well-known/assetlinks.json` (keep the file UTF-8).
+3. Deploy Hosting: `firebase deploy --only hosting`.
+4. Reinstall the app, or run `adb shell pm verify-app-links --re-verify com.example.chorevo`.
+
+Builds signed with an unlisted key (including CI's per-run debug key) still open links, through the app chooser or the browser page.
 - If the fingerprint is missing or wrong, Google sign-in may fail even if the app builds correctly.
 
 ### Firestore indexes

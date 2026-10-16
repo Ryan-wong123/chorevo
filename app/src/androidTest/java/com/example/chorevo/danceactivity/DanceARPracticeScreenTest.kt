@@ -15,6 +15,7 @@ import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
 import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.dancelibrarylist.stubFeed
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
 import com.example.chorevo.posedetection.PoseFrame
@@ -53,7 +54,7 @@ class DanceARPracticeScreenTest {
         streakRepository = mockk(relaxed = true)
         leaderboardRepository = mockk(relaxed = true)
 
-        coEvery { repo.listEnabled() } returns Result.success(emptyList())
+        repo.stubFeed(emptyList())
         coEvery {
             repo.saveSessionAndUpload(
                 session = any(),

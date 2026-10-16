@@ -48,6 +48,7 @@ class LeaderboardViewModelTest {
         repo = mockk(relaxed = true)
         every { repo.observeLeaderboard(any(), any(), any()) } returns flowOf(emptyList())
         every { repo.observeFriendIds(any()) } returns flowOf(emptySet())
+        every { repo.observeMyGlobalEntry(any(), any()) } returns flowOf(null)
         vm = LeaderboardViewModel(repo)
     }
 

@@ -92,7 +92,7 @@ fun DanceLibraryListView(
         DiscoveryBar(
             filter = state.filter,
             categories = state.categories,
-            isLoadingTrending = state.isLoadingTrending,
+            isLoading = state.isLoading,
             onSelectTab = vm::selectTab,
             onSelectCategory = vm::selectCategory,
             onQueryChange = vm::setSearchQuery,
@@ -114,28 +114,6 @@ fun DanceLibraryListView(
         vm.clearUploadMessage()
     }
 
-    // No dances at all (or still loading). A search with no matches is handled
-    // below so the discovery bar stays put.
-    if (items.isEmpty() && state.items.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            if (state.isLoading) {
-                FeedSkeleton()
-            } else {
-                AnimatedEmptyState(
-                    icon = Icons.Filled.PlayArrow,
-                    title = status ?: "No dances available.",
-                    message = "New routines show up here as creators publish them.",
-                    contentColor = Color.White
-                )
-            }
-        }
-        return
-    }
 
     val pagerState = rememberPagerState(
         initialPage = 0,
@@ -154,6 +132,11 @@ fun DanceLibraryListView(
     // A link tapped while the feed is already open jumps back to the shared video.
     LaunchedEffect(pinnedDance?.danceId) {
         if (pinnedDance != null) pagerState.scrollToPage(0)
+    }
+
+    // Fetch the next page a few videos before the end of what is loaded.
+    LaunchedEffect(pagerState.currentPage, items.size) {
+        if (items.isNotEmpty() && pagerState.currentPage >= items.size - LOAD_MORE_AHEAD) vm.loadMore()
     }
 
     // A new tab, chip or search starts the feed from its first video.
@@ -222,27 +205,37 @@ fun DanceLibraryListView(
         )
 
         if (items.isEmpty()) {
-            // Dances exist but none match the search / chip.
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                AnimatedEmptyState(
-                    icon = Icons.Filled.Search,
-                    title = "No dances match",
-                    message = if (state.filter.query.isNotBlank()) {
-                        "Nothing found for \"${state.filter.query.trim()}\". Try another word or style."
-                    } else {
-                        "No dances in this style yet."
-                    },
-                    contentColor = Color.White
-                )
-                TextButton(
-                    onClick = vm::clearDiscoveryFilters,
-                    modifier = Modifier.testTag("clearFilters")
+            when {
+                state.isLoading -> FeedSkeleton()
+                // Nothing matches the search / chip: offer a way back.
+                state.filter.isFiltered -> Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Clear filters", color = ChorevoTheme.colors.accent)
+                    AnimatedEmptyState(
+                        icon = Icons.Filled.Search,
+                        title = "No dances match",
+                        message = if (state.filter.query.isNotBlank()) {
+                            "Nothing found for \"${state.filter.query.trim()}\". Try another word or style."
+                        } else {
+                            "No dances in this style yet."
+                        },
+                        contentColor = Color.White
+                    )
+                    TextButton(
+                        onClick = vm::clearDiscoveryFilters,
+                        modifier = Modifier.testTag("clearFilters")
+                    ) {
+                        Text("Clear filters", color = ChorevoTheme.colors.accent)
+                    }
                 }
+                else -> AnimatedEmptyState(
+                    icon = Icons.Filled.PlayArrow,
+                    title = status ?: "No dances available.",
+                    message = "New routines show up here as creators publish them.",
+                    contentColor = Color.White,
+                    modifier = Modifier.align(Alignment.Center)
+                )
             }
         } else {
             VerticalPager(
@@ -890,6 +883,9 @@ private fun HeartBurst(offset: Offset) {
         )
     }
 }
+/** Start loading the next page when this many videos are left. */
+private const val LOAD_MORE_AHEAD = 3
+
 /** Placeholder for the feed while the first page loads: rail buttons and caption lines. */
 @Composable
 private fun FeedSkeleton() {

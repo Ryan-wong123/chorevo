@@ -8,36 +8,41 @@ import com.example.chorevo.dancelibrarylist.DanceComment
 import com.example.chorevo.dancelibrarylist.DanceCategory
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.DiscoveryFilter
+import com.example.chorevo.dancelibrarylist.FeedCursor
 import com.example.chorevo.dancelibrarylist.FeedTab
-import com.example.chorevo.dancelibrarylist.applyDiscovery
-import com.example.chorevo.dancelibrarylist.categoriesOf
 import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
 import com.google.firebase.firestore.DocumentSnapshot
 import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
 import com.example.chorevo.posedetection.PoseTemplate
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import kotlin.random.Random
 
 data class DanceLibraryUiState(
-    /** Every public, ready dance, in feed order. */
+    /** Dances loaded so far for [filter], in feed order (pages are appended). */
     val items: List<DanceLibraryModel> = emptyList(),
+    /** True while the first page for the current filter is loading. */
     val isLoading: Boolean = false,
     val message: String? = null,
     /** Discovery bar: tab, category chip and search text. */
     val filter: DiscoveryFilter = DiscoveryFilter(),
-    /** Category chips built from [items]. */
+    /** Category chips (from meta/danceCategories). */
     val categories: List<DanceCategory> = emptyList(),
-    /** [items] after the discovery filter; this is what the feed shows. */
-    val visibleItems: List<DanceLibraryModel> = emptyList(),
-    /** Like counts used to rank Trending; loaded the first time Trending is opened. */
-    val likeCounts: Map<String, Int> = emptyMap(),
-    val isLoadingTrending: Boolean = false,
-)
+    /** True while a further page is loading. */
+    val isLoadingMore: Boolean = false,
+    /** True once the last page for [filter] has been loaded. */
+    val endReached: Boolean = false,
+) {
+    /** What the feed shows. */
+    val visibleItems: List<DanceLibraryModel> get() = items
+}
 
 data class DanceSessionUploadUiState(
     val isWorking: Boolean = false,
@@ -58,6 +63,10 @@ data class DanceSocialState(
     val hasMoreComments: Boolean = false,
     val commentCursor: DocumentSnapshot? = null
 )
+
+private const val SEARCH_DEBOUNCE_MS = 300L
+/** Pages fetched in a row when they come back empty after on-device search filtering. */
+private const val MAX_EMPTY_PAGES = 5
 
 @HiltViewModel
 class DanceLibraryListViewModel @Inject constructor(
@@ -89,73 +98,107 @@ class DanceLibraryListViewModel @Inject constructor(
         refresh()
     }
 
-    /** Handles refresh. */
+    // ── Feed paging and discovery bar ─────────────────────────────────────
+
+    /** Random start point for the For You feed, fresh each app session. */
+    internal var forYouSeed: Double = Random.nextDouble()
+    private var nextCursor: FeedCursor? = null
+    private var feedJob: Job? = null
+    private var searchJob: Job? = null
+
+    /** Reloads chips and the first page for the current filter. */
     fun refresh() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, message = "Loading dances…") }
-
-            val res = repo.listEnabled()
-            res.fold(
-                onSuccess = { list ->
-                    _uiState.update {
-                        it.copy(
-                            items = list,
-                            categories = categoriesOf(list),
-                            isLoading = false,
-                            message = if (list.isEmpty()) "No dances available." else null
-                        ).withVisibleItems()
-                    }
-                    if (_uiState.value.filter.tab == FeedTab.TRENDING) loadLikeCounts()
-                },
-                onFailure = { e ->
-                    _uiState.update { it.copy(isLoading = false, message = "Failed: ${e.message}") }
-                }
-            )
+            repo.loadCategories().onSuccess { cats -> _uiState.update { it.copy(categories = cats) } }
         }
+        reloadFeed()
     }
 
-    // ── Discovery bar ─────────────────────────────────────────────────────
+    /** Starts the feed for the current filter from its first page. */
+    private fun reloadFeed() {
+        feedJob?.cancel()
+        nextCursor = null
+        _uiState.update {
+            it.copy(
+                items = emptyList(),
+                isLoading = true,
+                isLoadingMore = false,
+                endReached = false,
+                message = "Loading dances…"
+            )
+        }
+        feedJob = viewModelScope.launch { loadPages() }
+    }
 
-    /** Clock for Trending's age decay; replaceable in tests. */
-    internal var clock: () -> Long = System::currentTimeMillis
+    /** Loads the next page when the user nears the end of what is loaded. */
+    fun loadMore() {
+        val state = _uiState.value
+        if (state.isLoading || state.isLoadingMore || state.endReached) return
+        _uiState.update { it.copy(isLoadingMore = true) }
+        feedJob = viewModelScope.launch { loadPages() }
+    }
 
-    private fun DanceLibraryUiState.withVisibleItems(): DanceLibraryUiState =
-        copy(visibleItems = applyDiscovery(items, filter, likeCounts, clock()))
-
-    private fun updateFilter(transform: (DiscoveryFilter) -> DiscoveryFilter) {
-        _uiState.update { it.copy(filter = transform(it.filter)).withVisibleItems() }
+    /**
+     * Fetches pages until something new is shown or the feed ends (a page can
+     * come back empty when extra search words filter all of it out).
+     */
+    private suspend fun loadPages() {
+        val filter = _uiState.value.filter
+        var attempts = 0
+        while (true) {
+            val page = repo.loadFeedPage(filter, forYouSeed, nextCursor).getOrElse { e ->
+                _uiState.update {
+                    it.copy(isLoading = false, isLoadingMore = false, message = "Failed: ${e.message}")
+                }
+                return
+            }
+            nextCursor = page.next
+            val ended = page.next == null
+            _uiState.update { state ->
+                val seen = state.items.map { it.danceId }.toSet()
+                val merged = state.items + page.items.filter { it.danceId !in seen }
+                state.copy(
+                    items = merged,
+                    endReached = ended,
+                    message = if (merged.isEmpty() && ended) "No dances available." else null
+                )
+            }
+            attempts++
+            if (page.items.isNotEmpty() || ended || attempts >= MAX_EMPTY_PAGES) break
+        }
+        _uiState.update { it.copy(isLoading = false, isLoadingMore = false) }
     }
 
     /** Switches between For You, Trending and New. */
     fun selectTab(tab: FeedTab) {
-        updateFilter { it.copy(tab = tab) }
-        if (tab == FeedTab.TRENDING && _uiState.value.likeCounts.isEmpty()) loadLikeCounts()
+        if (_uiState.value.filter.tab == tab) return
+        _uiState.update { it.copy(filter = it.filter.copy(tab = tab)) }
+        reloadFeed()
     }
 
     /** Selects a category chip; selecting the active chip again clears it. */
     fun selectCategory(key: String?) {
-        updateFilter { it.copy(categoryKey = if (it.categoryKey == key) null else key) }
+        _uiState.update {
+            it.copy(filter = it.filter.copy(categoryKey = if (it.filter.categoryKey == key) null else key))
+        }
+        reloadFeed()
     }
 
+    /** Updates the search text; the feed reloads once typing pauses. */
     fun setSearchQuery(query: String) {
-        updateFilter { it.copy(query = query) }
+        _uiState.update { it.copy(filter = it.filter.copy(query = query)) }
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(SEARCH_DEBOUNCE_MS)
+            reloadFeed()
+        }
     }
 
     /** Clears the category and search, keeping the tab. */
     fun clearDiscoveryFilters() {
-        updateFilter { it.copy(categoryKey = null, query = "") }
-    }
-
-    private fun loadLikeCounts() {
-        val ids = _uiState.value.items.map { it.danceId }
-        if (ids.isEmpty() || _uiState.value.isLoadingTrending) return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingTrending = true) }
-            val counts = runCatching { repo.likeCounts(ids) }.getOrDefault(emptyMap())
-            _uiState.update {
-                it.copy(likeCounts = counts, isLoadingTrending = false).withVisibleItems()
-            }
-        }
+        searchJob?.cancel()
+        _uiState.update { it.copy(filter = it.filter.copy(categoryKey = null, query = "")) }
+        reloadFeed()
     }
 
     /** Saves session and upload. */

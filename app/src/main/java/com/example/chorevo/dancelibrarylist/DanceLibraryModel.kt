@@ -2,7 +2,14 @@ package com.example.chorevo.dancelibrarylist
 
 import com.example.chorevo.posedetection.PoseTemplate
 import com.google.firebase.firestore.Exclude
+import com.google.firebase.firestore.IgnoreExtraProperties
 
+/**
+ * A dance in the library. The server also keeps likeCount, trendingScore,
+ * feedReady, danceTypeKey, searchTokens and shuffleKey on the document
+ * (functions/discovery.js); the app queries on them but never writes them.
+ */
+@IgnoreExtraProperties
 data class DanceLibraryModel(
     val danceId: String = "",
     val title: String = "",
