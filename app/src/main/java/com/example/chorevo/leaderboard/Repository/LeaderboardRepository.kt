@@ -6,24 +6,36 @@ import com.example.chorevo.leaderboard.LeaderboardMetric
 import com.example.chorevo.leaderboard.LeaderboardScope
 import com.example.chorevo.leaderboard.LeaderboardStat
 import com.example.chorevo.leaderboard.LeaderboardStatsSnapshot
+import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.math.abs
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class LeaderboardRepository @Inject constructor(
     private val db: FirebaseFirestore
 ) {
+
+    private companion object {
+        /** Max values in a Firestore `in` filter. */
+        const val FIRESTORE_IN_LIMIT = 30
+    }
 
     /** Observes leaderboard. */
     fun observeLeaderboard(
@@ -40,15 +52,88 @@ class LeaderboardRepository @Inject constructor(
                 }
             }
 
+            // Friends are read directly by uid, so a friend outside the global
+            // top 100 still shows up.
             LeaderboardScope.FRIENDS -> {
-                combine(allStatsFlow, observeFriendIds(myUid)) { allStats, friendIds ->
-                    val allowed = friendIds + myUid
-                    allStats
-                        .filter { it.uid in allowed }
-                        .toRanked(metric = metric, myUid = myUid)
-                }
+                observeFriendIds(myUid)
+                    .flatMapLatest { friendIds -> observeStatsFor(friendIds + myUid) }
+                    .map { stats -> stats.toRanked(metric = metric, myUid = myUid) }
             }
         }
+    }
+
+    /**
+     * The signed-in user's global rank for [metric], even when they are outside
+     * the top 100: rank = 1 + number of users with a strictly higher score
+     * (a server-side count(), so ties share a rank like the list does).
+     * Emits null when the user has no stats yet.
+     */
+    fun observeMyGlobalEntry(
+        metric: LeaderboardMetric,
+        myUid: String
+    ): Flow<LeaderboardEntry?> = callbackFlow {
+        val reg = db.collection("leaderboardStats")
+            .document(myUid)
+            .addSnapshotListener { doc, err ->
+                if (err != null || doc == null || !doc.exists()) {
+                    trySend(null)
+                    return@addSnapshotListener
+                }
+                val stat = doc.toLeaderboardStatOrNull() ?: run {
+                    trySend(null)
+                    return@addSnapshotListener
+                }
+                val myScore = doc.getDouble(metric.firestoreField) ?: metric.scoreOf(stat)
+                launch {
+                    val higher = runCatching {
+                        db.collection("leaderboardStats")
+                            .whereGreaterThan(metric.firestoreField, myScore)
+                            .count()
+                            .get(AggregateSource.SERVER)
+                            .await()
+                            .count
+                    }.getOrNull() ?: return@launch
+                    trySend(
+                        LeaderboardEntry(
+                            rank = higher.toInt() + 1,
+                            uid = stat.uid,
+                            displayName = stat.displayName,
+                            photoUrl = stat.photoUrl,
+                            totalPracticeSessions = stat.totalPracticeSessions,
+                            avgSimilarityScore = stat.avgSimilarityScore,
+                            totalActiveDays = stat.totalActiveDays,
+                            isMe = true
+                        )
+                    )
+                }
+            }
+        awaitClose { reg.remove() }
+    }
+
+    /**
+     * Live stats for specific users. Firestore `in` filters take at most 30
+     * values, so the ids are split into chunks of 30 and the results merged.
+     * Users with no stats document yet are left out.
+     */
+    private fun observeStatsFor(uids: Set<String>): Flow<List<LeaderboardStat>> {
+        val chunks = uids.filter { it.isNotBlank() }.chunked(FIRESTORE_IN_LIMIT)
+        if (chunks.isEmpty()) return flowOf(emptyList())
+        val flows = chunks.map { chunk ->
+            callbackFlow {
+                val reg = db.collection("leaderboardStats")
+                    .whereIn(FieldPath.documentId(), chunk)
+                    .addSnapshotListener { snap, err ->
+                        if (err != null) {
+                            Log.e("LeaderboardRepository", "observeStatsFor failed: ${err.message}", err)
+                            trySend(emptyList())
+                            return@addSnapshotListener
+                        }
+                        trySend(snap?.documents.orEmpty().mapNotNull { it.toLeaderboardStatOrNull() })
+                    }
+                awaitClose { reg.remove() }
+            }
+        }
+        return combine(flows) { parts -> parts.flatMap { it } }
     }
 
     /** Refreshes user stats. */

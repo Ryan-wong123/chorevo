@@ -60,11 +60,12 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Only enabled, public dances with ready pose templates are shown in the feed. Private dances appear only in their uploader's profile.
 - Full-screen vertical video feed with the next video preloaded.
 - A discovery bar floats over the top of the feed:
-  - **Tabs:** For You (the feed's normal order), Trending (ranked by likes with an age decay, (likes + 1) / (age in days + 2)^1.5, so new dances can trend), and New (newest uploads first). Like counts for Trending load the first time the tab is opened.
-  - **Search:** the search button swaps the tabs for a search field that filters as you type; every word must appear in the title, dance type, creator name, or description (case-insensitive).
+  - **Tabs:** For You (a shuffled order that starts at a random point each app session), Trending (ranked by likes with an age decay, (likes + 1) / (age in days + 2)^1.5, so new dances can trend), and New (newest uploads first).
+  - **Search:** the search button swaps the tabs for a search field; the feed reloads 300 ms after typing pauses. The first word must start a word in the title, dance type, or creator name (so "sal" finds "Salsa"); any further words must appear somewhere in the title, dance type, creator, or description (case-insensitive).
   - **Category chips:** "All" plus one chip per dance type, most common first. Spellings are grouped ("Hip Hop", "hip-hop" and "HIPHOP" are one chip) and labelled with the most common spelling. Tapping the active chip again clears it.
   - Chips and search narrow whichever tab is selected, and changing any of them starts the feed from its first video. If nothing matches, an empty state with "Clear filters" is shown and the bar stays in place.
   - A dance opened from a share link is pinned first only on the unfiltered For You feed.
+- The feed loads 12 dances at a time and fetches the next page three videos before the end, so it scales to a large library. Ranking, search tokens, category counts and like counts are kept on the server by Cloud Functions (see Web below).
 - Dance metadata includes title, description, dance type, educator UID/name, video URL, template status, dancer count, review status, and visibility.
 - Each video has a right-hand rail (creator avatar with a gradient ring; like with count, also by double-tap with a heart animation; comments with count; Share) and, bottom-left, the creator, title, a two-line caption that expands on tap, dance-type and dancer-count chips, and a gradient Practice button. A thin progress bar above the bottom bar shows playback and can be tapped or dragged to seek.
 - Comments open in a bottom sheet: newest first, 20 per page with "Load more", and an input to post a comment.
@@ -151,8 +152,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 ### Leaderboard
 
 - Global and Friends scopes, ranked by Sessions (total practice sessions), Similarity (average alignment score), or Active Days. Tied users share a rank.
-- The top three stand on a podium (2nd left, 1st raised in the middle with a trophy, 3rd right) with gold, silver and bronze avatar rings, their metric value, and blocks that rise in on load. Everyone from 4th down is listed below with their rank. The user's own rank is pinned in a "Your position" card at the bottom of the screen.
-- Users add friends (+) from the Global board (podium or list) and remove them from the Friends board. The Friends view is the current user plus saved friends, taken from the global top 100 for the selected metric.
+- The top three stand on a podium (2nd left, 1st raised in the middle with a trophy, 3rd right) with gold, silver and bronze avatar rings, their metric value, and blocks that rise in on load. Everyone from 4th down is listed below with their rank. The user's own rank is pinned in a "Your position" card at the bottom of the screen; on the Global board it shows the real rank even outside the top 100 (one count of users with a higher score).
+- Users add friends (+) from the Global board (podium or list) and remove them from the Friends board. The Friends view is the current user plus saved friends, read directly by user ID (so friends outside the global top 100 are included); the metric.
 - Stats in `leaderboardStats/{uid}` are recomputed on the client after each synced session.
 
 ### Reminders
@@ -266,7 +267,8 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 - Any signed-in user can read any `users/{uid}` profile document, including its email.
 - Storage rules must enforce owner-only writes and content-type/size limits, including for pose templates (`danceTemplates/{uid}/…`).
 - App Check debug provider is installed only for debug builds.
-- Video privacy is enforced by the app and the share Cloud Function, not by Firestore rules; any signed-in user can still read a private dance document directly through the Firebase API.
+- Video privacy is enforced by Firestore rules: a private dance, its likes and its comments can only be read by its uploader, and feed queries must filter on `visibility == "public"`. The app and the share Cloud Function also check it.
+- Server-managed dance fields (`likeCount`, `trendingScore`, `feedReady`, `danceTypeKey`, `searchTokens`, `shuffleKey`) can only be written by Cloud Functions.
 - The share Cloud Function reads Firestore with the Admin SDK and must never expose private or disabled dances.
 
 ### Maintainability
@@ -320,6 +322,11 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 ### Web (Firebase Hosting + Cloud Functions)
 
 - `/dance/{danceId}` on `chorevo-dea05.web.app`: rewritten to the `danceShare` Cloud Function (us-central1, Node.js 22), which renders the share landing page.
+- `/.well-known/assetlinks.json`: served from `public/` (UTF-8, `application/json`) so Android can verify App Links. It lists the SHA-256 fingerprints of the signing certificates allowed to open links; add one for each key that signs a build people install (each developer's debug key, the release key).
+- `danceDerivedFields` (Firestore trigger on `danceLibrary/{id}`): keeps `feedReady`, `danceTypeKey`, `searchTokens`, `shuffleKey` and default `visibility`/`likeCount`/`trendingScore` in step with the dance, and the category chip counts in `meta/danceCategories`.
+- `danceLikeCount` (trigger on `danceLibrary/{id}/likes/{uid}`): recounts likes and refreshes the trending score.
+- `refreshDiscovery` (every 6 hours): ages trending scores and rebuilds the category counts.
+- `functions/scripts/backfill.js`: one-off backfill of those fields, exact like counts and like `uid`s for existing data.
 
 ## 9. Success Metrics
 
@@ -362,8 +369,6 @@ These are product targets. They are not instrumented yet: the Firebase Analytics
 - Better migration strategy for Room schema changes.
 - Upload thumbnail generation and display.
 - More robust offline sync queue visibility in the UI.
-- Enforce video privacy in Firestore rules (backfill `visibility` on existing dances and query `visibility == "public"`).
-- Verified Android App Links: deploy `/.well-known/assetlinks.json` (it exists in `public/`, but the hosting `ignore` rule `**/.*` excludes it).
 - Thumbnail images in link previews (`og:image`).
 - Automated Firebase deploys from CI.
 - Analytics event instrumentation for the success metrics.
@@ -371,7 +376,6 @@ These are product targets. They are not instrumented yet: the Firebase Analytics
 ### Known Issues
 
 - App builds from before the template-ownership change write templates to the now read-only `danceTemplates/{danceId}.json` path, so their uploads fail to save templates. Everyone who uploads needs an app build that includes this change.
-- The Friends leaderboard only shows friends who are in the global top 100 for the selected metric.
 
 ## 12. Pose + Hands Holistic Practice (Implemented)
 

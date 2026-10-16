@@ -31,3 +31,56 @@ exports.danceShare = onRequest({ region: "us-central1", maxInstances: 10 }, asyn
   res.set("Cache-Control", "public, max-age=300, s-maxage=600");
   res.status(200).send(renderDancePage(dance, url));
 });
+
+// ── Discovery: server-maintained feed fields ────────────────────────────────
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { derivedFieldUpdates, trendingScore } = require("./discovery");
+const { countLikes, refreshAllDances, updateCategoryCounts } = require("./maintenance");
+
+/**
+ * Keeps each dance's derived fields (feedReady, danceTypeKey, searchTokens,
+ * shuffleKey, defaults) in step with its content, and the category chip
+ * counts in step with what is in the feed. Writes only fields that changed,
+ * so its own update doesn't loop.
+ */
+exports.danceDerivedFields = onDocumentWritten(
+  { document: "danceLibrary/{danceId}", region: "us-central1" },
+  async (event) => {
+    const db = getFirestore();
+    const before = event.data.before.exists ? event.data.before.data() : null;
+    const after = event.data.after.exists ? event.data.after.data() : null;
+
+    await updateCategoryCounts(db, before, after);
+    if (!after) return;
+
+    const updates = derivedFieldUpdates(after, Date.now());
+    if (Object.keys(updates).length) await event.data.after.ref.update(updates);
+  }
+);
+
+/**
+ * Recounts a dance's likes (exactly, so retried events can't drift) and
+ * refreshes its trending score whenever a like is added or removed.
+ */
+exports.danceLikeCount = onDocumentWritten(
+  { document: "danceLibrary/{danceId}/likes/{likerUid}", region: "us-central1" },
+  async (event) => {
+    const danceRef = getFirestore().doc(`danceLibrary/${event.params.danceId}`);
+    const dance = await danceRef.get();
+    if (!dance.exists) return; // dance deleted along with its likes
+    const likeCount = await countLikes(danceRef);
+    await danceRef.update({
+      likeCount,
+      trendingScore: trendingScore(likeCount, dance.get("createdAt"), Date.now()),
+    });
+  }
+);
+
+/** Ages trending scores and rebuilds the category counts every 6 hours. */
+exports.refreshDiscovery = onSchedule(
+  { schedule: "every 6 hours", region: "us-central1", timeoutSeconds: 540 },
+  async () => {
+    await refreshAllDances(getFirestore(), { logger });
+  }
+);

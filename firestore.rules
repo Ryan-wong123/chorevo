@@ -81,6 +81,26 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/danceLibrary/$(danceId)).data.educatorUid == request.auth.uid;
     }
 
+    // A dance is readable when it is public or the reader uploaded it. Read
+    // visibility directly: a get('visibility', 'public') default lets list
+    // queries through unchecked. Every dance has the field (set on upload,
+    // by the danceDerivedFields function and by the backfill script).
+    function canReadDance(dance) {
+      return signedIn()
+        && (dance.visibility == 'public'
+          || dance.educatorUid == request.auth.uid);
+    }
+
+    function canReadDanceById(danceId) {
+      return canReadDance(get(/databases/$(database)/documents/danceLibrary/$(danceId)).data);
+    }
+
+    // Kept up to date by Cloud Functions (functions/discovery.js); clients may
+    // not set or change them.
+    function serverManagedDanceFields() {
+      return ['likeCount', 'trendingScore', 'feedReady', 'danceTypeKey', 'searchTokens', 'shuffleKey'];
+    }
+
     match /users/{uid} {
       allow read: if isOwner(uid) || (signedIn() && request.auth.uid != uid);
       allow create, update: if isOwner(uid);
@@ -142,19 +162,22 @@ service cloud.firestore {
     match /danceLibrary/{danceId} {
       // Likes: one document per user, keyed by their uid.
       match /likes/{likerUid} {
-        allow read: if signedIn();
+        allow read: if canReadDanceById(danceId);
+        // uid/createdAt let the liked-videos query find a user's likes.
         allow create, update: if signedIn()
           && request.auth.uid == likerUid
-          && request.resource.data.keys().hasOnly(['liked'])
-          && request.resource.data.liked == true;
+          && request.resource.data.keys().hasOnly(['liked', 'uid', 'createdAt'])
+          && request.resource.data.liked == true
+          && request.resource.data.get('uid', likerUid) == likerUid
+          && canReadDanceById(danceId);
         allow delete: if signedIn()
           && (request.auth.uid == likerUid || isDanceOwner(danceId));
       }
 
       // Comments: authored by the caller, no edits, deletable by the author.
       match /comments/{commentId} {
-        allow read: if signedIn();
-        allow create: if signedIn()
+        allow read: if canReadDanceById(danceId);
+        allow create: if canReadDanceById(danceId)
           && request.resource.data.keys().hasOnly(['commentId', 'uid', 'username', 'text', 'createdAt'])
           && request.resource.data.commentId == commentId
           && request.resource.data.uid == request.auth.uid
@@ -168,19 +191,34 @@ service cloud.firestore {
           && (resource.data.uid == request.auth.uid || isDanceOwner(danceId));
       }
 
-      allow read: if signedIn();
+      // Private dances are readable only by their uploader. List queries must
+      // filter on visibility == "public" or on educatorUid == the reader.
+      allow read: if canReadDance(resource.data);
 
       allow create: if signedIn()
         && request.resource.data.educatorUid == request.auth.uid
-        && request.resource.data.danceId == danceId;
+        && request.resource.data.danceId == danceId
+        && !request.resource.data.keys().hasAny(serverManagedDanceFields());
 
       allow update: if signedIn()
         && resource.data.educatorUid == request.auth.uid
         && request.resource.data.educatorUid == resource.data.educatorUid
-        && request.resource.data.danceId == resource.data.danceId;
+        && request.resource.data.danceId == resource.data.danceId
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(serverManagedDanceFields());
 
       allow delete: if signedIn()
         && resource.data.educatorUid == request.auth.uid;
+    }
+
+    // Liked videos: a user's own like documents across all dances.
+    match /{path=**}/likes/{likerUid} {
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // Written only by Cloud Functions (category chip counts).
+    match /meta/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
     }
 
     match /leaderboardStats/{uid} {
