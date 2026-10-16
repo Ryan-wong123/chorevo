@@ -36,7 +36,7 @@ exports.danceShare = onRequest({ region: "us-central1", maxInstances: 10 }, asyn
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { derivedFieldUpdates, trendingScore } = require("./discovery");
-const { countLikes, refreshAllDances, updateCategoryCounts } = require("./maintenance");
+const { countLikes, refreshAllDances, backfillLikeUidsOnce, updateCategoryCounts } = require("./maintenance");
 
 /**
  * Keeps each dance's derived fields (feedReady, danceTypeKey, searchTokens,
@@ -77,10 +77,16 @@ exports.danceLikeCount = onDocumentWritten(
   }
 );
 
-/** Ages trending scores and rebuilds the category counts every 6 hours. */
+/**
+ * Ages trending scores and rebuilds the category counts every 6 hours. Also
+ * migrates existing data: fills missing feed fields and like counts, and adds
+ * uids to old likes (once).
+ */
 exports.refreshDiscovery = onSchedule(
   { schedule: "every 6 hours", region: "us-central1", timeoutSeconds: 540 },
   async () => {
-    await refreshAllDances(getFirestore(), { logger });
+    const db = getFirestore();
+    await backfillLikeUidsOnce(db, { logger });
+    await refreshAllDances(db, { logger });
   }
 );

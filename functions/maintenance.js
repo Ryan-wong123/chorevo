@@ -41,7 +41,8 @@ async function refreshAllDances(db, { nowMs = Date.now(), recountLikes = false, 
     const updates = derivedFieldUpdates(dance, nowMs);
 
     let likeCount = typeof dance.likeCount === "number" ? dance.likeCount : 0;
-    if (recountLikes) {
+    // Exact count for dances that never had one (existing data), or on request.
+    if (recountLikes || typeof dance.likeCount !== "number") {
       likeCount = await countLikes(doc.ref);
       if (likeCount !== dance.likeCount) updates.likeCount = likeCount;
     }
@@ -74,6 +75,20 @@ async function backfillLikeUids(db, { logger = console } = {}) {
   return { likes: snap.size, updated: writes.length };
 }
 
+const BACKFILL_DOC = "meta/backfill";
+
+/**
+ * Runs the like-uid backfill once (recorded in meta/backfill), so the
+ * scheduled job also migrates existing data without a manual script run.
+ */
+async function backfillLikeUidsOnce(db, { logger = console } = {}) {
+  const marker = db.doc(BACKFILL_DOC);
+  if ((await marker.get()).get("likeUids") === true) return null;
+  const result = await backfillLikeUids(db, { logger });
+  await marker.set({ likeUids: true, likeUidsAt: Date.now() }, { merge: true });
+  return result;
+}
+
 /**
  * Adjusts category counts when a dance enters, leaves or changes chip. A merge
  * write with increments needs no transaction; the label keeps the latest
@@ -97,5 +112,6 @@ module.exports = {
   countLikes,
   refreshAllDances,
   backfillLikeUids,
+  backfillLikeUidsOnce,
   updateCategoryCounts,
 };
