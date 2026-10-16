@@ -44,9 +44,12 @@ private class FirebaseGoogleIdTokenProvider(
     private suspend fun requestGoogleIdToken(
         filterByAuthorizedAccounts: Boolean
     ): String? {
+        // A fresh nonce per request binds the ID token to this sign-in, so a
+        // token captured elsewhere can't be replayed into this flow.
         val googleIdOption = GetGoogleIdOption.Builder()
             .setServerClientId(serverClientId)
             .setFilterByAuthorizedAccounts(filterByAuthorizedAccounts)
+            .setNonce(newNonce())
             .build()
 
         val request = GetCredentialRequest.Builder()
@@ -85,4 +88,10 @@ private class FirebaseGoogleIdTokenProvider(
 
         error("Google sign-in returned an unsupported credential type.")
     }
+}
+
+/** A random, hashed nonce for a Google ID token request. */
+private fun newNonce(): String {
+    val raw = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+    return java.security.MessageDigest.getInstance("SHA-256").digest(raw).joinToString("") { "%02x".format(it) }
 }

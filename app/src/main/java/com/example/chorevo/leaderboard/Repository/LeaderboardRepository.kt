@@ -5,7 +5,6 @@ import com.example.chorevo.leaderboard.LeaderboardEntry
 import com.example.chorevo.leaderboard.LeaderboardMetric
 import com.example.chorevo.leaderboard.LeaderboardScope
 import com.example.chorevo.leaderboard.LeaderboardStat
-import com.example.chorevo.leaderboard.LeaderboardStatsSnapshot
 import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldPath
@@ -134,75 +133,6 @@ class LeaderboardRepository @Inject constructor(
             }
         }
         return combine(flows) { parts -> parts.flatMap { it } }
-    }
-
-    /** Refreshes user stats. */
-    suspend fun refreshUserStats(uid: String, totalActiveDays: Int) {
-        refreshUserStats(
-            uid = uid,
-            stats = buildLeaderboardStatsSnapshot(
-                uid = uid,
-                totalActiveDays = totalActiveDays
-            )
-        )
-    }
-
-    /** Refreshes user stats. */
-    private suspend fun refreshUserStats(
-        uid: String,
-        stats: LeaderboardStatsSnapshot
-    ) {
-        db.collection("leaderboardStats")
-            .document(uid)
-            .set(
-                mapOf(
-                    "uid" to uid,
-                    "displayName" to stats.displayName.trim().takeUnless { it.isBlank() }.orEmpty().ifBlank { "User" },
-                    "photoUrl" to stats.photoUrl,
-                    "totalPracticeSessions" to stats.totalPracticeSessions,
-                    "avgSimilarityScore" to stats.avgSimilarityScore,
-                    // Keep the legacy field populated until existing leaderboard docs are migrated.
-                    "streakDays" to stats.totalActiveDays,
-                    "totalActiveDays" to stats.totalActiveDays,
-                    "updatedAt" to System.currentTimeMillis()
-                ),
-                SetOptions.merge()
-            )
-            .await()
-    }
-
-    /** Builds leaderboard stats snapshot. */
-    private suspend fun buildLeaderboardStatsSnapshot(
-        uid: String,
-        totalActiveDays: Int
-    ): LeaderboardStatsSnapshot {
-        val userSnap = db.collection("users")
-            .document(uid)
-            .get()
-            .await()
-
-        val sessionSnap = db.collection("users")
-            .document(uid)
-            .collection("danceLearningSessions")
-            .get()
-            .await()
-
-        val totalSessions = sessionSnap.size()
-        val avgSimilarity = if (totalSessions == 0) {
-            0.0
-        } else {
-            sessionSnap.documents
-                .map { it.getDouble("alignmentScore") ?: 0.0 }
-                .average()
-        }
-
-        return LeaderboardStatsSnapshot(
-            displayName = userSnap.getString("displayName")?.trim().orEmpty().ifBlank { "User" },
-            photoUrl = userSnap.getString("photoUrl"),
-            totalPracticeSessions = totalSessions,
-            avgSimilarityScore = avgSimilarity,
-            totalActiveDays = totalActiveDays
-        )
     }
 
     /** Observes all stats. */

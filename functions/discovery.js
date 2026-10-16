@@ -22,7 +22,8 @@ const DAY_MS = 86_400_000;
 
 /** "Hip Hop" / "hip-hop" / "HIPHOP" → "hiphop"; blank → null. Mirrors the app's danceTypeKey. */
 function danceTypeKey(raw) {
-  const key = String(raw || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+  // Bounded, so a long or odd dance type can't bloat meta/danceCategories.
+  const key = String(raw || "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "").slice(0, 30);
   return key || null;
 }
 
@@ -137,7 +138,7 @@ function derivedFieldUpdates(dance, nowMs, random = Math.random) {
 function categoryContribution(dance) {
   if (!dance || !isFeedReady(dance)) return null;
   const key = danceTypeKey(dance.danceType);
-  return key ? { key, label: String(dance.danceType).trim() } : null;
+  return key ? { key, label: String(dance.danceType).trim().slice(0, 40) } : null;
 }
 
 /**

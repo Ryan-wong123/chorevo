@@ -287,7 +287,7 @@ class AnalyticsRepository @Inject constructor(
                 )
                 result[uid] = uid // still fallback to UID so UI doesn't crash
             } catch (e: Exception) {
-                Log.w("AnalyticsRepository", "Failed to fetch displayName for $uid", e)
+                Log.w("AnalyticsRepository", "Failed to fetch a learner display name", e)
                 result[uid] = uid
             }
         }

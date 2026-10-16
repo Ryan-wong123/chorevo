@@ -10,6 +10,40 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    // ── Shared validation ─────────────────────────────────────────────────
+    // Client timestamps (epoch ms) must be close to the server's clock, so
+    // nobody can pin content to the top or bottom of a list by forging dates.
+    function isRecent(t, windowMs) {
+      return t is int
+        && t > request.time.toMillis() - windowMs
+        && t < request.time.toMillis() + windowMs;
+    }
+
+    function hourMs() {
+      return 60 * 60 * 1000;
+    }
+
+    function isShortText(v, max) {
+      return v is string && v.size() <= max;
+    }
+
+    // Display name copied onto posts, members, comments, etc.
+    function isName(v) {
+      return v is string && v.size() > 0 && v.size() <= 60;
+    }
+
+    // Optional https URL (profile photos come from Firebase Storage or Google).
+    function isOptionalHttpsUrl(v) {
+      return v == null || (v is string && v.size() <= 2048 && v.matches('https://.+'));
+    }
+
+    // A download URL of a file in this project's Storage, in `folder/uid/`.
+    function isStorageUrl(v, folder, uid) {
+      return v is string
+        && v.size() <= 2048
+        && v.matches('https://firebasestorage[.]googleapis[.]com/v0/b/[^/]+/o/' + folder + '%2F' + uid + '%2F[^/]+');
+    }
+
     function hasValidAnalysis(data) {
       return data.analysis is map
         && data.analysis.danceId is string
@@ -30,50 +64,22 @@ service cloud.firestore {
         && linkedDanceOwner(data) == data.analysis.educatorUid;
     }
 
-    function validCommunityPost(data, postId) {
-      return data.keys().hasOnly([
-          'id',
-          'uid',
-          'displayName',
-          'photoUrl',
-          'title',
-          'body',
-          'createdAt'
-        ])
-        && data.id == postId
-        && data.uid == request.auth.uid
-        && data.displayName is string
-        && data.displayName.size() > 0
-        && (data.photoUrl == null || data.photoUrl is string)
-        && data.title is string
-        && data.title.size() > 0
-        && data.title.size() <= 120
-        && data.body is string
-        && data.body.size() > 0
-        && data.body.size() <= 1500
-        && data.createdAt is int;
-    }
-
-    function validCommunityReply(data, postId, replyId) {
-      return data.keys().hasOnly([
-          'id',
-          'postId',
-          'uid',
-          'displayName',
-          'photoUrl',
-          'body',
-          'createdAt'
-        ])
-        && data.id == replyId
-        && data.postId == postId
-        && data.uid == request.auth.uid
-        && data.displayName is string
-        && data.displayName.size() > 0
-        && (data.photoUrl == null || data.photoUrl is string)
-        && data.body is string
-        && data.body.size() > 0
-        && data.body.size() <= 500
-        && data.createdAt is int;
+    // A practice session. Scores feed the server-computed leaderboard, so the
+    // headline score must be a real 0..1 value. `analysis` (which dance and
+    // creator it was) is optional; when present it must name a real dance.
+    function validSessionDoc(data, sessionId) {
+      return data.keys().hasOnly(['sessionId', 'tsStart', 'tsEnd', 'activityName', 'activityType', 'durationMs',
+          'smoothnessScore', 'balanceScore', 'timingConsistencyScore', 'alignmentScore', 'qualityFlag',
+          'extraAnalytics', 'analysis'])
+        && data.sessionId == sessionId
+        && data.alignmentScore is number
+        && data.alignmentScore >= 0
+        && data.alignmentScore <= 1
+        && isShortText(data.get('activityName', ''), 200)
+        && isShortText(data.get('activityType', ''), 100)
+        && isShortText(data.get('qualityFlag', ''), 100)
+        && (!('extraAnalytics' in data) || data.extraAnalytics is map)
+        && (!('analysis' in data) || validSessionWrite(data));
     }
 
     // The dance owner may clean up likes/comments when deleting their dance.
@@ -95,6 +101,22 @@ service cloud.firestore {
       return canReadDance(get(/databases/$(database)/documents/danceLibrary/$(danceId)).data);
     }
 
+    // Fields a dance's creator writes, checked when they're set or changed.
+    // Media must be the creator's own Storage files for this dance.
+    function validDanceFields(d, changed, danceId) {
+      let uid = request.auth.uid;
+      return (!('title' in changed) || (d.title is string && d.title.size() <= 120))
+        && (!('description' in changed) || isShortText(d.description, 2000))
+        && (!('danceType' in changed) || isShortText(d.danceType, 40))
+        && (!('educatorName' in changed) || isShortText(d.educatorName, 60))
+        && (!('visibility' in changed) || d.visibility in ['public', 'private'])
+        && (!('videoUrl' in changed) || isStorageUrl(d.videoUrl, 'danceVideos', uid))
+        && (!('thumbnailUrl' in changed) || d.thumbnailUrl == '' || isStorageUrl(d.thumbnailUrl, 'danceThumbnails', uid))
+        && (!('storagePath' in changed) || d.storagePath == 'danceVideos/' + uid + '/' + danceId + '.mp4')
+        && (!('templateStoragePath' in changed) || d.templateStoragePath == ''
+          || d.templateStoragePath == 'danceTemplates/' + uid + '/' + danceId + '.json');
+    }
+
     // Kept up to date by Cloud Functions (functions/discovery.js); clients may
     // not set or change them.
     function serverManagedDanceFields() {
@@ -109,9 +131,40 @@ service cloud.firestore {
           && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid);
     }
 
+    // Changing username must release the old handle in the same write, so
+    // nobody can hoard usernames.
+    function oldUsernameReleased() {
+      return resource == null
+        || resource.data.get('username', null) == null
+        || resource.data.username == request.resource.data.get('username', null)
+        || !existsAfter(/databases/$(database)/documents/usernames/$(resource.data.username));
+    }
+
+    function validProfileFields(data, changed) {
+      return (!('uid' in changed) || data.uid == request.auth.uid)
+        && (!('displayName' in changed) || isName(data.displayName))
+        && (!('photoUrl' in changed) || isOptionalHttpsUrl(data.photoUrl))
+        && (!('lastSeen' in changed) || data.lastSeen is int)
+        // Roles are never granted from the client.
+        && (!('role' in changed) || data.role == 'USER');
+    }
+
+    // Profiles: other users may read one profile at a time (name, photo,
+    // username), never list them all. Email addresses are not stored here.
     match /users/{uid} {
-      allow read: if isOwner(uid) || (signedIn() && request.auth.uid != uid);
-      allow create, update: if isOwner(uid) && usernameClaimOk(uid);
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if isOwner(uid)
+        && request.resource.data.keys().hasOnly(['uid', 'displayName', 'photoUrl', 'role', 'lastSeen', 'username'])
+        && validProfileFields(request.resource.data, request.resource.data.keys())
+        && usernameClaimOk(uid);
+      allow update: if isOwner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uid', 'displayName', 'photoUrl', 'role', 'lastSeen', 'username', 'email'])
+        // Email may only be removed (older app versions stored it).
+        && !('email' in request.resource.data)
+        && validProfileFields(request.resource.data, request.resource.data.diff(resource.data).affectedKeys())
+        && usernameClaimOk(uid)
+        && oldUsernameReleased();
       allow delete: if false;
 
       match /points/{docId} {
@@ -130,12 +183,28 @@ service cloud.firestore {
         allow read, write: if isOwner(uid);
       }
 
+      // Legacy path; nothing writes it any more.
       match /streak/{docId} {
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
+        allow write: if false;
       }
 
+      // Weekly streak. The activity total feeds the leaderboard, so it can
+      // only go up by one per write.
       match /streaks/{docId} {
-        allow read, write: if isOwner(uid);
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.keys().hasOnly(['weekStart', 'daysMask', 'totalStreakActivities', 'lastActivityDate', 'updatedAt'])
+          && request.resource.data.daysMask is int
+          && request.resource.data.daysMask >= 0
+          && request.resource.data.daysMask <= 127
+          && request.resource.data.totalStreakActivities is int
+          && request.resource.data.totalStreakActivities >= 0
+          && request.resource.data.totalStreakActivities
+            <= (resource == null ? 0 : resource.data.get('totalStreakActivities', 0)) + 1
+          && isShortText(request.resource.data.get('weekStart', ''), 20)
+          && isShortText(request.resource.data.get('lastActivityDate', ''), 20);
+        allow delete: if false;
       }
 
       match /weeklyChallenges/{weekId} {
@@ -155,14 +224,12 @@ service cloud.firestore {
         );
 
         allow create: if isOwner(uid)
-          && validSessionWrite(request.resource.data);
+          && validSessionDoc(request.resource.data, sessionId);
 
+        // Re-uploads may not move a session to another dance or creator.
         allow update: if isOwner(uid)
-          && validSessionWrite(request.resource.data)
-          && resource.data.analysis is map
-          && request.resource.data.analysis is map
-          && request.resource.data.analysis.danceId == resource.data.analysis.danceId
-          && request.resource.data.analysis.educatorUid == resource.data.analysis.educatorUid;
+          && validSessionDoc(request.resource.data, sessionId)
+          && request.resource.data.get('analysis', null) == resource.data.get('analysis', null);
 
         allow delete: if false;
       }
@@ -185,6 +252,7 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['liked', 'uid', 'createdAt'])
           && request.resource.data.liked == true
           && request.resource.data.get('uid', likerUid) == likerUid
+          && request.resource.data.get('createdAt', 0) is int
           && canReadDanceById(danceId);
         allow delete: if signedIn()
           && (request.auth.uid == likerUid || isDanceOwner(danceId));
@@ -197,11 +265,11 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['commentId', 'uid', 'username', 'text', 'createdAt'])
           && request.resource.data.commentId == commentId
           && request.resource.data.uid == request.auth.uid
-          && request.resource.data.username is string
+          && isName(request.resource.data.username)
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
           && request.resource.data.text.size() <= 1000
-          && request.resource.data.createdAt is int;
+          && isRecent(request.resource.data.createdAt, hourMs());
         allow update: if false;
         allow delete: if signedIn()
           && (resource.data.uid == request.auth.uid || isDanceOwner(danceId));
@@ -214,13 +282,20 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.educatorUid == request.auth.uid
         && request.resource.data.danceId == danceId
-        && !request.resource.data.keys().hasAny(serverManagedDanceFields());
+        && !request.resource.data.keys().hasAny(serverManagedDanceFields())
+        && isRecent(request.resource.data.createdAt, 24 * hourMs())
+        && request.resource.data.get('enabled', true) == true
+        && validDanceFields(request.resource.data, request.resource.data.keys(), danceId);
 
+      // Upload time, creator name and media can't be changed afterwards, and
+      // `enabled` is for moderation (set by an admin through the console).
       allow update: if signedIn()
         && resource.data.educatorUid == request.auth.uid
         && request.resource.data.educatorUid == resource.data.educatorUid
         && request.resource.data.danceId == resource.data.danceId
-        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(serverManagedDanceFields());
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(serverManagedDanceFields())
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdAt', 'educatorName', 'videoUrl', 'thumbnailUrl', 'enabled'])
+        && validDanceFields(request.resource.data, request.resource.data.diff(resource.data).affectedKeys(), danceId);
 
       allow delete: if signedIn()
         && resource.data.educatorUid == request.auth.uid;
@@ -237,10 +312,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Computed by Cloud Functions from synced sessions and streaks
+    // (functions/leaderboard.js); clients can't write their own rank.
     match /leaderboardStats/{uid} {
       allow read: if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == uid;
-      allow delete: if false;
+      allow write: if false;
     }
 
     // ── Groups ────────────────────────────────────────────────────────────
@@ -276,6 +352,30 @@ service cloud.firestore {
         && data.description.size() <= 500;
     }
 
+    // A post's attachment: none (text), one of the author's public dances, or
+    // a group video the author uploaded for this post. Media URLs must be
+    // files in this project's Storage, in the right owner's folder.
+    function validPostAttachment(d, postId) {
+      let uid = request.auth.uid;
+      let noFiles = !d.keys().hasAny(['storagePath', 'thumbnailPath'])
+        || (d.get('storagePath', null) == null && d.get('thumbnailPath', null) == null);
+      return (d.kind == 'text' && d.body.size() > 0
+          && !d.keys().hasAny(['danceId', 'videoUrl', 'thumbnailUrl']) && noFiles)
+        || (d.kind == 'dance'
+          && d.danceId is string
+          && isShortText(d.get('danceTitle', ''), 120)
+          && canReadDanceById(d.danceId)
+          && get(/databases/$(database)/documents/danceLibrary/$(d.danceId)).data.educatorUid == uid
+          && (d.get('videoUrl', null) == null || isStorageUrl(d.videoUrl, 'danceVideos', uid))
+          && (d.get('thumbnailUrl', null) == null || isStorageUrl(d.thumbnailUrl, 'danceThumbnails', uid))
+          && noFiles)
+        || (d.kind == 'video'
+          && isStorageUrl(d.videoUrl, 'groupVideos', uid)
+          && d.storagePath == 'groupVideos/' + uid + '/' + postId + '.mp4'
+          && (d.get('thumbnailUrl', null) == null || isStorageUrl(d.thumbnailUrl, 'groupThumbnails', uid))
+          && (d.get('thumbnailPath', null) == null || d.thumbnailPath == 'groupThumbnails/' + uid + '/' + postId + '.jpg'));
+    }
+
     match /groups/{groupId} {
       allow read: if signedIn()
         && (resource.data.visibility == 'public' || isGroupMember(groupId));
@@ -286,13 +386,15 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['id', 'name', 'nameLower', 'description', 'visibility', 'ownerUid', 'ownerName', 'inviteCode', 'createdAt'])
         && request.resource.data.id == groupId
         && request.resource.data.ownerUid == request.auth.uid
-        && request.resource.data.ownerName is string
-        && request.resource.data.createdAt is int
+        && isName(request.resource.data.ownerName)
+        && isRecent(request.resource.data.createdAt, hourMs())
         && validGroupText(request.resource.data)
         && ((request.resource.data.visibility == 'public' && !request.resource.data.keys().hasAny(['inviteCode']))
           || (request.resource.data.visibility == 'private'
             && request.resource.data.inviteCode is string
-            && request.resource.data.inviteCode.size() == 8))
+            && request.resource.data.inviteCode.matches('[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}')
+            // Its own invite document, created in the same batch.
+            && getAfter(/databases/$(database)/documents/groupInvites/$(request.resource.data.inviteCode)).data.groupId == groupId))
         && existsAfter(/databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid));
 
       allow update: if signedIn()
@@ -309,8 +411,14 @@ service cloud.firestore {
           && memberUid == request.auth.uid
           && request.resource.data.keys().hasOnly(['uid', 'displayName', 'photoUrl', 'role', 'joinedAt', 'inviteCode'])
           && request.resource.data.uid == memberUid
-          && request.resource.data.displayName is string
-          && request.resource.data.joinedAt is int
+          && isName(request.resource.data.displayName)
+          && isOptionalHttpsUrl(request.resource.data.get('photoUrl', null))
+          && isRecent(request.resource.data.joinedAt, hourMs())
+          && (
+            // Removed members can't come back (by code or invitation).
+            request.resource.data.role == 'owner'
+              || !exists(/databases/$(database)/documents/groups/$(groupId)/bans/$(memberUid))
+          )
           && (
             // The creator, in the batch that creates the group.
             (request.resource.data.role == 'owner'
@@ -336,6 +444,18 @@ service cloud.firestore {
             || (memberUid != request.auth.uid && isGroupOwner(groupId)));
       }
 
+      // Users the owner removed; they can't rejoin. Written with the removal.
+      match /bans/{bannedUid} {
+        allow read: if isGroupOwner(groupId) || isOwner(bannedUid);
+        allow create: if isGroupOwner(groupId)
+          && bannedUid != request.auth.uid
+          && request.resource.data.keys().hasOnly(['uid', 'bannedAt'])
+          && request.resource.data.uid == bannedUid
+          && request.resource.data.bannedAt is int;
+        allow update: if false;
+        allow delete: if isGroupOwner(groupId);
+      }
+
       match /posts/{postId} {
         allow read: if canReadGroup(groupId);
 
@@ -343,13 +463,12 @@ service cloud.firestore {
           && request.resource.data.keys().hasOnly(['id', 'uid', 'displayName', 'photoUrl', 'body', 'kind', 'danceId', 'danceTitle', 'videoUrl', 'thumbnailUrl', 'storagePath', 'thumbnailPath', 'createdAt'])
           && request.resource.data.id == postId
           && request.resource.data.uid == request.auth.uid
-          && request.resource.data.displayName is string
+          && isName(request.resource.data.displayName)
+          && isOptionalHttpsUrl(request.resource.data.get('photoUrl', null))
           && request.resource.data.body is string
           && request.resource.data.body.size() <= 1500
-          && request.resource.data.createdAt is int
-          && ((request.resource.data.kind == 'text' && request.resource.data.body.size() > 0)
-            || (request.resource.data.kind == 'dance' && request.resource.data.danceId is string)
-            || (request.resource.data.kind == 'video' && request.resource.data.videoUrl is string));
+          && isRecent(request.resource.data.createdAt, hourMs())
+          && validPostAttachment(request.resource.data, postId);
 
         allow update: if false;
 
@@ -365,11 +484,12 @@ service cloud.firestore {
             && request.resource.data.id == replyId
             && request.resource.data.postId == postId
             && request.resource.data.uid == request.auth.uid
-            && request.resource.data.displayName is string
+            && isName(request.resource.data.displayName)
+            && isOptionalHttpsUrl(request.resource.data.get('photoUrl', null))
             && request.resource.data.body is string
             && request.resource.data.body.size() > 0
             && request.resource.data.body.size() <= 500
-            && request.resource.data.createdAt is int;
+            && isRecent(request.resource.data.createdAt, hourMs());
 
           allow update: if false;
 
@@ -410,9 +530,11 @@ service cloud.firestore {
         && invitationId == request.resource.data.groupId + '_' + request.resource.data.inviteeUid
         && request.resource.data.inviterUid == request.auth.uid
         && request.resource.data.inviteeUid != request.auth.uid
-        && request.resource.data.inviterName is string
-        && request.resource.data.createdAt is int
+        && isName(request.resource.data.inviterName)
+        && isShortText(request.resource.data.get('inviteeUsername', ''), 20)
+        && isRecent(request.resource.data.createdAt, hourMs())
         && isGroupMember(request.resource.data.groupId)
+        && !exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId)/bans/$(request.resource.data.inviteeUid))
         && request.resource.data.groupName == get(groupPath(request.resource.data.groupId)).data.name
         && !exists(/databases/$(database)/documents/groups/$(request.resource.data.groupId)/members/$(request.resource.data.inviteeUid))
         && exists(/databases/$(database)/documents/users/$(request.resource.data.inviteeUid));
@@ -444,17 +566,14 @@ service cloud.firestore {
     // Legacy forum (replaced by groups). Data is kept; the app no longer shows it.
     match /communityPosts/{postId} {
       allow read: if signedIn();
-      allow create: if signedIn()
-        && validCommunityPost(request.resource.data, postId);
+      allow create: if false;
       allow update: if false;
       allow delete: if signedIn()
         && resource.data.uid == request.auth.uid;
 
       match /replies/{replyId} {
         allow read: if signedIn();
-        allow create: if signedIn()
-          && exists(/databases/$(database)/documents/communityPosts/$(postId))
-          && validCommunityReply(request.resource.data, postId, replyId);
+        allow create: if false;
         allow update: if false;
         allow delete: if signedIn()
           && resource.data.uid == request.auth.uid;

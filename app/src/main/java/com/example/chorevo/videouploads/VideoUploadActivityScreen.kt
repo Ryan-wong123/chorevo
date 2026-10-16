@@ -1,5 +1,9 @@
 package com.example.chorevo.videouploads
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -162,7 +166,7 @@ fun VideoUploadActivityScreen(
         disabledContentColor = ChorevoTheme.colors.onAccent.copy(alpha = 0.6f)
     )
 
-    fun startLiveRecording() {
+    fun launchRecording() {
         val captureUri = VideoCaptureFileProvider.createVideoCaptureUri(context)
         if (captureUri == null) {
             Toast.makeText(
@@ -174,6 +178,24 @@ fun VideoUploadActivityScreen(
         }
         pendingCaptureUri = captureUri
         videoCaptureLauncher.launch(captureUri)
+    }
+
+    // The app declares CAMERA, so Android only allows the camera app intent
+    // once that permission is granted.
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            launchRecording()
+        } else {
+            Toast.makeText(context, "Camera permission is needed to record a video.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun startLiveRecording() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            launchRecording()
+        } else {
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        }
     }
 
     Scaffold(
