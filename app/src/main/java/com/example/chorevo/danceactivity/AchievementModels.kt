@@ -64,38 +64,5 @@ val ALL_BADGES = listOf(
     BadgeDefinition(BadgeId.WEEK_WARRIOR,    "Week Warrior",    "Complete all 7 days in a week",              "⚡")
 )
 
-// ── Evaluation Logic ─────────────────────────────────────────────────────────
-
-/** Handles evaluate new badges. */
-fun evaluateNewBadges(
-    sessionPoints: Int,
-    totalPointsAfter: Int,
-    alignmentScore: Double,
-    timingConsistencyScore: Double,
-    smoothnessScore: Double,
-    isFirstSession: Boolean,
-    weekDaysMask: Int,
-    previouslyEarned: Set<BadgeId>
-): List<BadgeId> {
-    val earned = mutableListOf<BadgeId>()
-
-    /** Handles award. */
-    fun award(id: BadgeId) {
-        if (id !in previouslyEarned) earned.add(id)
-    }
-
-    if (isFirstSession)                 award(BadgeId.FIRST_STEPS)
-    if (alignmentScore >= 0.95)         award(BadgeId.PERFECT_POSE)
-    if (smoothnessScore >= 0.95)        award(BadgeId.SMOOTH_OPERATOR)
-    if (timingConsistencyScore >= 0.95) award(BadgeId.IN_THE_GROOVE)
-    if (sessionPoints >= 90)            award(BadgeId.HIGH_SCORER)
-    if (sessionPoints >= 100)           award(BadgeId.CENTURY)
-    if (totalPointsAfter >= 500)        award(BadgeId.DEDICATED)
-    if (totalPointsAfter >= 1000)       award(BadgeId.ELITE)
-
-    val daysCompleted = Integer.bitCount(weekDaysMask)
-    if (daysCompleted >= 3)             award(BadgeId.STREAK_STARTER)
-    if (daysCompleted >= 7)             award(BadgeId.WEEK_WARRIOR)
-
-    return earned
-}
+// Badges are awarded by the server (functions/rewards.js, newBadges), using
+// the thresholds described above.

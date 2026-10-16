@@ -43,34 +43,6 @@ class StreakViewModel(
         }
     }
 
-    /** Handles tick today. */
-    fun tickToday(uid: String) {
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(
-                isLoading = true,
-                errorMessage = null
-            )
-
-            try {
-                val updatedStreak = repository.tickToday(uid)
-
-                _uiState.value = WeeklyStreakUiState(
-                    isLoading = false,
-                    weekStart = updatedStreak.weekStart,
-                    daysMask = updatedStreak.daysMask,
-                    totalStreakActivities = updatedStreak.totalStreakActivities,
-                    lastActivityDate = updatedStreak.lastActivityDate,
-                    errorMessage = null
-                )
-            } catch (error: Exception) {
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    errorMessage = error.message ?: "Failed to update streak"
-                )
-            }
-        }
-    }
-
     /** Clears error. */
     fun clearError() {
         _uiState.value = _uiState.value.copy(errorMessage = null)

@@ -316,7 +316,7 @@ app/build/outputs/apk/debug/app-debug.apk
 
 ### CI-uploaded artifacts
 
-Each Android CI run uploads (kept 7 days):
+Each Android CI run uploads (kept 3 days; an upload that fails, for example because the account's artifact storage is full, doesn't fail the build):
 
 - `chorevo-debug-apk`: the debug APK, installable for testing.
 - `chorevo-release-apk`: the release APK. It is signed and installable only
@@ -324,7 +324,7 @@ Each Android CI run uploads (kept 7 days):
   it is `app-release-unsigned.apk`, which Android won't install.
 - `chorevo-release-aab`: the signed App Bundle for Google Play (only when
   the signing secrets are set).
-- `instrumented-test-results`: emulator test reports (uploaded even on failure).
+- `instrumented-test-results`: emulator test reports (only when tests fail).
 
 ## Setup for Release
 

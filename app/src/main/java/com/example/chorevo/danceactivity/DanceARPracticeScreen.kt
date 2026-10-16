@@ -745,20 +745,11 @@ fun DanceARPracticeScreen(
                     uid = uid
                 )
 
-                achievementVm.processCompletedSession(
-                    uid = uid,
-                    alignmentScore = alignmentScore,
-                    timingConsistencyScore = timingConsistencyScore,
-                    smoothnessScore = smoothnessScore
-                )
-
-                weeklyChallengeVm.recordCompletedSession(
-                    uid = uid,
-                    danceType = item.danceType,
-                    alignmentScore = alignmentScore,
-                    timingConsistencyScore = timingConsistencyScore,
-                    smoothnessScore = smoothnessScore
-                )
+                // Points, badges, streak and weekly challenges are computed
+                // by the server once the session syncs; show what it awarded.
+                achievementVm.awaitSessionRewards(uid = uid, sessionId = session.sessionId) { rewards ->
+                    weeklyChallengeVm.onSessionRewards(uid, rewards)
+                }
 
                 status = null
             } catch (e: Exception) {
@@ -794,6 +785,8 @@ fun DanceARPracticeScreen(
             leveledUp = achievementState.leveledUp,
             previousLevel = achievementState.previousLevel,
             newBadges = achievementState.newlyUnlocked,
+            rewardsPending = achievementState.rewardsPending,
+            rewardsCapped = achievementState.rewardsCapped,
             onDismiss = {
                 achievementVm.dismissAchievementDialog()
                 onNavigateToProfile()

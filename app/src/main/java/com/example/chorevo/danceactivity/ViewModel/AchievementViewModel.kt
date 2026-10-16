@@ -5,12 +5,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.danceactivity.ALL_BADGES
 import com.example.chorevo.danceactivity.Repository.AchievementRepository
-import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
-import com.example.chorevo.danceactivity.Repository.PointsRepository
-import com.example.chorevo.danceactivity.evaluateNewBadges
+import com.example.chorevo.danceactivity.Repository.SessionRewardsRepository
+import com.example.chorevo.danceactivity.SessionRewards
 import com.example.chorevo.danceactivity.levelForPoints
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -20,8 +23,7 @@ import javax.inject.Inject
 @HiltViewModel
 class AchievementViewModel @Inject constructor(
     private val repository: AchievementRepository,
-    private val streakRepository: FirebaseStreakRepository,
-    private val pointsRepository: PointsRepository
+    private val rewardsRepository: SessionRewardsRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AchievementUiState())
@@ -64,88 +66,61 @@ class AchievementViewModel @Inject constructor(
         }
     }
 
-    /** Handles process completed session. */
-    fun processCompletedSession(
-        uid: String,
-        alignmentScore: Double,
-        timingConsistencyScore: Double,
-        smoothnessScore: Double
-    ) {
-        viewModelScope.launch {
+    private var rewardsJob: Job? = null
+
+    /**
+     * Waits for the server to reward [sessionId] (rewardsFromSession) and shows
+     * the result dialog with its points, badges and level. If the session
+     * hasn't synced within [REWARDS_TIMEOUT_MS] (for example offline), the
+     * dialog shows the scores and says the points will follow. [onRewards]
+     * gets the rewards (for the weekly challenge celebration).
+     */
+    fun awaitSessionRewards(uid: String, sessionId: String, onRewards: (SessionRewards) -> Unit = {}) {
+        rewardsJob?.cancel()
+        rewardsJob = viewModelScope.launch {
+            _uiState.update { it.copy(loading = true, errorMessage = null) }
+
+            val rewards = runCatching {
+                withTimeoutOrNull(REWARDS_TIMEOUT_MS) {
+                    rewardsRepository.observe(uid, sessionId).filterNotNull().firstOrNull()
+                }
+            }.getOrNull()
+            if (rewards == null) {
+                _uiState.update {
+                    it.copy(
+                        loading = false,
+                        newlyUnlocked = emptyList(),
+                        sessionPoints = 0,
+                        leveledUp = false,
+                        rewardsPending = true,
+                        rewardsCapped = false,
+                        showAchievementDialog = true
+                    )
+                }
+                return@launch
+            }
+
+            val earnedIds = runCatching { repository.getEarnedBadges(uid) }.getOrDefault(emptySet())
+            val prevLevel = levelForPoints(rewards.totalPointsBefore)
+            val newLevel = levelForPoints(rewards.totalPointsAfter)
             _uiState.update {
                 it.copy(
-                    loading = true,
+                    loading = false,
+                    earnedBadgeIds = earnedIds,
+                    earnedBadges = ALL_BADGES.filter { badge -> badge.id in earnedIds },
+                    newlyUnlocked = ALL_BADGES.filter { badge -> badge.id in rewards.newBadges },
+                    sessionPoints = rewards.sessionPoints,
+                    totalPoints = rewards.totalPointsAfter,
+                    previousLevel = prevLevel,
+                    currentLevel = newLevel,
+                    leveledUp = newLevel.level > prevLevel.level,
+                    rewardsPending = false,
+                    rewardsCapped = rewards.capped,
+                    showAchievementDialog = true,
                     errorMessage = null
                 )
             }
-
-            runCatching {
-                // 1) Award points
-                val earned = pointsRepository.calculateSessionPoints(
-                    alignmentScore = alignmentScore,
-                    timingConsistencyScore = timingConsistencyScore,
-                    smoothnessScore = smoothnessScore
-                )
-                val pointsSnap = pointsRepository.addSessionPoints(uid, earned)
-
-                // 2) Existing earned badges
-                val alreadyEarned = repository.getEarnedBadges(uid)
-
-                // 3) Streak state
-                val streakSnap = streakRepository.getWeeklyStreak(
-                    uid = uid,
-                    autoResetIfNewWeek = false
-                )
-
-                // 4) Evaluate new badges
-                val isFirst = alreadyEarned.isEmpty()
-
-                val newBadgeIds = evaluateNewBadges(
-                    sessionPoints = earned,
-                    totalPointsAfter = pointsSnap.totalPoints,
-                    alignmentScore = alignmentScore,
-                    timingConsistencyScore = timingConsistencyScore,
-                    smoothnessScore = smoothnessScore,
-                    isFirstSession = isFirst,
-                    weekDaysMask = streakSnap.daysMask,
-                    previouslyEarned = alreadyEarned
-                )
-
-                val newBadgeDefs = repository.awardAndGetNew(uid, newBadgeIds)
-
-                // 5) Refresh earned badges after write
-                val updatedEarnedIds = repository.getEarnedBadges(uid)
-                val updatedEarnedBadges = ALL_BADGES.filter { it.id in updatedEarnedIds }
-
-                // 6) Level-up calculation
-                val prevPoints = pointsSnap.totalPoints - earned
-                val prevLevel = levelForPoints(prevPoints)
-                val newLevel = levelForPoints(pointsSnap.totalPoints)
-                val leveledUp = newLevel.level > prevLevel.level
-
-                _uiState.update {
-                    it.copy(
-                        loading = false,
-                        earnedBadgeIds = updatedEarnedIds,
-                        earnedBadges = updatedEarnedBadges,
-                        newlyUnlocked = newBadgeDefs,
-                        sessionPoints = earned,
-                        totalPoints = pointsSnap.totalPoints,
-                        previousLevel = prevLevel,
-                        currentLevel = newLevel,
-                        leveledUp = leveledUp,
-                        showAchievementDialog = true,
-                        errorMessage = null
-                    )
-                }
-            }.onFailure { error ->
-                _uiState.update {
-                    it.copy(
-                        loading = false,
-                        errorMessage = error.message ?: "Failed to process achievements"
-                    )
-                }
-            }
+            onRewards(rewards)
         }
     }
 
@@ -154,6 +129,8 @@ class AchievementViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 showAchievementDialog = false,
+                rewardsPending = false,
+                rewardsCapped = false,
                 newlyUnlocked = emptyList(),
                 sessionPoints = 0,
                 leveledUp = false
@@ -166,5 +143,9 @@ class AchievementViewModel @Inject constructor(
         _uiState.update {
             it.copy(errorMessage = null)
         }
+    }
+
+    private companion object {
+        const val REWARDS_TIMEOUT_MS = 20_000L
     }
 }
