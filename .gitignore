@@ -25,3 +25,4 @@ local.properties
 /yolo*.onnx
 /yolov*.onnx
 /calibration_image_sample_data_*.npy
+.firebase/

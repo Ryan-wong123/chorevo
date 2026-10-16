@@ -10,16 +10,30 @@
     "public": "public",
     "ignore": [
       "firebase.json",
-      "**/.*",
       "**/node_modules/**"
     ],
     "rewrites": [
+      {
+        "source": "/join/**",
+        "destination": "/join.html"
+      },
       {
         "source": "/dance/**",
         "function": {
           "functionId": "danceShare",
           "region": "us-central1"
         }
+      }
+    ],
+    "headers": [
+      {
+        "source": "/.well-known/assetlinks.json",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ]
       }
     ]
   },
@@ -31,7 +45,8 @@
         "node_modules",
         ".git",
         "test",
-        "*.log"
+        "*.log",
+        "scripts"
       ]
     }
   ]

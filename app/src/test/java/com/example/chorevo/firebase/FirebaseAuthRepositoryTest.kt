@@ -81,6 +81,7 @@ class FirebaseAuthRepositoryTest {
         every { docRef.get() } returns Tasks.forResult(snapshot)
         every { snapshot.getString("displayName") } returns "Mark"
         every { snapshot.getString("photoUrl") } returns null
+        every { snapshot.getString("username") } returns null
         every {
             leaderboardDoc.set(any<Map<String, Any?>>(), SetOptions.merge())
         } returns Tasks.forResult(null)
@@ -171,6 +172,7 @@ class FirebaseAuthRepositoryTest {
         every { docRef.get() } returns Tasks.forResult(snapshot)
         every { snapshot.getString("displayName") } returns "  Devin  "
         every { snapshot.getString("photoUrl") } returns null
+        every { snapshot.getString("username") } returns null
 
         every {
             docRef.set(any<Map<String, Any?>>(), SetOptions.merge())
@@ -245,6 +247,7 @@ class FirebaseAuthRepositoryTest {
         every { docRef.get() } returns Tasks.forResult(snapshot)
         every { snapshot.getString("displayName") } returns "Google User"
         every { snapshot.getString("photoUrl") } returns null
+        every { snapshot.getString("username") } returns null
         every { leaderboardDoc.set(any<Map<String, Any?>>(), SetOptions.merge()) } returns Tasks.forResult(null)
 
         val result = repo.signInWithGoogle("id-token-123")
@@ -291,6 +294,7 @@ class FirebaseAuthRepositoryTest {
         every { docRef.get() } returns Tasks.forResult(snapshot)
         every { snapshot.getString("displayName") } returns storedName
         every { snapshot.getString("photoUrl") } returns storedPhoto
+        every { snapshot.getString("username") } returns null
         every { docRef.set(any<Map<String, Any?>>(), SetOptions.merge()) } returns Tasks.forResult(null)
         every { leaderboardDoc.set(any<Map<String, Any?>>(), SetOptions.merge()) } returns Tasks.forResult(null)
         return Triple(makeRepo(auth, db), docRef, leaderboardDoc)

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Chorevo app icon: a dancing pose-skeleton figure (generated design). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:pathData="M53,44 L44,38 L39,29 M53,44 L63,40 L70,32 M53,43 L55,60 M55,60 L47,69 L44,80 M55,60 L64,66 L73,63"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M48.5,34 a5.5,5.5 0 1,0 11,0 a5.5,5.5 0 1,0 -11,0 Z"
+        android:fillColor="#FFFFFF" />
+</vector>

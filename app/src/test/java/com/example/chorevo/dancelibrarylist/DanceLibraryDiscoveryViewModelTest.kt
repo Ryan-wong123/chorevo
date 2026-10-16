@@ -10,11 +10,13 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -28,86 +30,102 @@ class DanceLibraryDiscoveryViewModelTest {
     private lateinit var repo: DanceLibraryRepository
     private lateinit var vm: DanceLibraryListViewModel
 
-    private val day = 86_400_000L
-    private val now = 100 * day
-
-    private val dances = listOf(
-        DanceLibraryModel(danceId = "a", title = "Salsa Basics", danceType = "Salsa", createdAt = now - 3 * day),
-        DanceLibraryModel(danceId = "b", title = "Hip Hop Groove", danceType = "Hip Hop", createdAt = now - 1 * day),
-        DanceLibraryModel(danceId = "c", title = "Street Bounce", danceType = "hip-hop", createdAt = now - 7 * day)
-    )
+    private fun dance(id: String) = DanceLibraryModel(danceId = id, title = "Dance $id")
 
     @Before
     fun setUp() {
         repo = mockk()
-        coEvery { repo.listEnabled() } returns Result.success(dances)
-        coEvery { repo.likeCounts(any()) } returns mapOf("a" to 1, "b" to 0, "c" to 40)
+        coEvery { repo.loadCategories() } returns Result.success(listOf(DanceCategory("hiphop", "Hip Hop", 2)))
         vm = DanceLibraryListViewModel(repo, mockk<FirebaseStreakRepository>(relaxed = true), mockk<LeaderboardRepository>(relaxed = true))
-        vm.clock = { now }
+        vm.forYouSeed = 0.25
     }
 
-    private fun visibleIds() = vm.uiState.value.visibleItems.map { it.danceId }
+    private fun ids() = vm.uiState.value.visibleItems.map { it.danceId }
 
     @Test
-    fun refresh_buildsCategories_andShowsAllInFeedOrder() = runTest {
+    fun refresh_loadsChipsAndFirstPage() = runTest {
+        coEvery { repo.loadFeedPage(DiscoveryFilter(), 0.25, null, any()) } returns
+            Result.success(FeedPage(listOf(dance("a"), dance("b")), next = null))
+
         vm.refresh()
         advanceUntilIdle()
 
-        assertEquals(listOf("a", "b", "c"), visibleIds())
-        assertEquals(listOf("hiphop", "salsa"), vm.uiState.value.categories.map { it.key })
+        assertEquals(listOf("a", "b"), ids())
+        assertEquals(listOf("hiphop"), vm.uiState.value.categories.map { it.key })
+        assertTrue(vm.uiState.value.endReached)
+        assertFalse(vm.uiState.value.isLoading)
     }
 
     @Test
-    fun newTab_sortsNewestFirst() = runTest {
+    fun loadMore_appendsNextPage_withoutDuplicates_andStopsAtEnd() = runTest {
+        val cursor = FeedCursor(wrapped = true)
+        coEvery { repo.loadFeedPage(any(), any(), null, any()) } returns
+            Result.success(FeedPage(listOf(dance("a"), dance("b")), next = cursor))
+        coEvery { repo.loadFeedPage(any(), any(), cursor, any()) } returns
+            Result.success(FeedPage(listOf(dance("b"), dance("c")), next = null))
+
+        vm.refresh()
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.endReached)
+
+        vm.loadMore()
+        advanceUntilIdle()
+        assertEquals(listOf("a", "b", "c"), ids())
+        assertTrue(vm.uiState.value.endReached)
+
+        vm.loadMore() // at the end: no further request
+        advanceUntilIdle()
+        coVerify(exactly = 2) { repo.loadFeedPage(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun emptyPagesAfterSearchFiltering_keepFetchingUntilResults() = runTest {
+        val c1 = FeedCursor(wrapped = false)
+        coEvery { repo.loadFeedPage(any(), any(), null, any()) } returns
+            Result.success(FeedPage(emptyList(), next = c1))
+        coEvery { repo.loadFeedPage(any(), any(), c1, any()) } returns
+            Result.success(FeedPage(listOf(dance("z")), next = null))
+
         vm.refresh()
         advanceUntilIdle()
 
-        vm.selectTab(FeedTab.NEW)
-
-        assertEquals(listOf("b", "a", "c"), visibleIds())
+        assertEquals(listOf("z"), ids())
     }
 
     @Test
-    fun trendingTab_loadsLikeCountsOnce_andRanksByThem() = runTest {
+    fun selectingTabOrChip_reloadsWithThatFilter() = runTest {
+        coEvery { repo.loadFeedPage(any(), any(), any(), any()) } returns
+            Result.success(FeedPage(listOf(dance("a")), next = null))
         vm.refresh()
         advanceUntilIdle()
 
         vm.selectTab(FeedTab.TRENDING)
         advanceUntilIdle()
-        assertEquals("c", visibleIds().first())
-        assertFalse(vm.uiState.value.isLoadingTrending)
-
-        vm.selectTab(FeedTab.FOR_YOU)
-        vm.selectTab(FeedTab.TRENDING)
-        advanceUntilIdle()
-        coVerify(exactly = 1) { repo.likeCounts(any()) }
-    }
-
-    @Test
-    fun categoryChip_filters_andTogglesOff() = runTest {
-        vm.refresh()
-        advanceUntilIdle()
+        coVerify { repo.loadFeedPage(DiscoveryFilter(tab = FeedTab.TRENDING), any(), null, any()) }
 
         vm.selectCategory("hiphop")
-        assertEquals(listOf("b", "c"), visibleIds())
+        advanceUntilIdle()
+        coVerify {
+            repo.loadFeedPage(DiscoveryFilter(tab = FeedTab.TRENDING, categoryKey = "hiphop"), any(), null, any())
+        }
 
-        vm.selectCategory("hiphop")
+        vm.selectCategory("hiphop") // tapping the active chip clears it
         assertNull(vm.uiState.value.filter.categoryKey)
-        assertEquals(3, visibleIds().size)
     }
 
     @Test
-    fun search_filters_andClearRestoresFeed() = runTest {
-        vm.refresh()
+    fun search_isDebounced_soOnlyTheFinalTextIsQueried() = runTest {
+        coEvery { repo.loadFeedPage(any(), any(), any(), any()) } returns
+            Result.success(FeedPage(emptyList(), next = null))
+
+        vm.setSearchQuery("s")
+        vm.setSearchQuery("sa")
+        vm.setSearchQuery("salsa")
+        advanceTimeBy(100)
+        coVerify(exactly = 0) { repo.loadFeedPage(any(), any(), any(), any()) }
+
         advanceUntilIdle()
-
-        vm.setSearchQuery("groove")
-        assertEquals(listOf("b"), visibleIds())
-
-        vm.setSearchQuery("nothing like this")
-        assertEquals(emptyList<String>(), visibleIds())
-
-        vm.clearDiscoveryFilters()
-        assertEquals(3, visibleIds().size)
+        coVerify(exactly = 1) { repo.loadFeedPage(any(), any(), any(), any()) }
+        coVerify { repo.loadFeedPage(DiscoveryFilter(query = "salsa"), any(), null, any()) }
     }
 }

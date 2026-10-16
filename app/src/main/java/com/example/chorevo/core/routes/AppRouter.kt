@@ -30,7 +30,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -39,6 +41,16 @@ import com.example.chorevo.core.ViewModel.AppViewModel
 import com.example.chorevo.core.ViewModel.Screen
 import com.example.chorevo.core.routes.AuthRoute
 import com.example.chorevo.core.routes.CommunityRoute
+import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.firebase.UsernameDialog
+import com.example.chorevo.notification.PushTokens
+import androidx.compose.ui.platform.LocalContext
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.example.chorevo.core.routes.DancePracticeRoute
 import com.example.chorevo.core.routes.HomeRoute
 import com.example.chorevo.core.routes.LeaderboardRoute
@@ -96,6 +108,29 @@ fun AppRouter(
 
         val danceLibraryViewModel: DanceLibraryListViewModel = hiltViewModel()
         val videoUploadsViewModel: VideoUploadsViewModel = hiltViewModel()
+        // Shared with the Groups screen (same activity scope); bound here so the
+        // Groups tab can badge invitations from anywhere in the app.
+        val groupsViewModel: GroupsViewModel = hiltViewModel()
+        val groupsState = groupsViewModel.uiState.collectAsStateWithLifecycle().value
+        val profile = state.profile
+        LaunchedEffect(profile.uid) {
+            groupsViewModel.bind(profile.uid, profile.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User", profile.photoUrl)
+        }
+
+        // Push notifications (group invitations): save this device's token, and
+        // on Android 13+ ask once per launch for permission to show them.
+        val context = LocalContext.current
+        val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        var askedForNotifications by rememberSaveable { mutableStateOf(false) }
+        LaunchedEffect(profile.uid) {
+            PushTokens.register(profile.uid)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedForNotifications &&
+                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+            ) {
+                askedForNotifications = true
+                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
         AppNavigationRoute(
             screen = state.screen,
@@ -103,7 +138,8 @@ fun AppRouter(
             onUploadSelected = appViewModel::openUpload,
             onCommunitySelected = appViewModel::openCommunity,
             onLeaderboardSelected = appViewModel::openLeaderboard,
-            onProfileSelected = appViewModel::openProfile
+            onProfileSelected = appViewModel::openProfile,
+            groupsBadge = groupsState.invitations.size
         ) { navInnerPadding ->
             AppRouteContent(
                 innerPadding = navInnerPadding,
@@ -119,6 +155,17 @@ fun AppRouter(
                 appViewModel = appViewModel,
                 danceLibraryViewModel = danceLibraryViewModel,
                 videoUploadsViewModel = videoUploadsViewModel
+            )
+        }
+
+        // Accounts from before usernames pick one once (needed for group invites).
+        var usernameLater by rememberSaveable(profile.uid) { mutableStateOf(false) }
+        if (profile.username == null && !usernameLater) {
+            UsernameDialog(
+                profile = profile,
+                required = true,
+                onSaved = appViewModel::onUsernameSaved,
+                onDismiss = { usernameLater = true }
             )
         }
     }
@@ -225,7 +272,10 @@ private fun AppRouteContent(
 
                 Screen.COMMUNITY -> {
                     CommunityRoute(
-                        profile = profile
+                        profile = profile,
+                        onOpenDance = appViewModel::openDanceById,
+                        pendingInviteCode = appViewModel.uiState.collectAsStateWithLifecycle().value.pendingGroupInvite,
+                        onInviteHandled = appViewModel::clearGroupInvite
                     )
                 }
 

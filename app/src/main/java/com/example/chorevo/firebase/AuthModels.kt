@@ -9,5 +9,7 @@ data class UserProfile(
     val email: String?,
     val displayName: String?,
     val role: UserRole = UserRole.USER,
-    val photoUrl: String? = null
+    val photoUrl: String? = null,
+    /** Unique handle (see `Usernames`); null until the user picks one. */
+    val username: String? = null
 )

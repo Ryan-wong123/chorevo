@@ -6,6 +6,8 @@ const TEMPLATE = fs.readFileSync(path.join(__dirname, "dance.html"), "utf8");
 const DEFAULT_TITLE = "Check out this dance on Chorevo";
 const DEFAULT_DESCRIPTION =
   "Watch this dance and practise it with real-time pose feedback on Chorevo.";
+/** Branded 1200×630 preview image used when a dance has no cover thumbnail. */
+const DEFAULT_IMAGE = "https://chorevo-dea05.web.app/og-default.png";
 
 function escapeHtml(value) {
   return String(value)
@@ -54,9 +56,20 @@ function renderDancePage(dance, url) {
         `    <meta property="og:video:type" content="video/mp4">\n`
       : "";
 
+  // The dance's cover frame (uploaded with the video) or the branded default.
+  const thumbnail = available && dance.thumbnailUrl ? String(dance.thumbnailUrl) : null;
+  const image = thumbnail || DEFAULT_IMAGE;
+  const imageTags =
+    `    <meta property="og:image" content="${escapeHtml(image)}">\n` +
+    `    <meta property="og:image:secure_url" content="${escapeHtml(image)}">\n` +
+    `    <meta property="og:image:alt" content="${escapeHtml(title)}">\n` +
+    (thumbnail ? "" : `    <meta property="og:image:width" content="1200">\n    <meta property="og:image:height" content="630">\n`) +
+    `    <meta name="twitter:image" content="${escapeHtml(image)}">\n`;
+
+  const poster = thumbnail ? ` poster="${escapeHtml(thumbnail)}"` : "";
   const videoPlayer =
     available && dance.videoUrl
-      ? `      <video class="video" src="${escapeHtml(dance.videoUrl)}" controls autoplay muted loop playsinline></video>\n`
+      ? `      <video class="video" src="${escapeHtml(dance.videoUrl)}"${poster} controls autoplay muted loop playsinline></video>\n`
       : "";
 
   const values = {
@@ -65,6 +78,7 @@ function renderDancePage(dance, url) {
     DESCRIPTION: escapeHtml(description),
     URL: escapeHtml(url),
     VIDEO_TAGS: videoTags,
+    IMAGE_TAGS: imageTags,
     VIDEO_PLAYER: videoPlayer,
   };
   return TEMPLATE.replace(/\{\{(\w+)\}\}/g, (whole, key) =>
@@ -72,4 +86,4 @@ function renderDancePage(dance, url) {
   );
 }
 
-module.exports = { escapeHtml, parseDanceId, renderDancePage };
+module.exports = { escapeHtml, parseDanceId, renderDancePage, DEFAULT_IMAGE };

@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import com.example.chorevo.core.ViewModel.AppViewModel
 import com.example.chorevo.core.ViewModel.ThemeMode
 import com.example.chorevo.core.share.ShareLinks
+import com.example.chorevo.notification.ChorevoMessagingService
 import com.example.chorevo.ui.theme.ChorevoTheme
 import com.routes.AppRouter
 import dagger.hilt.android.AndroidEntryPoint
@@ -96,14 +97,21 @@ class MainActivity : ComponentActivity() {
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * Parses a dance share link (see [ShareLinks.parseDanceId]) out of the
-     * incoming intent and forwards the ID to [AppViewModel] so it can load and
-     * display the correct dance once auth is confirmed.
+     * Parses a dance share link (see [ShareLinks.parseDanceId]) or a group
+     * invite link (see [ShareLinks.parseInviteCode]) out of the incoming intent
+     * and forwards it to [AppViewModel], which acts on it once auth is confirmed.
      */
     private fun handleDeepLinkIntent(intent: Intent?) {
+        // Tapped group invitation push (message data arrives as extras).
+        if (intent?.getStringExtra("type") == ChorevoMessagingService.TYPE_GROUP_INVITATION) {
+            intent.removeExtra("type")
+            appViewModel.openGroupInvitations()
+            return
+        }
         val uri = intent?.data ?: return
         if (intent.action != Intent.ACTION_VIEW) return
 
         ShareLinks.parseDanceId(uri)?.let(appViewModel::openDanceById)
+        ShareLinks.parseInviteCode(uri)?.let(appViewModel::openGroupInvite)
     }
 }

@@ -406,6 +406,7 @@ private fun LikedVideosGrid(
                 itemsIndexed(dances) { index, dance ->
                     VideoThumbnailTile(
                         frameTimeMs = dance.coverFrameMs,
+                        thumbnailUrl = dance.thumbnailUrl,
                         videoUrl = dance.videoUrl,
                         title = dance.title,
                         onClick = { onTap(index) }

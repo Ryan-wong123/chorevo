@@ -3,12 +3,25 @@ package com.example.chorevo.dancelibrarylist.Repository
 import com.example.chorevo.danceactivity.DanceSessionEntity
 import com.example.chorevo.danceactivity.Repository.DanceSessionDao
 import com.example.chorevo.dancelibrarylist.DanceComment
+import com.example.chorevo.dancelibrarylist.DanceCategory
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
+import com.example.chorevo.dancelibrarylist.DiscoveryFilter
+import com.example.chorevo.dancelibrarylist.FeedCursor
+import com.example.chorevo.dancelibrarylist.FeedPage
+import com.example.chorevo.dancelibrarylist.FeedTab
+import com.example.chorevo.dancelibrarylist.categoriesFromCounts
+import com.example.chorevo.dancelibrarylist.matchesSearch
+import com.example.chorevo.dancelibrarylist.searchToken
+import com.example.chorevo.dancelibrarylist.MAX_SEARCH_TOKEN_LENGTH
+import com.example.chorevo.dancelibrarylist.searchScore
+import com.example.chorevo.dancelibrarylist.searchTrigramsOf
+import com.example.chorevo.dancelibrarylist.searchWords
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
 import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.Dispatchers
@@ -32,23 +45,139 @@ class DanceLibraryRepository @Inject constructor(
     companion object {
         private const val MAX_TEMPLATE_DOWNLOAD_BYTES = 20L * 1024L * 1024L
         const val COMMENTS_PAGE_SIZE = 20L
+        /** Dances fetched per feed page. */
+        const val FEED_PAGE_SIZE = 12L
+        /** Exact (prefix) search results fetched per search. */
+        const val SEARCH_EXACT_LIMIT = 40L
+        /** Typo-tolerant search candidates fetched per search. */
+        const val SEARCH_FUZZY_LIMIT = 60L
         /** Matches the Firestore rule limit for comment text. */
         const val MAX_COMMENT_LENGTH = 1000
     }
 
-    /** Handles list enabled. */
-    suspend fun listEnabled(): Result<List<DanceLibraryModel>> {
+    /**
+     * One page of the feed for the discovery bar's [filter]. Uses fields the
+     * Cloud Functions keep on each dance (functions/discovery.js):
+     * - visibility == "public" and feedReady == true (also what the rules require),
+     * - danceTypeKey for a category chip,
+     * - searchTokens (word prefixes) for the first search word,
+     * - ordering by shuffleKey (For You), createdAt (New) or trendingScore (Trending).
+     *
+     * For You starts at a random [seed] in shuffleKey space and wraps around
+     * once, so each app session starts the feed somewhere different. Further
+     * search words are matched on the device.
+     */
+    suspend fun loadFeedPage(
+        filter: DiscoveryFilter,
+        seed: Double,
+        cursor: FeedCursor?,
+        pageSize: Long = FEED_PAGE_SIZE
+    ): Result<FeedPage> {
+        if (searchToken(filter.query) != null) return searchFeed(filter)
         return try {
-            val snap = firestore.collection("danceLibrary")
-                .whereEqualTo("enabled", true)
-                .get()
-                .await()
+            var position = cursor ?: FeedCursor()
+            val collected = mutableListOf<DanceLibraryModel>()
 
-            val list = snap.documents
+            while (true) {
+                var q: Query = firestore.collection("danceLibrary")
+                    .whereEqualTo("visibility", DanceLibraryModel.VISIBILITY_PUBLIC)
+                    .whereEqualTo("feedReady", true)
+                filter.categoryKey?.let { q = q.whereEqualTo("danceTypeKey", it) }
+                searchToken(filter.query)?.let { q = q.whereArrayContains("searchTokens", it) }
+                q = when (filter.tab) {
+                    FeedTab.FOR_YOU ->
+                        if (!position.wrapped) {
+                            q.whereGreaterThanOrEqualTo("shuffleKey", seed).orderBy("shuffleKey")
+                        } else {
+                            q.whereLessThan("shuffleKey", seed).orderBy("shuffleKey")
+                        }
+                    FeedTab.NEW -> q.orderBy("createdAt", Query.Direction.DESCENDING)
+                    FeedTab.TRENDING -> q.orderBy("trendingScore", Query.Direction.DESCENDING)
+                }
+                position.lastDoc?.let { q = q.startAfter(it) }
+
+                val docs = q.limit(pageSize).get().await().documents
+                collected += docs
+                    .mapNotNull { it.toObject(DanceLibraryModel::class.java) }
+                    .filter { it.isTemplateReady && !it.isPrivate && matchesSearch(it, filter.query) }
+
+                val pageFull = docs.size.toLong() == pageSize
+                position = when {
+                    pageFull -> position.copy(lastDoc = docs.last())
+                    // For You: first half done, continue below the seed.
+                    filter.tab == FeedTab.FOR_YOU && !position.wrapped -> FeedCursor(wrapped = true)
+                    else -> return Result.success(FeedPage(collected, next = null))
+                }
+                // Stop at a full page, or once something was found after wrapping.
+                if (pageFull || collected.isNotEmpty()) {
+                    return Result.success(FeedPage(collected, next = position))
+                }
+            }
+            @Suppress("UNREACHABLE_CODE")
+            Result.success(FeedPage(collected, next = null))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Search results (one page, best matches first). Two queries run together:
+     * - exact: searchTokens array-contains the first word (word prefixes), in tab order;
+     * - typo-tolerant: searchTrigrams array-contains-any the first word's
+     *   3-letter pieces, so "hiphp" or "slasa" still find candidates.
+     * Every candidate is then scored on the device with [searchScore] (all
+     * words must match, allowing a typo or two) and sorted by score.
+     */
+    private suspend fun searchFeed(filter: DiscoveryFilter): Result<FeedPage> {
+        return try {
+            val firstWord = searchWords(filter.query).first().take(MAX_SEARCH_TOKEN_LENGTH)
+            fun base(): Query {
+                var q: Query = firestore.collection("danceLibrary")
+                    .whereEqualTo("visibility", DanceLibraryModel.VISIBILITY_PUBLIC)
+                    .whereEqualTo("feedReady", true)
+                filter.categoryKey?.let { q = q.whereEqualTo("danceTypeKey", it) }
+                return q
+            }
+            val (exact, fuzzy) = coroutineScope {
+                val exactDocs = async {
+                    val q = base().whereArrayContains("searchTokens", firstWord)
+                    when (filter.tab) {
+                        FeedTab.FOR_YOU -> q.orderBy("shuffleKey")
+                        FeedTab.NEW -> q.orderBy("createdAt", Query.Direction.DESCENDING)
+                        FeedTab.TRENDING -> q.orderBy("trendingScore", Query.Direction.DESCENDING)
+                    }.limit(SEARCH_EXACT_LIMIT).get().await().documents
+                }
+                val fuzzyDocs = async {
+                    // Best effort: a missing index or other failure just means no typo matches.
+                    runCatching {
+                        base().whereArrayContainsAny("searchTrigrams", searchTrigramsOf(firstWord))
+                            .limit(SEARCH_FUZZY_LIMIT).get().await().documents
+                    }.getOrDefault(emptyList())
+                }
+                exactDocs.await() to fuzzyDocs.await()
+            }
+            val ranked = (exact + fuzzy)
                 .mapNotNull { it.toObject(DanceLibraryModel::class.java) }
-                // Private videos only appear in their uploader's profile, never the feed.
+                .distinctBy { it.danceId }
                 .filter { it.isTemplateReady && !it.isPrivate }
-            Result.success(list)
+                .mapNotNull { dance -> searchScore(dance, filter.query)?.let { dance to it } }
+                .sortedBy { it.second } // stable: ties keep the exact query's tab order first
+                .map { it.first }
+            Result.success(FeedPage(ranked, next = null))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /** Category chips from the counts the Cloud Functions keep in meta/danceCategories. */
+    suspend fun loadCategories(): Result<List<DanceCategory>> {
+        return try {
+            val snap = firestore.collection("meta").document("danceCategories").get().await()
+            @Suppress("UNCHECKED_CAST")
+            val counts = (snap.get("counts") as? Map<String, Any?>).orEmpty()
+            @Suppress("UNCHECKED_CAST")
+            val labels = (snap.get("labels") as? Map<String, Any?>).orEmpty()
+            Result.success(categoriesFromCounts(counts, labels))
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -97,6 +226,13 @@ class DanceLibraryRepository @Inject constructor(
             }
 
             Result.success(dance)
+        } catch (e: FirebaseFirestoreException) {
+            // The rules refuse private dances to anyone but their uploader.
+            if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) {
+                Result.failure(IllegalStateException("This video is private."))
+            } else {
+                Result.failure(e)
+            }
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -253,43 +389,34 @@ class DanceLibraryRepository @Inject constructor(
         }
     }
 
+    /**
+     * Like count and whether [currentUid] liked the dance: the count the
+     * danceLikeCount function keeps on the dance (falling back to a count()
+     * query before it has run) and a single read of the user's own like.
+     */
     suspend fun loadSocialData(danceId: String, currentUid: String): Result<Pair<Int, Boolean>> {
         return try {
-            val likesSnap = firestore.collection("danceLibrary")
-                .document(danceId).collection("likes").get().await()
-
-            val isLiked = likesSnap.documents.any { it.id == currentUid }
-            Result.success(Pair(likesSnap.size(), isLiked))
+            val danceRef = firestore.collection("danceLibrary").document(danceId)
+            val stored = danceRef.get().await().getLong("likeCount")
+            val likeCount = stored?.toInt()
+                ?: danceRef.collection("likes").count().get(AggregateSource.SERVER).await().count.toInt()
+            val isLiked = danceRef.collection("likes").document(currentUid).get().await().exists()
+            Result.success(likeCount to isLiked)
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
-
-    /**
-     * Like counts for several dances, for the Trending tab. Uses server-side
-     * count() aggregations (one cheap query per dance, run in parallel);
-     * a dance whose count fails is left out and treated as 0 likes.
-     */
-    suspend fun likeCounts(danceIds: List<String>): Map<String, Int> = coroutineScope {
-        danceIds.distinct().map { id ->
-            async {
-                runCatching {
-                    val snap = firestore.collection("danceLibrary")
-                        .document(id).collection("likes")
-                        .count()
-                        .get(AggregateSource.SERVER)
-                        .await()
-                    id to snap.count.toInt()
-                }.getOrNull()
-            }
-        }.awaitAll().filterNotNull().toMap()
     }
 
     suspend fun toggleLike(danceId: String, uid: String, isCurrentlyLiked: Boolean): Result<Unit> {
         return try {
             val ref = firestore.collection("danceLibrary")
                 .document(danceId).collection("likes").document(uid)
-            if (isCurrentlyLiked) ref.delete().await() else ref.set(mapOf("liked" to true)).await()
+            if (isCurrentlyLiked) {
+                ref.delete().await()
+            } else {
+                // uid/createdAt let the liked-videos query find this like.
+                ref.set(mapOf("liked" to true, "uid" to uid, "createdAt" to System.currentTimeMillis())).await()
+            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -340,26 +467,27 @@ class DanceLibraryRepository @Inject constructor(
      */
     suspend fun getLikedDances(uid: String): Result<List<DanceLibraryModel>> {
         return try {
-            val allSnap = firestore.collection("danceLibrary")
-                .whereEqualTo("enabled", true)
+            // The user's own likes across all dances, newest first.
+            val likes = firestore.collectionGroup("likes")
+                .whereEqualTo("uid", uid)
                 .get()
                 .await()
+                .documents
+                .sortedByDescending { it.getLong("createdAt") ?: 0L }
 
-            val liked = mutableListOf<DanceLibraryModel>()
-            for (doc in allSnap.documents) {
-                val likeDoc = firestore.collection("danceLibrary")
-                    .document(doc.id)
-                    .collection("likes")
-                    .document(uid)
-                    .get()
-                    .await()
-                if (likeDoc.exists()) {
-                    doc.toObject(DanceLibraryModel::class.java)
-                        ?.takeIf { it.isVisibleTo(uid) }
-                        ?.let { liked.add(it) }
-                }
+            val danceIds = likes.mapNotNull { it.reference.parent.parent?.id }.distinct()
+            val dances = coroutineScope {
+                danceIds.map { id ->
+                    async {
+                        // A dance that became private (or was deleted) can't be read: skip it.
+                        runCatching {
+                            firestore.collection("danceLibrary").document(id).get().await()
+                                .toObject(DanceLibraryModel::class.java)
+                        }.getOrNull()
+                    }
+                }.awaitAll()
             }
-            Result.success(liked)
+            Result.success(dances.filterNotNull().filter { it.enabled && it.isVisibleTo(uid) })
         } catch (e: Exception) {
             Result.failure(e)
         }

@@ -62,6 +62,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import com.example.chorevo.firebase.UsernameDialog
 import androidx.compose.material.icons.outlined.DarkMode
 import com.example.chorevo.core.ViewModel.ThemeMode
 import androidx.compose.ui.graphics.Color
@@ -106,6 +107,8 @@ fun SettingsScreen(
             ?: "-"
 
     val savedPhotoUrl = uiState.profile?.photoUrl ?: profile.photoUrl
+    val currentProfile = uiState.profile ?: profile
+    var showUsernameDialog by remember { mutableStateOf(false) }
 
     val pushEnabled = uiState.pushEnabled
     val selectedHour = uiState.notificationHour
@@ -186,6 +189,8 @@ fun SettingsScreen(
             ProfileHeader(
                 displayName = displayName,
                 email = email,
+                username = currentProfile.username,
+                onUsernameClick = { showUsernameDialog = true },
                 profileImageModel = localPreviewUri ?: savedPhotoUrl,
                 isUploading = uiState.isUploadingProfilePhoto,
                 onEditClick = { profileGalleryLauncher.launch("image/*") },
@@ -256,6 +261,17 @@ fun SettingsScreen(
                 appViewModel.setNotificationTime(hour, minute)
                 showTimePicker = false
             }
+        )
+    }
+    if (showUsernameDialog) {
+        UsernameDialog(
+            profile = currentProfile,
+            required = false,
+            onSaved = { handle ->
+                appViewModel.onUsernameSaved(handle)
+                showUsernameDialog = false
+            },
+            onDismiss = { showUsernameDialog = false }
         )
     }
 }
@@ -360,6 +376,8 @@ private fun SettingsTopBar(
 private fun ProfileHeader(
     displayName: String,
     email: String,
+    username: String?,
+    onUsernameClick: () -> Unit,
     profileImageModel: Any?,
     isUploading: Boolean,
     onEditClick: () -> Unit,
@@ -435,6 +453,15 @@ private fun ProfileHeader(
                 text = email,
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.Gray
+            )
+            Text(
+                text = if (username != null) "@$username · Change" else "Choose a username",
+                style = MaterialTheme.typography.bodyMedium,
+                color = brandTeal,
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .clickable(onClick = onUsernameClick)
+                    .testTag("settingsUsername")
             )
         }
     }

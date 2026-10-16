@@ -6,6 +6,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.Query
@@ -349,27 +350,36 @@ class LeaderboardRepositoryTest {
 
     // ── observeLeaderboard – FRIENDS scope ───────────────────────────────────
 
+    private fun setupFriendStatsChain(
+        listenerSlot: io.mockk.CapturingSlot<EventListener<QuerySnapshot>>,
+        requestedIds: io.mockk.CapturingSlot<List<Any>>
+    ) {
+        val byIdQuery = mockk<Query>()
+        every { statsCollection.whereIn(any<FieldPath>(), capture(requestedIds)) } returns byIdQuery
+        every { byIdQuery.addSnapshotListener(capture(listenerSlot)) } returns statsRegistration
+    }
+
     @Test
-    fun observeLeaderboard_friends_onlyIncludesFriendsAndSelf() = runTest {
+    fun observeLeaderboard_friends_readsFriendsAndSelfById_evenOutsideTop100() = runTest {
         val statsListenerSlot = slot<EventListener<QuerySnapshot>>()
         val friendsListenerSlot = slot<EventListener<QuerySnapshot>>()
+        val requestedIds = slot<List<Any>>()
 
-        setupStatsChain(LeaderboardMetric.TOTAL_SESSIONS, statsListenerSlot)
         setupFriendsChain("uid1", friendsListenerSlot)
-
-        val statsSnapshot = mockk<QuerySnapshot>()
-        every { statsSnapshot.documents } returns listOf(
-            mockStatDoc("uid1", "Alice", totalSessions = 10),
-            mockStatDoc("uid2", "Bob", totalSessions = 8),
-            mockStatDoc("uid3", "Carol", totalSessions = 6),  // not a friend
-            mockStatDoc("uid4", "Dave", totalSessions = 5)    // not a friend
-        )
+        setupFriendStatsChain(statsListenerSlot, requestedIds)
 
         val friendsSnapshot = mockk<QuerySnapshot>()
         val friendDoc = mockk<DocumentSnapshot>()
         every { friendDoc.id } returns "uid2"
         every { friendsSnapshot.documents } returns listOf(friendDoc)
 
+        // Only the requested users come back; Bob may be far outside the global top 100.
+        val statsSnapshot = mockk<QuerySnapshot>()
+        every { statsSnapshot.documents } returns listOf(
+            mockStatDoc("uid1", "Alice", totalSessions = 10),
+            mockStatDoc("uid2", "Bob", totalSessions = 12)
+        )
+
         val deferred = async {
             repo.observeLeaderboard(
                 scope = LeaderboardScope.FRIENDS,
@@ -379,37 +389,33 @@ class LeaderboardRepositoryTest {
         }
 
         advanceUntilIdle()
-        statsListenerSlot.captured.onEvent(statsSnapshot, null)
         friendsListenerSlot.captured.onEvent(friendsSnapshot, null)
+        advanceUntilIdle()
+        statsListenerSlot.captured.onEvent(statsSnapshot, null)
         advanceUntilIdle()
 
         val entries = deferred.await()
 
-        // Only uid1 (self) and uid2 (friend) should be included
-        assertEquals(2, entries.size)
-        assertTrue(entries.any { it.uid == "uid1" })
-        assertTrue(entries.any { it.uid == "uid2" })
-        assertFalse(entries.any { it.uid == "uid3" })
-        assertFalse(entries.any { it.uid == "uid4" })
+        assertEquals(setOf("uid1", "uid2"), requestedIds.captured.toSet())
+        assertEquals(listOf("uid2", "uid1"), entries.map { it.uid })
+        assertEquals(1, entries[0].rank)
+        assertTrue(entries[1].isMe)
     }
 
     @Test
     fun observeLeaderboard_friends_selfAlwaysIncluded() = runTest {
         val statsListenerSlot = slot<EventListener<QuerySnapshot>>()
         val friendsListenerSlot = slot<EventListener<QuerySnapshot>>()
+        val requestedIds = slot<List<Any>>()
 
-        setupStatsChain(LeaderboardMetric.TOTAL_SESSIONS, statsListenerSlot)
         setupFriendsChain("uid1", friendsListenerSlot)
-
-        val statsSnapshot = mockk<QuerySnapshot>()
-        every { statsSnapshot.documents } returns listOf(
-            mockStatDoc("uid1", "Alice", totalSessions = 10),
-            mockStatDoc("uid2", "Bob", totalSessions = 8)
-        )
+        setupFriendStatsChain(statsListenerSlot, requestedIds)
 
         val friendsSnapshot = mockk<QuerySnapshot>()
-        // No friends — empty
         every { friendsSnapshot.documents } returns emptyList()
+
+        val statsSnapshot = mockk<QuerySnapshot>()
+        every { statsSnapshot.documents } returns listOf(mockStatDoc("uid1", "Alice", totalSessions = 10))
 
         val deferred = async {
             repo.observeLeaderboard(
@@ -420,13 +426,14 @@ class LeaderboardRepositoryTest {
         }
 
         advanceUntilIdle()
-        statsListenerSlot.captured.onEvent(statsSnapshot, null)
         friendsListenerSlot.captured.onEvent(friendsSnapshot, null)
+        advanceUntilIdle()
+        statsListenerSlot.captured.onEvent(statsSnapshot, null)
         advanceUntilIdle()
 
         val entries = deferred.await()
 
-        // Self is always included even with no friends
+        assertEquals(listOf("uid1"), requestedIds.captured)
         assertEquals(1, entries.size)
         assertEquals("uid1", entries[0].uid)
     }

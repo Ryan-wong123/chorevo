@@ -2,6 +2,7 @@ package com.example.chorevo
 
 import android.app.Application
 import androidx.work.Configuration
+import com.example.chorevo.notification.NotificationChannels
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.appcheck.ktx.appCheck
@@ -28,6 +29,8 @@ class Chorevo : Application(), Configuration.Provider {
         super.onCreate()
 
         FirebaseApp.initializeApp(this)
+        // Push notifications arrive on these channels even before any reminder is scheduled.
+        NotificationChannels.create(this)
 
         if (BuildConfig.DEBUG) {
             Firebase.appCheck.installAppCheckProviderFactory(

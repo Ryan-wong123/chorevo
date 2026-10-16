@@ -1,6 +1,6 @@
 package com.example.chorevo.dancelibrarylist
 
-import kotlin.math.pow
+import com.google.firebase.firestore.DocumentSnapshot
 
 /** Feed tabs in the discovery bar. */
 enum class FeedTab(val label: String) {
@@ -31,7 +31,7 @@ fun danceTypeKey(raw: String): String? =
     raw.lowercase().filter { it.isLetterOrDigit() }.ifEmpty { null }
 
 /** Title-cases a dance type for display ("hip hop" → "Hip Hop", "k-pop" → "K-Pop"). */
-private fun displayLabel(raw: String): String =
+internal fun displayLabel(raw: String): String =
     raw.trim()
         .split(Regex("\\s+"))
         .joinToString(" ") { word ->
@@ -39,20 +39,6 @@ private fun displayLabel(raw: String): String =
                 part.lowercase().replaceFirstChar { it.titlecase() }
             }
         }
-
-/**
- * Category chips from the feed's dance types, most common first. Each chip
- * uses the most common spelling of its group as its label.
- */
-fun categoriesOf(items: List<DanceLibraryModel>): List<DanceCategory> =
-    items
-        .mapNotNull { item -> danceTypeKey(item.danceType)?.let { it to item.danceType.trim() } }
-        .groupBy({ it.first }, { it.second })
-        .map { (key, spellings) ->
-            val label = spellings.groupingBy { it }.eachCount().maxByOrNull { it.value }!!.key
-            DanceCategory(key = key, label = displayLabel(label), count = spellings.size)
-        }
-        .sortedWith(compareByDescending<DanceCategory> { it.count }.thenBy { it.label })
 
 /**
  * True when every word of [query] appears in the title, dance type, creator
@@ -67,39 +53,136 @@ fun matchesSearch(item: DanceLibraryModel, query: String): Boolean {
     return words.all { it in haystack }
 }
 
-/**
- * Likes, decayed by age so a fresh dance with a few likes can beat an old one
- * with more: (likes + 1) / (ageDays + 2)^1.5.
- */
-fun trendingScore(likes: Int, createdAtMs: Long, nowMs: Long): Double {
-    val ageDays = ((nowMs - createdAtMs).coerceAtLeast(0L)) / 86_400_000.0
-    return (likes + 1) / (ageDays + 2).pow(1.5)
-}
+/** Longest search prefix the server stores per word (functions/discovery.js). */
+const val MAX_SEARCH_TOKEN_LENGTH = 15
 
 /**
- * Applies the discovery filter to the full feed:
- * - For You keeps the feed's own order.
- * - Trending sorts by [trendingScore] (newest first on ties).
- * - New sorts by upload time, newest first.
- * The category chip and search box narrow any tab.
+ * The token the feed query searches with: the first word of [query],
+ * lower-cased, letters and digits only, cut to [MAX_SEARCH_TOKEN_LENGTH]
+ * (the server stores every prefix up to that length). Null for a blank query.
  */
-fun applyDiscovery(
-    items: List<DanceLibraryModel>,
-    filter: DiscoveryFilter,
-    likeCounts: Map<String, Int>,
-    nowMs: Long
-): List<DanceLibraryModel> {
-    val filtered = items.filter { item ->
-        (filter.categoryKey == null || danceTypeKey(item.danceType) == filter.categoryKey) &&
-            matchesSearch(item, filter.query)
+fun searchToken(query: String): String? =
+    query.lowercase()
+        .split(Regex("[^\\p{L}\\p{N}]+"))
+        .firstOrNull { it.isNotEmpty() }
+        ?.take(MAX_SEARCH_TOKEN_LENGTH)
+
+/**
+ * Chips from the meta/danceCategories document: counts per key and labels
+ * (the most common spelling), most common first. Empty categories are dropped.
+ */
+fun categoriesFromCounts(counts: Map<String, Any?>, labels: Map<String, Any?>): List<DanceCategory> =
+    counts
+        .mapNotNull { (key, value) ->
+            val count = (value as? Number)?.toInt() ?: 0
+            if (count <= 0) null
+            else DanceCategory(key = key, label = displayLabel((labels[key] as? String) ?: key), count = count)
+        }
+        .sortedWith(compareByDescending<DanceCategory> { it.count }.thenBy { it.label })
+
+/** Where the next feed page starts. For You runs from its seed to the end, then wraps. */
+data class FeedCursor(
+    val lastDoc: DocumentSnapshot? = null,
+    val wrapped: Boolean = false
+)
+
+/** One page of feed results; [next] is null when the feed has ended. */
+data class FeedPage(
+    val items: List<DanceLibraryModel>,
+    val next: FeedCursor?
+)
+
+/**
+ * Edit distance (insertions, deletions, substitutions, adjacent swaps)
+ * between two strings. Used for typo-tolerant search and style suggestions.
+ */
+fun editDistance(a: String, b: String): Int {
+    if (a == b) return 0
+    if (a.isEmpty()) return b.length
+    if (b.isEmpty()) return a.length
+    val d = Array(a.length + 1) { IntArray(b.length + 1) }
+    for (i in 0..a.length) d[i][0] = i
+    for (j in 0..b.length) d[0][j] = j
+    for (i in 1..a.length) {
+        for (j in 1..b.length) {
+            val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+            d[i][j] = minOf(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+            if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) {
+                d[i][j] = minOf(d[i][j], d[i - 2][j - 2] + 1)
+            }
+        }
     }
-    return when (filter.tab) {
-        FeedTab.FOR_YOU -> filtered
-        FeedTab.NEW -> filtered.sortedByDescending { it.createdAt }
-        FeedTab.TRENDING -> filtered.sortedWith(
-            compareByDescending<DanceLibraryModel> {
-                trendingScore(likeCounts[it.danceId] ?: 0, it.createdAt, nowMs)
-            }.thenByDescending { it.createdAt }
-        )
+    return d[a.length][b.length]
+}
+
+/** Typos allowed for a word of [length] letters: none up to 3, one up to 6, then two. */
+fun allowedTypos(length: Int): Int = when {
+    length <= 3 -> 0
+    length <= 6 -> 1
+    else -> 2
+}
+
+/** Dance styles offered when uploading; keeps category chips tidy. */
+val STANDARD_DANCE_STYLES = listOf(
+    "Hip Hop", "K-Pop", "Ballet", "Contemporary", "Jazz", "Street Jazz",
+    "Salsa", "Bachata", "Latin", "Ballroom", "Breaking", "Popping",
+    "Locking", "House", "Waacking", "Krump", "Dancehall", "Afrobeats",
+    "Tap", "Bollywood", "Folk", "Line Dance", "Zumba", "Freestyle"
+)
+
+/**
+ * The standard style [raw] most likely means: an exact match ignoring case
+ * and punctuation ("hip-hop" → "Hip Hop"), or a close spelling ("Hiphp" →
+ * "Hip Hop"). Null when nothing is close.
+ */
+fun closestStandardStyle(raw: String, styles: List<String> = STANDARD_DANCE_STYLES): String? {
+    val key = danceTypeKey(raw) ?: return null
+    styles.firstOrNull { danceTypeKey(it) == key }?.let { return it }
+    return styles
+        .map { it to editDistance(key, danceTypeKey(it)!!) }
+        .filter { (style, distance) -> distance <= allowedTypos(danceTypeKey(style)!!.length) }
+        .minByOrNull { it.second }
+        ?.first
+}
+
+/** Lower-cased words (letters and digits) in [text]; mirrors words() in functions/discovery.js. */
+fun searchWords(text: String): List<String> =
+    text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }
+
+/**
+ * Three-letter pieces of [word] (whole word when shorter), matching the
+ * server's searchTrigrams; at most 30, Firestore's array-contains-any limit.
+ */
+fun searchTrigramsOf(word: String): List<String> =
+    if (word.length < 3) listOf(word)
+    else (0..word.length - 3).map { word.substring(it, it + 3) }.distinct().take(30)
+
+/**
+ * How well [item] matches a search, or null when it doesn't: every word of
+ * [query] must start a word of the title, dance type, creator or description
+ * (cost 0), appear inside one (cost 1), or be within a few typos of one
+ * (cost = typos + 1, see [allowedTypos]). Lower is better.
+ */
+fun searchScore(item: DanceLibraryModel, query: String): Int? {
+    val queryWords = searchWords(query)
+    if (queryWords.isEmpty()) return 0
+    val docWords = searchWords(listOf(item.title, item.danceType, item.educatorName, item.description).joinToString(" ")) +
+        listOfNotNull(danceTypeKey(item.danceType))
+    var total = 0
+    for (q in queryWords) {
+        val best = docWords.minOfOrNull { w ->
+            when {
+                w.startsWith(q) -> 0
+                q in w -> 1
+                else -> {
+                    // Compare against the start of the word so "salsaa" ~ "salsa", "hiphp" ~ "hiphop".
+                    val typos = minOf(editDistance(q, w), editDistance(q, w.take(q.length)))
+                    if (typos <= allowedTypos(q.length)) typos + 1 else Int.MAX_VALUE
+                }
+            }
+        } ?: Int.MAX_VALUE
+        if (best == Int.MAX_VALUE) return null
+        total += best
     }
+    return total
 }

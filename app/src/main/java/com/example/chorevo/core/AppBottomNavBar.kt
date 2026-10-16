@@ -17,13 +17,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.outlined.EmojiEvents
-import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -51,7 +53,7 @@ import com.example.chorevo.ui.theme.PillShape
 enum class BottomNavItem(val label: String) {
     HOME("Home"),
     UPLOAD("Upload"),
-    COMMUNITY("Forum"),
+    COMMUNITY("Groups"),
     LEADERBOARD("Score"),
     PROFILE("Profile")
 }
@@ -84,7 +86,9 @@ val LocalFloatingBarState = staticCompositionLocalOf { FloatingBarState() }
 fun AppBottomNavBar(
     selected: BottomNavItem,
     onSelect: (BottomNavItem) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Pending group invitations, shown as a badge on the Groups tab. */
+    groupsBadge: Int = 0
 ) {
     val colors = ChorevoTheme.colors
 
@@ -115,7 +119,7 @@ fun AppBottomNavBar(
                 selected = selected == BottomNavItem.UPLOAD,
                 onClick = { onSelect(BottomNavItem.UPLOAD) }
             )
-            NavTab(BottomNavItem.COMMUNITY, selected, Icons.Filled.Forum, Icons.Outlined.Forum, "Community", onSelect)
+            NavTab(BottomNavItem.COMMUNITY, selected, Icons.Filled.Groups, Icons.Outlined.Groups, "Groups", onSelect, badge = groupsBadge)
             NavTab(BottomNavItem.PROFILE, selected, Icons.Filled.Person, Icons.Outlined.Person, "Profile", onSelect)
         }
     }
@@ -128,7 +132,8 @@ private fun RowScope.NavTab(
     selectedIcon: ImageVector,
     icon: ImageVector,
     contentDescription: String,
-    onSelect: (BottomNavItem) -> Unit
+    onSelect: (BottomNavItem) -> Unit,
+    badge: Int = 0
 ) {
     val isSelected = item == selected
     val accent = ChorevoTheme.colors.accent
@@ -154,12 +159,22 @@ private fun RowScope.NavTab(
                 .padding(horizontal = 14.dp, vertical = 4.dp),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = if (isSelected) selectedIcon else icon,
-                contentDescription = contentDescription,
-                tint = tint,
-                modifier = Modifier.size(22.dp)
-            )
+            BadgedBox(
+                badge = {
+                    if (badge > 0) {
+                        Badge(modifier = Modifier.testTag("bottomNavBadge_${item.name}")) {
+                            Text(if (badge > 9) "9+" else badge.toString())
+                        }
+                    }
+                }
+            ) {
+                Icon(
+                    imageVector = if (isSelected) selectedIcon else icon,
+                    contentDescription = if (badge > 0) "$contentDescription, $badge new" else contentDescription,
+                    tint = tint,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
         Text(
             text = item.label,

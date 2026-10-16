@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
@@ -54,17 +53,11 @@ class ReminderReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val largeIcon = BitmapFactory.decodeResource(
-            context.resources,
-            R.drawable.learnsense_logo
-        )
-
         val notification = NotificationCompat.Builder(
             context,
             NotificationChannels.REMINDER_CHANNEL_ID
         )
             .setSmallIcon(R.drawable.ic_stat_reminder)
-            .setLargeIcon(largeIcon)
             .setContentTitle(title)
             .setContentText(body)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)

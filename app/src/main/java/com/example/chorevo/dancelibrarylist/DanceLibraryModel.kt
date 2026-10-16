@@ -2,7 +2,14 @@ package com.example.chorevo.dancelibrarylist
 
 import com.example.chorevo.posedetection.PoseTemplate
 import com.google.firebase.firestore.Exclude
+import com.google.firebase.firestore.IgnoreExtraProperties
 
+/**
+ * A dance in the library. The server also keeps likeCount, trendingScore,
+ * feedReady, danceTypeKey, searchTokens and shuffleKey on the document
+ * (functions/discovery.js); the app queries on them but never writes them.
+ */
+@IgnoreExtraProperties
 data class DanceLibraryModel(
     val danceId: String = "",
     val title: String = "",
@@ -22,7 +29,9 @@ data class DanceLibraryModel(
     /** [VISIBILITY_PUBLIC] or [VISIBILITY_PRIVATE]; older uploads have no value and stay public. */
     val visibility: String = VISIBILITY_PUBLIC,
     /** Position (ms) of the frame used as the video's cover thumbnail. */
-    val coverFrameMs: Long = DEFAULT_COVER_FRAME_MS
+    val coverFrameMs: Long = DEFAULT_COVER_FRAME_MS,
+    /** JPEG of the cover frame (danceThumbnails/{uid}/{danceId}.jpg); blank for older uploads. */
+    val thumbnailUrl: String = ""
 ) {
     /** Private videos are only visible to their uploader. */
     @get:Exclude
