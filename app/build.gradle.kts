@@ -132,6 +132,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     implementation(libs.androidx.compose.runtime)
     ksp(libs.androidx.room.compiler)
+    // KSP2 doesn't pass main's processors to androidTest; DanceSessionDaoTest has its own @Database.
+    kspAndroidTest(libs.androidx.room.compiler)
 
     // --- DataStore ---
     implementation(libs.androidx.datastore.preferences)
