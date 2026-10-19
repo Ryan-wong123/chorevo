@@ -88,6 +88,8 @@ class PoseSimilarityEvaluator(
     private val segments = mutableListOf<PerformanceSegment>()
 
     /** Handles frame events. */
+    // Called from the camera analysis thread while the UI thread may take a snapshot.
+    @Synchronized
     fun onFrame(learnerFlat: List<Float>, timeMs: Long) {
         if (learnerFlat.size < 33 * 4) return
         if (frames.isEmpty()) return
@@ -173,6 +175,7 @@ class PoseSimilarityEvaluator(
      * - includeSeries=false for frequent UI updates (fast)
      * - includeSeries=true only when saving (returns timeline + segments)
      */
+    @Synchronized
     fun snapshot(includeSeries: Boolean = false): Snapshot {
         val variance = if (n > 1) m2Score / (n - 1) else 0.0
         val std = sqrt(max(variance, 0.0))

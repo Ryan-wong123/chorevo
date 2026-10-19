@@ -7,6 +7,8 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 /**
  * Handles binding CameraX use cases to the lifecycle.
@@ -15,6 +17,14 @@ import androidx.lifecycle.LifecycleOwner
 object CameraBinder {
 
     private var cameraProvider: ProcessCameraProvider? = null
+
+    // Frames are analysed here, one at a time, never on the UI thread.
+    private var analysisExecutor: ExecutorService? = null
+
+    private fun analysisExecutor(): ExecutorService =
+        analysisExecutor ?: Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "camera-analysis")
+        }.also { analysisExecutor = it }
 
     /** Binds the current data source. */
     fun bind(
@@ -29,7 +39,7 @@ object CameraBinder {
             cameraProvider = cameraProviderFuture.get()
 
             val preview = CameraUseCaseFactory.createPreview(previewView)
-            val analysis = CameraUseCaseFactory.createImageAnalysis(context, analyzer)
+            val analysis = CameraUseCaseFactory.createImageAnalysis(analysisExecutor(), analyzer)
 
             cameraProvider?.unbindAll()
 
@@ -46,5 +56,8 @@ object CameraBinder {
     fun unbind() {
         cameraProvider?.unbindAll()
         cameraProvider = null
+        // A frame already being analysed finishes; no new ones start.
+        analysisExecutor?.shutdown()
+        analysisExecutor = null
     }
 }
