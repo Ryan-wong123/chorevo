@@ -18,12 +18,14 @@ import com.example.chorevo.dancelibrarylist.searchTrigramsOf
 import com.example.chorevo.dancelibrarylist.searchWords
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
+import com.example.chorevo.core.Database.di.IoDispatcher
 import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -39,7 +41,8 @@ import javax.inject.Singleton
 class DanceLibraryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val storage: FirebaseStorage,
-    private val danceSessionDao: DanceSessionDao
+    private val danceSessionDao: DanceSessionDao,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
 
     companion object {
@@ -271,7 +274,7 @@ class DanceLibraryRepository @Inject constructor(
         extraAnalytics: Map<String, Any?> = emptyMap(),
         uid: String
     ): Result<Unit> {
-        return withContext(Dispatchers.IO) {
+        return withContext(ioDispatcher) {
             try {
                 danceSessionDao.insert(session)
 
