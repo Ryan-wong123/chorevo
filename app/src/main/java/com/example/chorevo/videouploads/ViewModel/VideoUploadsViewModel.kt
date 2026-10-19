@@ -20,7 +20,8 @@ import javax.inject.Inject
 @HiltViewModel
 class VideoUploadsViewModel @Inject constructor(
     val authRepository: FirebaseAuthRepository,
-    val videoUploadRepository: VideoUploadsRepository
+    val videoUploadRepository: VideoUploadsRepository,
+    private val templateGenerator: VideoPoseTemplateGenerator
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VideoUploadsUiState())
@@ -124,7 +125,7 @@ class VideoUploadsViewModel @Inject constructor(
     }
 
     /** Runs high-recall pose analysis so the uploader can confirm dancer tracks before upload. */
-    fun analyzeDancers(context: Context, fps: Int = 8) {
+    fun analyzeDancers(fps: Int = 8) {
         val videoUri = _uiState.value.uploadDraft.selectedVideoUri ?: return
 
         viewModelScope.launch {
@@ -138,8 +139,7 @@ class VideoUploadsViewModel @Inject constructor(
                 )
             }
 
-            val result = VideoPoseTemplateGenerator.generate(
-                context = context,
+            val result = templateGenerator.generate(
                 videoUriString = videoUri.toString(),
                 fps = fps,
                 profile = VideoPoseTemplateGenerator.GenerationProfile.HIGH_RECALL,
