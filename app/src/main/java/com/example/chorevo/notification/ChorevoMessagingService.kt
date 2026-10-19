@@ -14,16 +14,22 @@ import com.example.chorevo.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Receives push notifications. In the background the system shows them and a
  * tap opens [MainActivity] with the message data as extras; in the foreground
  * they arrive here and are shown the same way.
  */
+@AndroidEntryPoint
 class ChorevoMessagingService : FirebaseMessagingService() {
 
+    @Inject lateinit var auth: FirebaseAuth
+    @Inject lateinit var pushTokens: PushTokens
+
     override fun onNewToken(token: String) {
-        FirebaseAuth.getInstance().currentUser?.uid?.let { uid -> PushTokens.save(uid, token) }
+        auth.currentUser?.uid?.let { uid -> pushTokens.save(uid, token) }
     }
 
     // Permission is checked at the top of the method.

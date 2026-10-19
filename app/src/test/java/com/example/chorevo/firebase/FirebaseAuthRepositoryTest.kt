@@ -43,7 +43,7 @@ class FirebaseAuthRepositoryTest {
         db: FirebaseFirestore,
         storage: FirebaseStorage = mockk(relaxed = true)
     ): FirebaseAuthRepository {
-        return FirebaseAuthRepository(auth, db, storage)
+        return FirebaseAuthRepository(auth, db, storage, mockk(relaxed = true))
     }
 
 

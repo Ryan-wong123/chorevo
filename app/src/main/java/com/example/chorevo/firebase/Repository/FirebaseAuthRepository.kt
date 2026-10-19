@@ -20,7 +20,8 @@ import javax.inject.Singleton
 class FirebaseAuthRepository @Inject constructor(
     private val auth: FirebaseAuth,
     private val db: FirebaseFirestore,
-    private val storage: FirebaseStorage
+    private val storage: FirebaseStorage,
+    private val pushTokens: PushTokens
 ) {
 
     /** Handles sign up. */
@@ -119,7 +120,7 @@ class FirebaseAuthRepository @Inject constructor(
                 "For your security, sign out and sign in again, then delete your account.", e
             )
         }
-        PushTokens.unregister()
+        pushTokens.unregister()
         auth.signOut()
     }
 
@@ -130,7 +131,7 @@ class FirebaseAuthRepository @Inject constructor(
 
     /** Handles sign out. */
     fun signOut() {
-        PushTokens.unregister()
+        pushTokens.unregister()
         auth.signOut()
     }
 

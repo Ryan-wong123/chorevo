@@ -76,10 +76,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
 
 
-        val scheduler = ReminderScheduler(
-            context,
-            NotificationPreferencesDataStore(context)
-        )
+        val scheduler = NotificationEntryPoint.from(context).reminderScheduler()
 
         when {
             type == "daily" -> {

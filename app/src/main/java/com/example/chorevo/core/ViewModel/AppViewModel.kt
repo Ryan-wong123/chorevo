@@ -12,12 +12,15 @@ import com.example.chorevo.firebase.AutoRetryUploaderService
 import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.notification.NotificationPreferencesDataStore
+import com.example.chorevo.notification.PushTokens
 import com.example.chorevo.notification.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -28,13 +31,13 @@ class AppViewModel @Inject constructor(
     private val authRepository: FirebaseAuthRepository,
     private val retryUploader: AutoRetryUploaderService,
     private val settings: NotificationPreferencesDataStore,
-    private val danceLibraryRepository: DanceLibraryRepository
+    private val danceLibraryRepository: DanceLibraryRepository,
+    private val reminderScheduler: ReminderScheduler,
+    private val pushTokens: PushTokens
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
-
-    private val reminderScheduler = ReminderScheduler(appContext, settings)
 
     /**
      * Holds a danceId that arrived via a deep link before auth finished.
@@ -49,6 +52,14 @@ class AppViewModel @Inject constructor(
     private var pendingOpenGroups = false
 
     init {
+        // Push notifications: save this device's token for whoever signs in.
+        viewModelScope.launch {
+            _uiState
+                .map { it.profile?.uid }
+                .distinctUntilChanged()
+                .collect { uid -> if (!uid.isNullOrBlank()) pushTokens.register(uid) }
+        }
+
         viewModelScope.launch {
             val p = authRepository.getCurrentUserProfile()
             _uiState.update {

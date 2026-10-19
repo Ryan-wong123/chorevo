@@ -1,5 +1,7 @@
 package com.example.chorevo.core
 
+import com.example.chorevo.notification.ReminderScheduler
+import com.example.chorevo.notification.PushTokens
 import android.app.AlarmManager
 import android.content.Context
 import android.util.Log
@@ -45,6 +47,7 @@ class AppViewModelTest {
     private lateinit var retryUploader: AutoRetryUploaderService
     private lateinit var settings: NotificationPreferencesDataStore
     private lateinit var danceLibraryRepository: DanceLibraryRepository
+    private lateinit var pushTokens: PushTokens
     private lateinit var vm: AppViewModel
 
     @Before
@@ -57,8 +60,9 @@ class AppViewModelTest {
         retryUploader = mockk(relaxed = true)
         settings = mockk(relaxed = true)
         danceLibraryRepository = mockk(relaxed = true)
+        pushTokens = mockk(relaxed = true)
 
-        // ReminderScheduler is constructed in AppViewModel body — provide AlarmManager
+        // The real ReminderScheduler is used — provide AlarmManager
         every { context.getSystemService(Context.ALARM_SERVICE) } returns alarmManager
 
         // Default: no signed-in user
@@ -68,7 +72,7 @@ class AppViewModelTest {
         every { settings.themeModeFlow } returns flowOf(null)
         every { settings.onboardingSeenFlow } returns flowOf(false)
 
-        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository, ReminderScheduler(context, settings), pushTokens)
     }
 
     @After
@@ -114,7 +118,7 @@ class AppViewModelTest {
         val profile = makeProfile()
         coEvery { authRepository.getCurrentUserProfile() } returns profile
 
-        val newVm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        val newVm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository, ReminderScheduler(context, settings), pushTokens)
         advanceUntilIdle()
 
         val state = newVm.uiState.value
@@ -302,7 +306,7 @@ class AppViewModelTest {
         val dance = makeDanceItem(danceId = "shared1")
         coEvery { authRepository.getCurrentUserProfile() } returns makeProfile()
         coEvery { danceLibraryRepository.getDanceById("shared1", "uid1") } returns Result.success(dance)
-        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository, ReminderScheduler(context, settings), pushTokens)
         advanceUntilIdle()
 
         vm.openDanceById("shared1")
@@ -320,7 +324,7 @@ class AppViewModelTest {
         every { Log.d(any(), any()) } returns 0
         coEvery { authRepository.getCurrentUserProfile() } returns makeProfile()
         coEvery { danceLibraryRepository.getDanceById(any(), any()) } returns Result.success(makeDanceItem())
-        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository, ReminderScheduler(context, settings), pushTokens)
         advanceUntilIdle()
         vm.openDanceById("d1")
         advanceUntilIdle()
@@ -335,7 +339,7 @@ class AppViewModelTest {
     @Test
     fun openGroupInvite_whenSignedIn_opensGroupsWithTheCode() = runTest {
         coEvery { authRepository.getCurrentUserProfile() } returns makeProfile()
-        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        vm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository, ReminderScheduler(context, settings), pushTokens)
         advanceUntilIdle()
 
         vm.openGroupInvite("ABCD2345")
@@ -435,7 +439,7 @@ class AppViewModelTest {
     fun themeMode_loadsSavedChoice() = runTest {
         every { settings.themeModeFlow } returns flowOf("light")
 
-        val newVm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository)
+        val newVm = AppViewModel(context, authRepository, retryUploader, settings, danceLibraryRepository, ReminderScheduler(context, settings), pushTokens)
         advanceUntilIdle()
 
         assertEquals(ThemeMode.LIGHT, newVm.uiState.value.themeMode)
