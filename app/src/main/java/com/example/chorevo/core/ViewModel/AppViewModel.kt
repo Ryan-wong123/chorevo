@@ -313,7 +313,7 @@ class AppViewModel @Inject constructor(
         pendingDeepLinkDanceId = null
         pendingInviteCode = null
         pendingOpenGroups = false
-        LocalUserFiles.clear(appContext)
+        viewModelScope.launch { LocalUserFiles.clear(appContext) }
         _uiState.update {
             it.copy(
                 profile = null,
