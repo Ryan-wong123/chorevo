@@ -1,5 +1,7 @@
 package com.example.chorevo.danceactivity
 
+import com.example.chorevo.danceactivity.ViewModel.PracticeViewModel
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -42,6 +44,7 @@ class DanceARPracticeScreenTest {
     // New dependency now required by the screen
     private lateinit var achievementVm: AchievementViewModel
     private lateinit var weeklyChallengeVm: WeeklyChallengeViewModel
+    private lateinit var practiceVm: PracticeViewModel
 
     // Shared test data
     private lateinit var item: DanceLibraryModel
@@ -78,6 +81,9 @@ class DanceARPracticeScreenTest {
             repository = mockk(relaxed = true)
         )
 
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        practiceVm = PracticeViewModel(context, PersonalBestStore(context))
+
         item = DanceLibraryModel(
             danceId = "d1",
             title = "Salsa Basics",
@@ -110,7 +116,8 @@ class DanceARPracticeScreenTest {
                 achievementVm = achievementVm,
                 weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
-                testMode = true
+                testMode = true,
+                practiceVm = practiceVm
                 
             )
         }
@@ -138,7 +145,8 @@ class DanceARPracticeScreenTest {
                 achievementVm = achievementVm,
                 weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
-                testMode = true
+                testMode = true,
+                practiceVm = practiceVm
             )
         }
 
@@ -157,6 +165,8 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithText("3").assertIsDisplayed()
 
         composeRule.mainClock.advanceTimeBy(3_500)
+        // The countdown runs in PracticeViewModel on real time, so let frames run while it finishes.
+        composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
 
         composeRule.waitUntil(timeoutMillis = 5_000) {
@@ -196,7 +206,8 @@ class DanceARPracticeScreenTest {
                 achievementVm = achievementVm,
                 weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
-                testMode = true
+                testMode = true,
+                practiceVm = practiceVm
             )
         }
 
@@ -231,7 +242,8 @@ class DanceARPracticeScreenTest {
                 achievementVm = achievementVm,
                 weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
-                testMode = true
+                testMode = true,
+                practiceVm = practiceVm
             )
         }
 
