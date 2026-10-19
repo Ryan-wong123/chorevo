@@ -1,11 +1,13 @@
 package com.example.chorevo.danceactivity
 
+import androidx.activity.compose.LocalActivity
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.example.chorevo.danceactivity.ViewModel.PracticeSubmission
+import com.example.chorevo.danceactivity.ViewModel.PracticeViewModel
 import com.example.chorevo.core.rememberHaptics
 import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.ui.theme.ChorevoTheme
 import android.Manifest
-import android.content.Context
-import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.media.MediaMetadataRetriever
@@ -23,7 +25,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -38,14 +39,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -57,16 +55,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableDoubleStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -77,68 +67,31 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.example.chorevo.analytics.PerformanceSegment
-import com.example.chorevo.analytics.FeedbackMessage
-import com.example.chorevo.analytics.SessionAnalysisPayload
-import com.example.chorevo.analytics.TimelinePoint
 import com.example.chorevo.core.CameraBinder
 import com.example.chorevo.core.CameraPreview
-import com.example.chorevo.core.Ids
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
 import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
 import com.example.chorevo.weeklychallenge.WeeklyChallengeCelebrationDialog
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
-import com.example.chorevo.posedetection.HandSimilarityEvaluator
-import com.example.chorevo.posedetection.HolisticFrameLandmarks
-import com.example.chorevo.posedetection.HolisticFrameSelector
-import com.example.chorevo.posedetection.HolisticLandmarkerHelper
 import com.example.chorevo.posedetection.ImageProxyUtils
 import com.example.chorevo.posedetection.InstructorAvatarOverlay
 import com.example.chorevo.posedetection.PoseDrawSpec
-import com.example.chorevo.posedetection.PoseFrame
-import com.example.chorevo.posedetection.PoseLandmarkerHelper
 import com.example.chorevo.posedetection.PoseOverlay
 import com.example.chorevo.posedetection.PoseSelectionPreview
-import com.example.chorevo.posedetection.PoseSimilarityEvaluator
-import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack
-import com.example.chorevo.posedetection.averageVisibility
-import com.example.chorevo.posedetection.poseBounds
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
-private enum class PracticeMode {
-    FULL_ROUTINE,
-    STEP_BY_STEP
-}
-
-private data class PracticeStepSegment(
-    val index: Int,
-    val total: Int,
-    val startMs: Long,
-    val endMs: Long
-) {
-    val durationMs: Long
-        get() = (endMs - startMs).coerceAtLeast(1L)
-
-    val title: String
-        get() = "Step ${index + 1} of $total"
-}
-
-/** Displays the dance ar practice screen. */
+/** Displays the dance practice screen. State and logic live in [PracticeViewModel]. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DanceARPracticeScreen(
@@ -149,114 +102,41 @@ fun DanceARPracticeScreen(
     achievementVm: AchievementViewModel,
     weeklyChallengeVm: WeeklyChallengeViewModel,
     uid: String,
-    testMode: Boolean = false
+    testMode: Boolean = false,
+    practiceVm: PracticeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
-    val uiScope = rememberCoroutineScope()
+    val activity = LocalActivity.current
 
-    var tsStart by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    var practiceTimeMs by remember { mutableLongStateOf(0L) }
-    var hasCamPermission by remember { mutableStateOf(testMode) }
-    var learnerLandmarks by remember { mutableStateOf<List<Float>?>(null) }
-    var learnerLeftHandLandmarks by remember { mutableStateOf<List<Float>>(emptyList()) }
-    var learnerRightHandLandmarks by remember { mutableStateOf<List<Float>>(emptyList()) }
-    var refLandmarksForCamera by remember { mutableStateOf<List<Float>?>(null) }
+    remember(item.danceId, testMode) {
+        practiceVm.bind(item, testMode)
+    }
+    DisposableEffect(practiceVm) {
+        onDispose {
+            // Keep the session through a rotation; end it when the screen really closes.
+            if (activity?.isChangingConfigurations != true) practiceVm.release()
+        }
+    }
 
-    var alignmentScore by remember { mutableDoubleStateOf(if (testMode) 0.82 else 0.0) }
-    var timingConsistencyScore by remember { mutableDoubleStateOf(if (testMode) 0.91 else 1.0) }
-    var smoothnessScore by remember { mutableDoubleStateOf(if (testMode) 0.88 else 1.0) }
-    var handScore by remember { mutableStateOf<Double?>(null) }
-    var combinedPracticeScore by remember { mutableDoubleStateOf(if (testMode) 0.82 else 0.0) }
-    var avgPoseError by remember { mutableDoubleStateOf(if (testMode) 0.1234 else 0.0) }
-    var frameCount by remember { mutableIntStateOf(if (testMode) 42 else 0) }
-    var wordFeedback by remember { mutableStateOf(if (testMode) "Nice match. Keep the timing steady." else null) }
-    var handFeedback by remember { mutableStateOf<String?>(null) }
-    // Live HUD: fast-reacting score and seconds of continuous good matching.
-    var liveScore by remember { mutableStateOf<Double?>(if (testMode) 0.82 else null) }
-    var comboStartMs by remember { mutableStateOf<Long?>(null) }
-    var comboSeconds by remember { mutableIntStateOf(0) }
+    val state by practiceVm.uiState.collectAsStateWithLifecycle()
+    val hasCamPermission = state.hasCamPermission
+    val isPracticeActive = state.isPracticeActive
+    val isCountdownActive = state.isCountdownActive
+    val isPracticeFocused = isPracticeActive && !testMode
+    val practiceMode = state.practiceMode
+    val practiceSegments = state.practiceSegments
+    val currentStepIndex = state.currentStepIndex
+    val currentPracticeSegment = state.currentPracticeSegment
+    val availableReferenceTracks = state.availableReferenceTracks
+    val selectedReferenceTrack = state.selectedReferenceTrack
+    val handScore = state.handScore
+
     // Buzz when a combo starts and again at every 5-second milestone.
     val haptics = rememberHaptics()
-    val comboTier = if (comboSeconds >= COMBO_MIN_SECONDS) 1 + comboSeconds / 5 else 0
+    val comboTier = if (state.comboSeconds >= COMBO_MIN_SECONDS) 1 + state.comboSeconds / 5 else 0
     LaunchedEffect(comboTier) {
         if (comboTier > 0) haptics.success()
-    }
-    // Scores of the last submitted session, for the results screen.
-    var lastResult by remember { mutableStateOf<PracticeResult?>(null) }
-    val personalBests = remember(context) { PersonalBestStore(context) }
-
-    var latestTimelinePoints by remember { mutableStateOf<List<TimelinePoint>>(emptyList()) }
-    var latestSegments by remember { mutableStateOf<List<PerformanceSegment>>(emptyList()) }
-    var latestFeedbackMessages by remember { mutableStateOf<List<FeedbackMessage>>(emptyList()) }
-    var status by remember { mutableStateOf<String?>(if (testMode) "Test Mode" else null) }
-    var countdownSecondsRemaining by rememberSaveable(item.danceId) { mutableStateOf<Int?>(null) }
-    var showReferenceSelector by rememberSaveable(item.danceId) { mutableStateOf(true) }
-
-    val template = item.template
-    val availableReferenceTracks = template?.availableTracks().orEmpty()
-
-    var selectedReferenceTrackId by rememberSaveable(item.danceId) { mutableStateOf<String?>(null) }
-    var isPracticeActive by rememberSaveable(item.danceId) { mutableStateOf(testMode) }
-    var practiceMode by rememberSaveable(item.danceId) { mutableStateOf(PracticeMode.FULL_ROUTINE) }
-    var currentStepIndex by rememberSaveable(item.danceId) { mutableIntStateOf(0) }
-    val isCountdownActive = countdownSecondsRemaining != null
-    val isPracticeFocused = isPracticeActive && !testMode
-
-    LaunchedEffect(template) {
-        selectedReferenceTrackId = template?.resolveTrack(selectedReferenceTrackId)?.trackId
-            ?: template?.resolveTrack(null)?.trackId
-    }
-
-    val selectedReferenceTrack = remember(template, selectedReferenceTrackId) {
-        template?.resolveTrack(selectedReferenceTrackId)
-    }
-
-    val selectedTrackTemplate = remember(template, selectedReferenceTrack) {
-        val frames = selectedReferenceTrack?.frames ?: template?.frames.orEmpty()
-        if (template == null || frames.isEmpty()) {
-            null
-        } else {
-            template.copy(
-                frames = frames,
-                tracks = selectedReferenceTrack?.let(::listOf).orEmpty(),
-                defaultTrackId = selectedReferenceTrack?.trackId ?: template.defaultTrackId,
-                handTracks = template.handTracks.filter { handTrack ->
-                    handTrack.trackId == selectedReferenceTrack?.trackId ||
-                        (selectedReferenceTrack == null && handTrack.trackId == template.defaultTrackId)
-                }
-            )
-        }
-    }
-
-    val practiceSegments = remember(selectedTrackTemplate) {
-        derivePracticeStepSegments(selectedTrackTemplate)
-    }
-
-    LaunchedEffect(practiceSegments.size) {
-        if (practiceSegments.size <= 1) {
-            practiceMode = PracticeMode.FULL_ROUTINE
-            currentStepIndex = 0
-        } else {
-            currentStepIndex = currentStepIndex.coerceIn(0, practiceSegments.lastIndex)
-        }
-    }
-
-    val currentPracticeSegment = remember(practiceSegments, currentStepIndex, practiceMode) {
-        if (practiceMode == PracticeMode.STEP_BY_STEP) {
-            practiceSegments.getOrNull(currentStepIndex)
-        } else {
-            null
-        }
-    }
-
-    val activeTemplate = remember(selectedTrackTemplate, currentPracticeSegment, practiceMode) {
-        if (practiceMode == PracticeMode.STEP_BY_STEP && currentPracticeSegment != null) {
-            sliceTemplateForStep(selectedTrackTemplate, currentPracticeSegment) ?: selectedTrackTemplate
-        } else {
-            selectedTrackTemplate
-        }
     }
 
     val segmentLoopPlayer = if (!testMode) {
@@ -312,8 +192,8 @@ fun DanceARPracticeScreen(
     }
 
     val camPermissionLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-            hasCamPermission = it
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            practiceVm.onCameraPermissionResult(granted)
         }
 
     val uploadState by vm.uploadState.collectAsStateWithLifecycle()
@@ -335,313 +215,18 @@ fun DanceARPracticeScreen(
         vm.clearUploadMessage()
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(item.danceId) {
         if (!testMode) {
             camPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
-    LaunchedEffect(tsStart, isPracticeActive) {
-        if (!isPracticeActive) {
-            practiceTimeMs = 0L
-            return@LaunchedEffect
-        }
-
-        while (isPracticeActive) {
-            practiceTimeMs = System.currentTimeMillis() - tsStart
-            delay(33)
-        }
-    }
-
-    LaunchedEffect(countdownSecondsRemaining) {
-        val secondsRemaining = countdownSecondsRemaining ?: return@LaunchedEffect
-        delay(1_000)
-        if (countdownSecondsRemaining != secondsRemaining) return@LaunchedEffect
-
-        if (secondsRemaining > 1) {
-            val nextSecond = secondsRemaining - 1
-            countdownSecondsRemaining = nextSecond
-            status = "Starting in $nextSecond..."
-        } else {
-            countdownSecondsRemaining = null
-            tsStart = System.currentTimeMillis()
-            practiceTimeMs = 0L
-            isPracticeActive = true
-            status = if (practiceMode == PracticeMode.STEP_BY_STEP && currentPracticeSegment != null) {
-                "${currentPracticeSegment.title} in progress"
-            } else {
-                "Practice in progress"
-            }
-        }
-    }
-
-    val liveLandmarkDetector = remember(hasCamPermission, testMode) {
-        if (hasCamPermission && !testMode) LiveLandmarkDetector(context) else null
-    }
-
-    DisposableEffect(liveLandmarkDetector) {
-        onDispose { liveLandmarkDetector?.close() }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose { CameraBinder.unbind() }
-    }
-
-    val similarityEval = remember(activeTemplate, testMode) {
-        if (testMode) {
-            null
-        } else {
-            activeTemplate?.frames?.takeIf { it.isNotEmpty() }?.let {
-                PoseSimilarityEvaluator(template = activeTemplate, mirrorReferenceX = true)
-            }
-        }
-    }
-
-    val handSimilarityEval = remember(activeTemplate, selectedReferenceTrackId, testMode) {
-        if (testMode) {
-            null
-        } else {
-            activeTemplate
-                ?.takeIf { it.handTracks.any { handTrack -> handTrack.frames.isNotEmpty() } }
-                ?.let {
-                    HandSimilarityEvaluator(
-                        template = it,
-                        referenceTrackId = selectedReferenceTrackId
-                    )
-                }
-        }
-    }
-
-    fun mirrorX(flat: List<Float>): List<Float> {
-        if (flat.isEmpty()) return flat
-        val out = flat.toMutableList()
-        val n = out.size / 4
-        for (i in 0 until n) {
-            val base = i * 4
-            out[base] = 1f - out[base]
-        }
-        return out
-    }
-
-    fun centerPoseOnScreen(flat: List<Float>): List<Float> {
-        val bounds = flat.poseBounds(padding = 0f) ?: return flat
-        val out = flat.toMutableList()
-        val dx = 0.5f - bounds.centerX
-        val dy = 0.5f - bounds.centerY
-        val n = out.size / 4
-        for (i in 0 until n) {
-            val base = i * 4
-            out[base] = (out[base] + dx).coerceIn(0f, 1f)
-            out[base + 1] = (out[base + 1] + dy).coerceIn(0f, 1f)
-        }
-        return out
-    }
-
-    fun doReset(message: String = "Reset") {
-        countdownSecondsRemaining = null
-        isPracticeActive = false
-        showReferenceSelector = true
-        tsStart = System.currentTimeMillis()
-        practiceTimeMs = 0L
-        learnerLandmarks = null
-        learnerLeftHandLandmarks = emptyList()
-        learnerRightHandLandmarks = emptyList()
-        refLandmarksForCamera = null
-
-        alignmentScore = if (testMode) 0.82 else 0.0
-        timingConsistencyScore = if (testMode) 0.91 else 1.0
-        smoothnessScore = if (testMode) 0.88 else 1.0
-        handScore = null
-        liveScore = if (testMode) 0.82 else null
-        comboStartMs = null
-        comboSeconds = 0
-        combinedPracticeScore = if (testMode) 0.82 else 0.0
-        avgPoseError = if (testMode) 0.1234 else 0.0
-        frameCount = if (testMode) 42 else 0
-        latestTimelinePoints = emptyList()
-        latestSegments = emptyList()
-        latestFeedbackMessages = emptyList()
-        wordFeedback = if (testMode) "Nice match. Keep the timing steady." else null
-        handFeedback = null
-
-        status = message
-    }
-
-    fun startPracticeCountdown() {
-        countdownSecondsRemaining = 3
-        isPracticeActive = false
-        showReferenceSelector = false
-        latestTimelinePoints = emptyList()
-        latestSegments = emptyList()
-        learnerLandmarks = null
-        learnerLeftHandLandmarks = emptyList()
-        learnerRightHandLandmarks = emptyList()
-        refLandmarksForCamera = null
-        alignmentScore = if (testMode) 0.82 else 0.0
-        timingConsistencyScore = if (testMode) 0.91 else 1.0
-        smoothnessScore = if (testMode) 0.88 else 1.0
-        handScore = null
-        liveScore = if (testMode) 0.82 else null
-        comboStartMs = null
-        comboSeconds = 0
-        combinedPracticeScore = if (testMode) 0.82 else 0.0
-        avgPoseError = if (testMode) 0.1234 else 0.0
-        frameCount = if (testMode) 42 else 0
-        latestFeedbackMessages = emptyList()
-        wordFeedback = if (testMode) "Nice match. Keep the timing steady." else null
-        handFeedback = null
-        practiceTimeMs = 0L
-        status = if (practiceMode == PracticeMode.STEP_BY_STEP && currentPracticeSegment != null) {
-            "Starting ${currentPracticeSegment.title.lowercase()} in 3..."
-        } else {
-            "Starting in 3..."
-        }
-    }
-
-    fun completeCurrentStep() {
-        countdownSecondsRemaining = null
-        isPracticeActive = false
-
-        similarityEval?.snapshot(includeSeries = true)?.let { snap ->
-            alignmentScore = snap.alignmentScore
-            timingConsistencyScore = snap.timingConsistencyScore
-            smoothnessScore = snap.smoothnessScore
-            avgPoseError = snap.avgPoseError
-            frameCount = snap.frameCount
-            wordFeedback = snap.latestFeedback?.message
-            latestTimelinePoints = snap.timelinePoints
-            latestSegments = snap.performanceSegments
-            val handSnap = handSimilarityEval?.snapshot()
-            latestFeedbackMessages = snap.feedbackMessages + handSnap?.feedbackMessages.orEmpty()
-            handScore = handSnap?.handScore
-            combinedPracticeScore = HandSimilarityEvaluator.combineWithBodyScore(
-                bodyScore = alignmentScore,
-                handScore = handSnap?.handScore,
-                hasReferenceHands = handSnap?.hasReferenceHands == true
-            )
-            handFeedback = handSnap?.latestFeedback
-        }
-
-        status = when {
-            practiceMode != PracticeMode.STEP_BY_STEP || currentPracticeSegment == null -> "Practice paused."
-            currentStepIndex < practiceSegments.lastIndex ->
-                "${currentPracticeSegment.title} complete. Tap Next Step to continue."
-            else -> "${currentPracticeSegment.title} complete. Repeat it or switch to Full Routine to submit a session."
-        }
-    }
-
-    LaunchedEffect(activeTemplate, practiceTimeMs, testMode, isPracticeActive) {
-        if (testMode || !isPracticeActive) {
-            refLandmarksForCamera = null
-            return@LaunchedEffect
-        }
-
-        val frames = activeTemplate?.frames ?: run {
-            refLandmarksForCamera = null
-            return@LaunchedEffect
-        }
-
-        if (frames.isEmpty()) {
-            refLandmarksForCamera = null
-            return@LaunchedEffect
-        }
-
-        val ref = frames.minByOrNull { abs(it.tMs - practiceTimeMs) }?.landmarks
-        refLandmarksForCamera = ref?.let(::mirrorX)?.let(::centerPoseOnScreen)
-    }
-
-    LaunchedEffect(practiceMode, currentPracticeSegment, practiceTimeMs, isPracticeActive, testMode) {
-        if (testMode || !isPracticeActive || practiceMode != PracticeMode.STEP_BY_STEP) return@LaunchedEffect
-
-        val segment = currentPracticeSegment ?: return@LaunchedEffect
-        if (practiceTimeMs >= segment.durationMs) {
-            completeCurrentStep()
-        }
-    }
-
-    val currentPracticeTimeMs by rememberUpdatedState(practiceTimeMs)
-
-    val analyzer = remember(similarityEval, handSimilarityEval, liveLandmarkDetector, hasCamPermission, testMode) {
+    // Runs on the camera analysis thread (see CameraBinder).
+    val analyzer = remember(practiceVm) {
         ImageAnalysis.Analyzer { imageProxy ->
-            if (testMode || !hasCamPermission) {
-                imageProxy.close()
-                return@Analyzer
-            }
-
-            val detector = liveLandmarkDetector
-            if (detector == null) {
-                imageProxy.close()
-                return@Analyzer
-            }
-
             try {
-                val bmp = imageProxy.toBitmapFrontCamera()
-                val primaryFrame = HolisticFrameSelector.primaryPose(detector.detect(bmp))
-                val primaryPose = primaryFrame?.pose
-
-                if (!primaryPose.isNullOrEmpty()) {
-                    val leftHand = primaryFrame.leftHand
-                    val rightHand = primaryFrame.rightHand
-
-                    if (!isPracticeActive) {
-                        uiScope.launch {
-                            learnerLandmarks = primaryPose
-                            learnerLeftHandLandmarks = leftHand
-                            learnerRightHandLandmarks = rightHand
-                        }
-                        return@Analyzer
-                    }
-
-                    val ev = similarityEval
-                    val snap = if (ev != null) {
-                        // Body scoring remains pose-only. Hand landmarks are retained separately.
-                        ev.onFrame(primaryPose, currentPracticeTimeMs)
-                        ev.snapshot(includeSeries = false)
-                    } else {
-                        null
-                    }
-                    val handEv = handSimilarityEval
-                    val handSnap = if (handEv != null) {
-                        handEv.onFrame(leftHand, rightHand, currentPracticeTimeMs)
-                        handEv.snapshot()
-                    } else {
-                        null
-                    }
-
-                    uiScope.launch {
-                        learnerLandmarks = primaryPose
-                        learnerLeftHandLandmarks = leftHand
-                        learnerRightHandLandmarks = rightHand
-
-                        val bodyScoreForCombined = snap?.alignmentScore ?: alignmentScore
-                        if (snap != null) {
-                            alignmentScore = snap.alignmentScore
-                            timingConsistencyScore = snap.timingConsistencyScore
-                            smoothnessScore = snap.smoothnessScore
-                            avgPoseError = snap.avgPoseError
-                            frameCount = snap.frameCount
-                            wordFeedback = snap.latestFeedback?.message
-                            latestFeedbackMessages = snap.feedbackMessages + handSnap?.feedbackMessages.orEmpty()
-                        } else {
-                            frameCount += 1
-                        }
-                        val live = snap?.liveScore
-                        liveScore = live
-                        if (live != null && live >= LIVE_GOOD_SCORE) {
-                            val start = comboStartMs ?: currentPracticeTimeMs.also { comboStartMs = it }
-                            comboSeconds = ((currentPracticeTimeMs - start) / 1000L).toInt()
-                        } else {
-                            comboStartMs = null
-                            comboSeconds = 0
-                        }
-                        handScore = handSnap?.handScore
-                        combinedPracticeScore = HandSimilarityEvaluator.combineWithBodyScore(
-                            bodyScore = bodyScoreForCombined,
-                            handScore = handSnap?.handScore,
-                            hasReferenceHands = handSnap?.hasReferenceHands == true
-                        )
-                        handFeedback = handSnap?.latestFeedback
-                    }
+                if (practiceVm.acceptsFrames) {
+                    practiceVm.onCameraFrame(imageProxy.toBitmapFrontCamera())
                 }
             } catch (_: Exception) {
             } finally {
@@ -650,111 +235,22 @@ fun DanceARPracticeScreen(
         }
     }
 
-    fun doSubmit() {
-        countdownSecondsRemaining = null
-        if (practiceMode == PracticeMode.STEP_BY_STEP) {
-            status = "Step-by-step mode is for rehearsal only. Switch to Full Routine to submit a session."
-            return
-        }
-        if (!isPracticeActive && frameCount == 0) {
-            status = "Tap Start Practice before submitting a dance session."
-            return
-        }
-
-        val educatorUid = item.educatorUid?.trim().takeUnless { it.isNullOrBlank() }
-        if (educatorUid == null) {
-            status = "This dance is missing educator ownership data, so analytics cannot be submitted."
-            return
-        }
-
-        val tsEnd = System.currentTimeMillis()
-        val durationMs = tsEnd - tsStart
-        val ev = similarityEval
-        val handEv = handSimilarityEval
-
-        isPracticeActive = false
-
-        val snapshot = ev?.snapshot(includeSeries = true)
-        val handSnapshot = handEv?.snapshot()
-        val payloadTimeline = snapshot?.timelinePoints ?: latestTimelinePoints
-        val payloadSegments = snapshot?.performanceSegments ?: latestSegments
-        val payloadFeedbackMessages =
-            (snapshot?.feedbackMessages ?: latestFeedbackMessages) + handSnapshot?.feedbackMessages.orEmpty()
-
-        latestTimelinePoints = payloadTimeline
-        latestSegments = payloadSegments
-        latestFeedbackMessages = payloadFeedbackMessages
-        handScore = handSnapshot?.handScore
-        combinedPracticeScore = HandSimilarityEvaluator.combineWithBodyScore(
-            bodyScore = alignmentScore,
-            handScore = handSnapshot?.handScore,
-            hasReferenceHands = handSnapshot?.hasReferenceHands == true
-        )
-        handFeedback = handSnapshot?.latestFeedback
-
-        val analysisPayload = SessionAnalysisPayload(
-            danceId = item.danceId,
-            alignmentScore = alignmentScore,
-            timingConsistencyScore = timingConsistencyScore,
-            smoothnessScore = smoothnessScore,
-            avgPoseError = avgPoseError,
-            frames = frameCount,
-            educatorUid = educatorUid,
-            videoUrl = item.videoUrl,
-            videoPositionMs = practiceTimeMs,
-            referenceTrackId = selectedReferenceTrack?.trackId,
-            referenceTrackLabel = selectedReferenceTrack?.label,
-            feedbackMessages = payloadFeedbackMessages,
-            timelinePoints = payloadTimeline,
-            performanceSegments = payloadSegments
-        )
-
-        val session = DanceSessionEntity(
-            sessionId = Ids.newSessionId(),
-            tsStart = tsStart,
-            tsEnd = tsEnd,
-            activityName = item.title,
-            activityType = "LIVE_CAMERA_TEMPLATE",
-            durationMs = durationMs,
-            smoothnessScore = smoothnessScore,
-            balanceScore = 1.0,
-            timingConsistencyScore = timingConsistencyScore,
-            alignmentScore = alignmentScore,
-            qualityFlag = if (alignmentScore >= 0.75) "GOOD" else "DONE",
-            analysisJson = analysisPayload.toJson(),
-            ownerUid = uid
-        )
-
-        lastResult = PracticeResult(
-            danceId = item.danceId,
-            danceTitle = item.title,
-            alignment = alignmentScore,
-            timing = timingConsistencyScore,
-            smoothness = smoothnessScore,
-            isPersonalBest = personalBests.recordIfBest(uid, item.danceId, alignmentScore)
-        )
-
-        status = "Submitting practice result..."
-
-        scope.launch {
-            try {
-                vm.saveSessionAndUpload(
-                    session = session,
-                    extraAnalytics = emptyMap(),
-                    onSuccess = { },
-                    uid = uid
-                )
-
-                // Points, badges, streak and weekly challenges are computed
-                // by the server once the session syncs; show what it awarded.
-                achievementVm.awaitSessionRewards(uid = uid, sessionId = session.sessionId) { rewards ->
-                    weeklyChallengeVm.onSessionRewards(uid, rewards)
-                }
-
-                status = null
-            } catch (e: Exception) {
-                status = "Error: ${e.message ?: "Something went wrong"}"
+    /** Saves a finished attempt; points and badges come from the server once it syncs. */
+    fun handleSubmission(submission: PracticeSubmission?) {
+        submission ?: return
+        try {
+            vm.saveSessionAndUpload(
+                session = submission.session,
+                extraAnalytics = emptyMap(),
+                onSuccess = { },
+                uid = uid
+            )
+            achievementVm.awaitSessionRewards(uid = uid, sessionId = submission.session.sessionId) { rewards ->
+                weeklyChallengeVm.onSessionRewards(uid, rewards)
             }
+            practiceVm.setStatus(null)
+        } catch (e: Exception) {
+            practiceVm.setStatus("Error: ${e.message ?: "Something went wrong"}")
         }
     }
 
@@ -778,7 +274,7 @@ fun DanceARPracticeScreen(
         )
     } else if (achievementState.showAchievementDialog) {
         PracticeResultDialog(
-            result = lastResult,
+            result = state.lastResult,
             sessionPoints = achievementState.sessionPoints,
             totalPoints = achievementState.totalPoints,
             currentLevel = achievementState.currentLevel,
@@ -839,7 +335,7 @@ fun DanceARPracticeScreen(
 
                 InstructorAvatarOverlay(
                     context = context,
-                    landmarks = refLandmarksForCamera,
+                    landmarks = state.refLandmarksForCamera,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .fillMaxSize()
@@ -848,10 +344,10 @@ fun DanceARPracticeScreen(
                 PoseOverlay(
                     modifier = Modifier.fillMaxSize(),
                     poses = listOfNotNull(
-                        learnerLandmarks?.let {
+                        state.learnerLandmarks?.let {
                             PoseDrawSpec(
                                 landmarks = it,
-                                color = liveAccuracyColor(liveScore),
+                                color = liveAccuracyColor(state.liveScore),
                                 alpha = 0.95f,
                                 jointRadius = 7f,
                                 boneWidth = 6f
@@ -870,7 +366,7 @@ fun DanceARPracticeScreen(
             )
 
             if (!isPracticeFocused) {
-                val showSelector = showReferenceSelector && availableReferenceTracks.size > 1
+                val showSelector = state.showReferenceSelector && availableReferenceTracks.size > 1
                 val showStepControls = practiceSegments.size > 1
 
                 if (showSelector || showStepControls) {
@@ -889,16 +385,10 @@ fun DanceARPracticeScreen(
                                     .heightIn(max = 340.dp),
                                 videoUrl = item.videoUrl,
                                 tracks = availableReferenceTracks,
-                                selectionPreview = template?.selectionPreview,
+                                selectionPreview = state.selectionPreview,
                                 selectedTrackId = selectedReferenceTrack?.trackId,
                                 brandTeal = brandTeal,
-                                onTrackSelected = { trackId ->
-                                    if (trackId == selectedReferenceTrack?.trackId) return@ReferenceDancerSelectorCard
-                                    val selectedTrack = availableReferenceTracks.firstOrNull { it.trackId == trackId }
-                                        ?: return@ReferenceDancerSelectorCard
-                                    selectedReferenceTrackId = selectedTrack.trackId
-                                    doReset(message = "Using ${selectedTrack.label}. Tap Start Practice when ready.")
-                                }
+                                onTrackSelected = practiceVm::selectReferenceTrack
                             )
                         }
 
@@ -912,25 +402,10 @@ fun DanceARPracticeScreen(
                                 currentSegment = currentPracticeSegment,
                                 canGoPrevious = currentStepIndex > 0,
                                 canGoNext = currentStepIndex < practiceSegments.lastIndex,
-                                onSelectFullRoutine = {
-                                    practiceMode = PracticeMode.FULL_ROUTINE
-                                    doReset(message = "Full routine ready. Tap Start Practice when ready.")
-                                },
-                                onSelectStepByStep = {
-                                    practiceMode = PracticeMode.STEP_BY_STEP
-                                    currentStepIndex = currentStepIndex.coerceIn(0, practiceSegments.lastIndex)
-                                    doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
-                                },
-                                onPreviousStep = {
-                                    if (currentStepIndex == 0) return@StepPracticeCard
-                                    currentStepIndex -= 1
-                                    doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
-                                },
-                                onNextStep = {
-                                    if (currentStepIndex >= practiceSegments.lastIndex) return@StepPracticeCard
-                                    currentStepIndex += 1
-                                    doReset(message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready.")
-                                },
+                                onSelectFullRoutine = practiceVm::selectFullRoutine,
+                                onSelectStepByStep = practiceVm::selectStepByStep,
+                                onPreviousStep = practiceVm::previousStep,
+                                onNextStep = practiceVm::nextStep,
                                 loopPlayer = segmentLoopPlayer
                             )
                         }
@@ -947,14 +422,14 @@ fun DanceARPracticeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val ringScore = if (handScore != null) combinedPracticeScore else (liveScore ?: alignmentScore)
+                    val ringScore = if (handScore != null) state.combinedPracticeScore else (state.liveScore ?: state.alignmentScore)
                     LiveScoreRing(score = ringScore)
                     AnimatedVisibility(
-                        visible = comboSeconds >= COMBO_MIN_SECONDS,
+                        visible = state.comboSeconds >= COMBO_MIN_SECONDS,
                         enter = scaleIn() + fadeIn(),
                         exit = fadeOut()
                     ) {
-                        ComboBadge(seconds = comboSeconds)
+                        ComboBadge(seconds = state.comboSeconds)
                     }
                 }
             }
@@ -962,7 +437,7 @@ fun DanceARPracticeScreen(
             // ── 3-2-1 countdown ───────────────────────────────────────────────
             if (isCountdownActive) {
                 PracticeCountdown(
-                    secondsRemaining = countdownSecondsRemaining ?: 0,
+                    secondsRemaining = state.countdownSecondsRemaining ?: 0,
                     modifier = Modifier
                         .align(Alignment.Center)
                         .testTag("practiceStartCountdown")
@@ -1021,13 +496,13 @@ fun DanceARPracticeScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            StatPill("Align", alignmentScore, Modifier.weight(1f))
-                            StatPill("Timing", timingConsistencyScore, Modifier.weight(1f))
-                            StatPill("Smooth", smoothnessScore, Modifier.weight(1f))
+                            StatPill("Align", state.alignmentScore, Modifier.weight(1f))
+                            StatPill("Timing", state.timingConsistencyScore, Modifier.weight(1f))
+                            StatPill("Smooth", state.smoothnessScore, Modifier.weight(1f))
                             handScore?.let { score -> StatPill("Hands", score, Modifier.weight(1f)) }
                         }
 
-                        wordFeedback?.takeIf { it.isNotBlank() }?.let {
+                        state.wordFeedback?.takeIf { it.isNotBlank() }?.let {
                             Text(
                                 text = it,
                                 style = MaterialTheme.typography.titleSmall,
@@ -1036,7 +511,7 @@ fun DanceARPracticeScreen(
                             )
                         }
 
-                        handFeedback?.takeIf { it.isNotBlank() }?.let {
+                        state.handFeedback?.takeIf { it.isNotBlank() }?.let {
                             Text(
                                 text = it,
                                 style = MaterialTheme.typography.bodySmall,
@@ -1047,12 +522,12 @@ fun DanceARPracticeScreen(
                         }
 
                         Text(
-                            text = "Err ${"%.4f".format(avgPoseError)} • Frames $frameCount • ${practiceTimeMs}ms",
+                            text = "Err ${"%.4f".format(state.avgPoseError)} • Frames ${state.frameCount} • ${state.practiceTimeMs}ms",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        status?.let {
+                        state.status?.let {
                             Text(it, style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -1064,7 +539,7 @@ fun DanceARPracticeScreen(
                         if (isPracticeActive) {
                             OutlinedButton(
                                 modifier = Modifier.weight(1f),
-                                onClick = { doReset(message = "Practice reset. Tap Start Practice when ready.") },
+                                onClick = { practiceVm.reset(message = "Practice reset. Tap Start Practice when ready.") },
                                 contentPadding = PaddingValues(vertical = 10.dp),
                                 shape = PillShape,
                                 colors = tealOutlinedButtonColors
@@ -1074,13 +549,7 @@ fun DanceARPracticeScreen(
 
                             Button(
                                 modifier = Modifier.weight(1f),
-                                onClick = {
-                                    if (practiceMode == PracticeMode.STEP_BY_STEP) {
-                                        completeCurrentStep()
-                                    } else {
-                                        doSubmit()
-                                    }
-                                },
+                                onClick = { handleSubmission(practiceVm.onFinishAction(uid)) },
                                 contentPadding = PaddingValues(vertical = 10.dp),
                                 shape = PillShape,
                                 colors = tealButtonColors
@@ -1093,7 +562,7 @@ fun DanceARPracticeScreen(
                         } else {
                             Button(
                                 modifier = Modifier.weight(1f),
-                                onClick = { startPracticeCountdown() },
+                                onClick = { practiceVm.startPracticeCountdown() },
                                 enabled = !isCountdownActive,
                                 contentPadding = PaddingValues(vertical = 10.dp),
                                 shape = PillShape,
@@ -1107,24 +576,11 @@ fun DanceARPracticeScreen(
 
                             OutlinedButton(
                                 modifier = Modifier.weight(1f),
-                                onClick = {
-                                    if (practiceMode == PracticeMode.STEP_BY_STEP) {
-                                        if (currentStepIndex < practiceSegments.lastIndex) {
-                                            currentStepIndex += 1
-                                            doReset(
-                                                message = "${practiceSegments[currentStepIndex].title} ready. Tap Start Practice when ready."
-                                            )
-                                        } else {
-                                            doReset(message = "Final step ready. Tap Start Practice to repeat it.")
-                                        }
-                                    } else {
-                                        doSubmit()
-                                    }
-                                },
+                                onClick = { handleSubmission(practiceVm.onSecondaryAction(uid)) },
                                 enabled = if (practiceMode == PracticeMode.STEP_BY_STEP) {
                                     practiceSegments.isNotEmpty()
                                 } else {
-                                    frameCount > 0
+                                    state.frameCount > 0
                                 },
                                 contentPadding = PaddingValues(vertical = 10.dp),
                                 shape = PillShape,
@@ -1293,69 +749,6 @@ private fun StepPracticeCard(
     }
 }
 
-private fun derivePracticeStepSegments(template: PoseTemplate?): List<PracticeStepSegment> {
-    val source = template ?: return emptyList()
-    val frames = source.frames.sortedBy { it.tMs }
-    if (frames.size < 2) return emptyList()
-
-    val framesPerStep = (source.fps.coerceAtLeast(1) * 4).coerceAtLeast(4)
-    val minLastStepFrames = (source.fps.coerceAtLeast(1) * 2).coerceAtLeast(2)
-    val chunks = frames.chunked(framesPerStep).toMutableList()
-
-    if (chunks.size > 1 && chunks.last().size < minLastStepFrames) {
-        val trailingChunk = chunks.removeAt(chunks.lastIndex)
-        chunks[chunks.lastIndex] = chunks.last() + trailingChunk
-    }
-
-    val total = chunks.size
-    return chunks.mapIndexed { index, chunk ->
-        val startMs = chunk.first().tMs
-        val rawEndMs = chunk.last().tMs
-        val endMs = if (rawEndMs > startMs) rawEndMs else startMs + 1L
-        PracticeStepSegment(
-            index = index,
-            total = total,
-            startMs = startMs,
-            endMs = endMs
-        )
-    }
-}
-
-private fun sliceTemplateForStep(
-    template: PoseTemplate?,
-    segment: PracticeStepSegment
-): PoseTemplate? {
-    val source = template ?: return null
-    val normalizedStart = segment.startMs
-
-    fun rebaseFrames(frames: List<PoseFrame>): List<PoseFrame> {
-        return frames
-            .filter { it.tMs in segment.startMs..segment.endMs }
-            .map { it.copy(tMs = (it.tMs - normalizedStart).coerceAtLeast(0L)) }
-    }
-
-    val segmentFrames = rebaseFrames(source.frames)
-    if (segmentFrames.isEmpty()) return null
-
-    val segmentTracks = source.tracks.mapNotNull { track ->
-        val rebased = rebaseFrames(track.frames)
-        if (rebased.isEmpty()) null else track.copy(frames = rebased)
-    }
-
-    val segmentHandTracks = source.handTracks.mapNotNull { track ->
-        val rebased = track.frames
-            .filter { it.tMs in segment.startMs..segment.endMs }
-            .map { it.copy(tMs = (it.tMs - normalizedStart).coerceAtLeast(0L)) }
-        if (rebased.isEmpty()) null else track.copy(frames = rebased)
-    }
-
-    return source.copy(
-        frames = segmentFrames,
-        tracks = segmentTracks,
-        handTracks = segmentHandTracks
-    )
-}
-
 private fun formatPracticeTime(timeMs: Long): String {
     val totalSeconds = (timeMs / 1000L).coerceAtLeast(0L)
     val minutes = totalSeconds / 60L
@@ -1503,65 +896,6 @@ private fun cropReferenceThumbnail(
     val targetWidth = 160
     val targetHeight = 220
     return Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
-}
-
-private class LiveLandmarkDetector(context: Context) : AutoCloseable {
-    private val appContext = context.applicationContext
-    private val holisticHelper = if (appContext.assets.assetExists(HolisticLandmarkerHelper.MODEL_ASSET)) {
-        runCatching { HolisticLandmarkerHelper(appContext) }.getOrNull()
-    } else {
-        null
-    }
-    private var fallbackPoseHelper: PoseLandmarkerHelper? = null
-    private var closed = false
-
-    // detect() runs on the camera analysis thread and close() on the UI thread;
-    // the lock stops the MediaPipe models being closed mid-frame.
-    @Synchronized
-    fun detect(bitmap: Bitmap): List<HolisticFrameLandmarks> {
-        if (closed) return emptyList()
-        val holistic = holisticHelper
-        if (holistic != null) {
-            val result = runCatching { holistic.detect(bitmap) }.getOrNull()
-            if (result != null) {
-                return listOf(result)
-            }
-        }
-
-        val poseHelper = fallbackPoseHelper ?: runCatching { PoseLandmarkerHelper(appContext) }
-            .getOrNull()
-            ?.also { fallbackPoseHelper = it }
-            ?: return emptyList()
-
-        return runCatching { poseHelper.detect(bitmap) }.getOrNull()
-            ?.landmarks()
-            .orEmpty()
-            .mapNotNull { pose ->
-            if (pose.isEmpty()) return@mapNotNull null
-            val flat = ArrayList<Float>(pose.size * 4)
-            for (landmark in pose) {
-                flat.add(landmark.x())
-                flat.add(landmark.y())
-                flat.add(landmark.z())
-                flat.add(landmark.visibility().orElse(1.0f))
-            }
-            HolisticFrameLandmarks(pose = flat)
-        }
-    }
-
-    @Synchronized
-    override fun close() {
-        if (closed) return
-        closed = true
-        runCatching { holisticHelper?.close() }
-        runCatching { fallbackPoseHelper?.close() }
-    }
-}
-
-private fun AssetManager.assetExists(assetPath: String): Boolean {
-    return runCatching {
-        open(assetPath).use { true }
-    }.getOrDefault(false)
 }
 
 private fun ImageProxy.toBitmapFrontCamera(): Bitmap {
