@@ -18,6 +18,7 @@ import com.example.chorevo.dancelibrarylist.searchTrigramsOf
 import com.example.chorevo.dancelibrarylist.searchWords
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
+import com.example.chorevo.core.Database.di.DefaultDispatcher
 import com.example.chorevo.core.Database.di.IoDispatcher
 import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.DocumentSnapshot
@@ -42,7 +43,8 @@ class DanceLibraryRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val storage: FirebaseStorage,
     private val danceSessionDao: DanceSessionDao,
-    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) {
 
     companion object {
@@ -262,7 +264,11 @@ class DanceLibraryRepository @Inject constructor(
                 .getBytes(MAX_TEMPLATE_DOWNLOAD_BYTES)
                 .await()
 
-            Result.success(PoseTemplateJson.fromJson(bytes.toString(Charsets.UTF_8)))
+            // Templates can be several MB; parse them off the main thread.
+            val template = withContext(defaultDispatcher) {
+                PoseTemplateJson.fromJson(bytes.toString(Charsets.UTF_8))
+            }
+            Result.success(template)
         } catch (e: Exception) {
             Result.failure(e)
         }
