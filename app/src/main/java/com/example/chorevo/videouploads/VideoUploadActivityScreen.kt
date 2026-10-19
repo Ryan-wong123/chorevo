@@ -1,5 +1,6 @@
 package com.example.chorevo.videouploads
 
+import com.example.chorevo.posedetection.loadDancerThumbnails
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -18,7 +19,6 @@ import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.ui.theme.ChorevoTheme
 import android.content.Context
 import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -93,12 +93,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.posedetection.PoseBounds
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /** Displays the video upload activity screen. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -703,7 +700,7 @@ private fun DancerReviewPanel(
         videoUri,
         selectionPreview
     ) {
-        value = loadUploadTrackThumbnails(context, videoUri, selectionPreview)
+        value = loadDancerThumbnails(context, videoUri, selectionPreview)
     }
     val previewableTracks = remember(tracks, thumbnails) {
         tracks.filter { track -> thumbnails.isEmpty() || thumbnails.containsKey(track.trackId) }
@@ -943,43 +940,6 @@ private fun DancerTrackRow(
             )
         }
     }
-}
-
-private suspend fun loadUploadTrackThumbnails(
-    context: Context,
-    videoUri: Uri,
-    selectionPreview: PoseSelectionPreview?
-): Map<String, Bitmap> = withContext(Dispatchers.IO) {
-    if (selectionPreview == null || selectionPreview.candidates.isEmpty()) {
-        return@withContext emptyMap()
-    }
-
-    val retriever = MediaMetadataRetriever()
-    return@withContext try {
-        retriever.setDataSource(context, videoUri)
-        val frame = retriever.getFrameAtTime(
-            selectionPreview.timeMs * 1000L,
-            MediaMetadataRetriever.OPTION_CLOSEST
-        ) ?: return@withContext emptyMap()
-
-        selectionPreview.candidates.associate { candidate ->
-            candidate.trackId to cropUploadThumbnail(frame, candidate.bounds)
-        }
-    } catch (_: Exception) {
-        emptyMap()
-    } finally {
-        runCatching { retriever.release() }
-    }
-}
-
-private fun cropUploadThumbnail(source: Bitmap, bounds: PoseBounds): Bitmap {
-    val left = (bounds.left * source.width).toInt().coerceIn(0, source.width - 1)
-    val top = (bounds.top * source.height).toInt().coerceIn(0, source.height - 1)
-    val right = (bounds.right * source.width).toInt().coerceIn(left + 1, source.width)
-    val bottom = (bounds.bottom * source.height).toInt().coerceIn(top + 1, source.height)
-
-    val cropped = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
-    return Bitmap.createScaledBitmap(cropped, 160, 220, true)
 }
 
 /** Displays the source picker for upload videos. */
