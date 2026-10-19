@@ -22,8 +22,9 @@ class BootReceiver : BroadcastReceiver() {
             val pending = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val prefs = NotificationPreferencesDataStore(context)
-                    val scheduler = ReminderScheduler(context, prefs)
+                    val dependencies = NotificationEntryPoint.from(context)
+                    val prefs = dependencies.notificationPreferences()
+                    val scheduler = dependencies.reminderScheduler()
 
                     val pushEnabled = prefs.pushEnabledFlow.firstOrNull() ?: false
                     if (pushEnabled) {
