@@ -25,6 +25,7 @@ data class PointsSnapshot(
     val totalPoints: Int = 0,
     val lastSessionPoints: Int = 0
 )
+@Singleton
 class PointsRepository @Inject constructor(
     private val db: FirebaseFirestore
 ) {

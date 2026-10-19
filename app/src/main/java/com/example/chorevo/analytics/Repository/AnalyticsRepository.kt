@@ -11,14 +11,13 @@ import com.example.chorevo.analytics.FeedbackMessage
 import com.example.chorevo.analytics.PerformanceSegment
 import com.example.chorevo.analytics.SegmentLabel
 import com.example.chorevo.analytics.TimelinePoint
+import com.example.chorevo.core.Database.di.IoDispatcher
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -31,7 +30,8 @@ import kotlin.collections.get
 
 @Singleton
 class AnalyticsRepository @Inject constructor(
-    private val db: FirebaseFirestore
+    private val db: FirebaseFirestore,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ){
     /**
      * Returns session summaries based on the selected dashboard mode.
@@ -102,7 +102,6 @@ class AnalyticsRepository @Inject constructor(
      */
     private fun observeMySessionDetail(uid: String, sessionId: String): Flow<DanceSessionDetail?> =
         callbackFlow {
-            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
             val reg = db.collection("users")
                 .document(uid)
@@ -119,7 +118,7 @@ class AnalyticsRepository @Inject constructor(
                         return@addSnapshotListener
                     }
 
-                    scope.launch {
+                    launch(ioDispatcher) {
                         val analysis = doc.toAnalysisOrNull()
                         trySend(DanceSessionDetail(summary = summary, analysis = analysis))
                     }
@@ -127,7 +126,6 @@ class AnalyticsRepository @Inject constructor(
 
             awaitClose {
                 reg.remove()
-                scope.cancel()
             }
         }
     /**
@@ -139,7 +137,6 @@ class AnalyticsRepository @Inject constructor(
         uploadedDanceId: String? = null
     ): Flow<List<DanceSessionSummary>> = callbackFlow {
 
-        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
         var q = db.collectionGroup("danceLearningSessions")
             .whereEqualTo("analysis.educatorUid", uploaderUid)
@@ -165,7 +162,7 @@ class AnalyticsRepository @Inject constructor(
                 .mapNotNull { extractLearnerUidFromPath(it.reference.path) }
                 .toSet()
 
-            scope.launch {
+            launch(ioDispatcher) {
                 val displayNamesFromDocs = docs.associate { doc ->
                     val uid =
                         extractLearnerUidFromPath(doc.reference.path) ?: return@associate "" to ""
@@ -199,7 +196,6 @@ class AnalyticsRepository @Inject constructor(
 
         awaitClose {
             reg.remove()
-            scope.cancel()
         }
     }
     /**
@@ -209,7 +205,6 @@ class AnalyticsRepository @Inject constructor(
     private fun observeSessionDetailByPath(docPath: String): Flow<DanceSessionDetail?> =
         callbackFlow {
 
-            val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
             val reg = db.document(docPath).addSnapshotListener { doc, err ->
                 if (err != null) {
@@ -230,7 +225,7 @@ class AnalyticsRepository @Inject constructor(
 
                 val learnerUid = extractLearnerUidFromPath(doc.reference.path)
 
-                scope.launch {
+                launch(ioDispatcher) {
                     val nameFromDoc = doc.getString("learnerDisplayName")
                         ?.takeIf { it.isNotBlank() }
 
@@ -263,7 +258,6 @@ class AnalyticsRepository @Inject constructor(
 
             awaitClose {
                 reg.remove()
-                scope.cancel()
             }
         }
 
