@@ -154,6 +154,7 @@ class VideoUploadsViewModelTest {
             every { email } returns "coach@example.com"
         }
         val context = mockk<Context>(relaxed = true)
+        every { context.applicationContext } returns context
         val recordedUri = mockk<Uri>(relaxed = true)
 
         coEvery { authRepo.getCurrentUserProfile() } returns user
