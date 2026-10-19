@@ -73,7 +73,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import com.example.chorevo.core.CameraBinder
 import com.example.chorevo.core.CameraPreview
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
