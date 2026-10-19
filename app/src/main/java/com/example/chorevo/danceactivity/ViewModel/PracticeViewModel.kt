@@ -155,7 +155,10 @@ class PracticeViewModel @Inject constructor(
         )
         selectTrackInternal(template?.resolveTrack(null)?.trackId)
         // Test mode starts "practising" straight away, as before.
-        if (testMode) startTimer()
+        if (testMode) {
+            tsStart = System.currentTimeMillis()
+            startTimer()
+        }
     }
 
     /** Ends this practice screen: stops timers and frees the pose models. */
@@ -188,8 +191,19 @@ class PracticeViewModel @Inject constructor(
         if (granted && !testMode && detector == null && detectorJob?.isActive != true) {
             // Loading the MediaPipe models takes a moment; keep it off the main thread.
             detectorJob = viewModelScope.launch {
-                val loaded = withContext(defaultDispatcher) { LiveLandmarkDetector(appContext) }
-                if (boundDanceId != null && detector == null) detector = loaded else loaded.close()
+                var unused: LiveLandmarkDetector? = null
+                try {
+                    val loaded = withContext(defaultDispatcher) {
+                        LiveLandmarkDetector(appContext).also { unused = it }
+                    }
+                    if (boundDanceId != null && detector == null) {
+                        detector = loaded
+                        unused = null
+                    }
+                } finally {
+                    // Also when the screen closed while the models were loading.
+                    unused?.close()
+                }
             }
         }
     }
@@ -219,17 +233,28 @@ class PracticeViewModel @Inject constructor(
         }
 
         val timeMs = current.practiceTimeMs
+        // Detection takes a while; if the attempt ends or restarts meanwhile
+        // (reset, submit, step done), this frame must not score.
+        val attemptEval = similarityEval
+        val attemptHandEval = handSimilarityEval
         // Body scoring remains pose-only. Hand landmarks are retained separately.
-        val snap = similarityEval?.let { ev ->
+        val snap = attemptEval?.let { ev ->
             ev.onFrame(primaryPose, timeMs)
             ev.snapshot(includeSeries = false)
         }
-        val handSnap = handSimilarityEval?.let { handEv ->
+        val handSnap = attemptHandEval?.let { handEv ->
             handEv.onFrame(leftHand, rightHand, timeMs)
             handEv.snapshot()
         }
 
         _uiState.update { state ->
+            if (!state.isPracticeActive || attemptEval !== similarityEval || attemptHandEval !== handSimilarityEval) {
+                return@update state.copy(
+                    learnerLandmarks = primaryPose,
+                    learnerLeftHandLandmarks = leftHand,
+                    learnerRightHandLandmarks = rightHand
+                )
+            }
             val bodyScoreForCombined = snap?.alignmentScore ?: state.alignmentScore
             val live = snap?.liveScore
             val comboStart = if (live != null && live >= LIVE_GOOD_SCORE) state.comboStartMs ?: timeMs else null
@@ -490,7 +515,7 @@ class PracticeViewModel @Inject constructor(
             )
         }
         val segment = _uiState.value.currentPracticeSegment
-        if (segment != null && practiceTimeMs >= segment.durationMs) {
+        if (!testMode && segment != null && practiceTimeMs >= segment.durationMs) {
             completeCurrentStep()
         }
     }
