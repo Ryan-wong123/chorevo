@@ -80,7 +80,7 @@ Screens:
 - `AuthScreen`: email/password and "Continue with Google" on the stage background with the animated dancer and gradient wordmark; `systemBarsPadding`, `imePadding` and vertical scroll keep the form above the keyboard.
 - `DancingFigure` / `StageBackground` (`core/DancingFigure.kt`): a pose skeleton looping through keyframed poses (smoothstep interpolation, brand-gradient bones with a glow) and a dark background with two drifting brand glows; used by onboarding and sign-in.
 - `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet. `DiscoveryBar` (`dancelibrarylist/DiscoveryBar.kt`) is drawn over the top of the feed: tabs (`feedTab_*` tags), a search field (`searchButton`, `searchField`) and category chips (`categoryChip_all`, `categoryChip_<key>`). The feed shows `DanceLibraryUiState.visibleItems`, and a filter with no matches shows an empty state with `clearFilters` while keeping the bar mounted.
-- `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
+- `DanceARPracticeScreen`: draws the camera practice screen from `PracticeViewModel`'s state: countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
 - `DanceStylePicker` (`videouploads/DanceStylePicker.kt`): dance-type dropdown of `STANDARD_DANCE_STYLES` plus "Other…" free text with a "Did you mean …?" suggestion from `closestStandardStyle`; used by the upload Details step and the Edit dialog.
 - `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
 - `AnalyticsDashboardView`: learner and creator analytics. With `showOverview = true` (the profile's Activity and Learners tabs) it renders `AnalyticsOverview` above the list: stat tiles with a sparkline, a draw-in trend chart, an 8-week activity heatmap, and a body diagram. The numbers come from `computeOverviewStats` and the body focus from `bodyFocusFromFeedback` (`analytics/AnalyticsStats.kt`, plain Kotlin, unit tested), which counts corrections per `BodyArea` in each session's stored feedback messages.
@@ -114,10 +114,9 @@ ViewModels own screen state and user actions. All of these are `@HiltViewModel`:
 - `LeaderboardViewModel`: leaderboard scope, metric, friend actions.
 - `ProfileViewModel`: streak, points, and liked dances for the profile.
 - `AchievementViewModel`: per-session points, badges, and level-ups.
+- `PracticeViewModel`: one practice session: countdown and timer, live pose detection and scoring (camera frames arrive on the camera analysis thread), Full Routine / Step-by-Step mode, reference dancer, and building the session to submit. Each attempt gets fresh evaluators. It keeps the session through a rotation and is released when the screen closes.
 - `GroupsViewModel`: my groups (live), discover search (300 ms debounce), create/join/leave/delete, the open group's live group, membership, members and posts, the composer (text, one of the user's public ready dances, or a local video with upload progress), and replies of the open post.
 - `WeeklyChallengeViewModel`: the week's challenge set, progress, and celebration dialog.
-
-`StreakViewModel` and `StreakViewModelFactory` (`danceactivity`) are legacy and unused.
 
 ViewModels expose read-only `StateFlow` and mutate immutable UI state data classes.
 
@@ -171,10 +170,11 @@ Hilt modules live in `core/Database/di`:
 
 - `FirebaseModule`: FirebaseAuth, FirebaseFirestore, and FirebaseStorage singletons.
 - `DatabaseModule`: Room `AppDb` (`app.db`, `fallbackToDestructiveMigration`) and `DanceSessionDao`.
-- `DispatcherModule`: an `@IoDispatcher` `CoroutineDispatcher` (qualifier declared in `IoQualifier.kt`); used by `AutoRetryUploaderService`.
-- `RepositoryModule` (file `RespositoryModule.kt`): intended repository providers. It imports `com.google.android.datatransport.runtime.dagger.Provides` instead of `dagger.Provides`, so Hilt does not use these methods. Repositories are actually bound through their `@Inject` constructors and are `@Singleton`, except `PointsRepository`, which is unscoped.
+- `DispatcherModule`: `@IoDispatcher` and `@DefaultDispatcher` `CoroutineDispatcher`s (qualifiers in `IoQualifier.kt`), injected into repositories and ViewModels instead of hardcoding `Dispatchers`.
+- `WorkModule`: the app's `WorkManager`. `Chorevo` configures WorkManager with `HiltWorkerFactory`, so workers can be `@HiltWorker`s.
+Repositories are bound through their `@Inject` constructors and are `@Singleton`.
 
-ViewModels receive repositories through constructor injection. `VideoTemplateGenerationWorker` is not a `@HiltWorker`; it calls `FirebaseFirestore.getInstance()` and `FirebaseStorage.getInstance()` directly. `ReminderScheduler` is constructed inside `AppViewModel`.
+ViewModels receive repositories through constructor injection. `VideoTemplateGenerationWorker` is a `@HiltWorker` with Firestore and Storage injected. `ReminderScheduler` is constructed inside `AppViewModel`.
 
 ## 5. Data Storage
 
@@ -281,7 +281,7 @@ Key fields:
 5. Video uploads to `danceVideos/{uid}/{danceId}.mp4`.
 6. Metadata writes to `danceLibrary/{danceId}`, then status fields are written (`saving`, `queued` or `skipped`, and `templateReviewStatus`).
 7. Confirmed review: the confirmed template (filtered to the selected dancers and hand tracks) uploads to `danceTemplates/{uid}/{danceId}.json`, and the status becomes `ready` with `templateReviewStatus = "confirmed"` and `dancerCount`.
-8. Background analysis: WorkManager enqueues `VideoTemplateGenerationWorker` (network required; inputs `dance_id`, `storage_path`, `template_fps`, `collect_hand_landmarks`).
+8. Background analysis: WorkManager enqueues `VideoTemplateGenerationWorker` as expedited work that runs in the foreground with an "Analysing your dance" notification (network required; inputs `dance_id`, `storage_path`, `template_fps`, `collect_hand_landmarks`).
 9. The worker sets `processing`, downloads the video, generates a template with the standard profile, uploads the JSON, and writes `ready` with `templateStoragePath` and `dancerCount` (removing any legacy inline `template` field). It retries up to three attempts, then writes `failed` with `templateGenerationError`.
 
 ### Share Flow
@@ -332,7 +332,7 @@ On the web:
 1. Learner taps Start Practice on a dance in the feed.
 2. `DanceLibraryListViewModel.preparePracticeItem` loads or caches the pose template.
 3. `AppViewModel.pickDance` routes to practice.
-4. `DanceARPracticeScreen` shows a 3-second countdown, then uses CameraX and `LiveLandmarkDetector`, which runs Holistic Landmarker (pose + left/right hands, face ignored) and falls back to Pose Landmarker lite (body only).
+4. `DanceARPracticeScreen` shows a 3-second countdown, then CameraX delivers frames on a background analysis thread (`CameraBinder`) to `PracticeViewModel`'s `LiveLandmarkDetector`, which runs Holistic Landmarker (pose + left/right hands, face ignored) and falls back to Pose Landmarker lite (body only).
 5. `PoseSimilarityEvaluator` compares learner pose landmarks to the selected reference track; `HandSimilarityEvaluator` compares hands only when the template contains hand tracks.
 6. On submit, a `DanceSessionEntity` and analysis payload are created (body-only scores; hand feedback is included in the feedback messages).
 7. `DanceLibraryListViewModel.saveSessionAndUpload` inserts the session locally, uploads it to Firestore, and marks it synced. The server then awards points, badges, streak, challenges and leaderboard stats (Rewards Flow).
@@ -603,7 +603,6 @@ Deployment:
 
 - Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`); the Navigation Compose dependencies are declared but unused. This may become hard to scale if nested flows grow.
 - Package segments `ViewModel`, `Repository` and `Database` are mixed-case, `videouploads/repository` is lowercase, and the router files declare `package com.routes`. New packages should be lowercase and match their folders.
-- `RepositoryModule` imports the wrong `@Provides` annotation and is ignored by Hilt; repositories rely on `@Inject` constructors instead.
 - Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).
 - Leaderboard values are client-written; high-trust ranking would need server-side verification.
 - Template generation is compute-heavy and runs off the main thread (`Dispatchers.Default` or WorkManager).
