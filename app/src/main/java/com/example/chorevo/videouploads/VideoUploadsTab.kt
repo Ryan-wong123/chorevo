@@ -55,7 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import java.text.SimpleDateFormat
@@ -85,7 +85,7 @@ fun VideoUploadsTab(
     onUploadDanceDemo: () -> Unit,
     embedded: Boolean,
     onStatus: (String) -> Unit = {},
-    vm: VideoUploadsViewModel = viewModel(),
+    vm: VideoUploadsViewModel = hiltViewModel(),
     refreshKey: Any? = Unit,
     modifier: Modifier = Modifier,
     embeddedInParentScroll: Boolean = false,
