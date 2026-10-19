@@ -38,6 +38,8 @@ class HandSimilarityEvaluator(
     private var leftMean = 0.0
     private var rightMean = 0.0
 
+    // Called from the camera analysis thread while the UI thread may take a snapshot.
+    @Synchronized
     fun onFrame(
         learnerLeftHand: List<Float>,
         learnerRightHand: List<Float>,
@@ -88,6 +90,7 @@ class HandSimilarityEvaluator(
         }
     }
 
+    @Synchronized
     fun snapshot(): Snapshot {
         val handScores = listOfNotNull(
             leftMean.takeIf { leftCount > 0 },

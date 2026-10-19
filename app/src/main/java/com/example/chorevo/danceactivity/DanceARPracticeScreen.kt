@@ -1513,8 +1513,13 @@ private class LiveLandmarkDetector(context: Context) : AutoCloseable {
         null
     }
     private var fallbackPoseHelper: PoseLandmarkerHelper? = null
+    private var closed = false
 
+    // detect() runs on the camera analysis thread and close() on the UI thread;
+    // the lock stops the MediaPipe models being closed mid-frame.
+    @Synchronized
     fun detect(bitmap: Bitmap): List<HolisticFrameLandmarks> {
+        if (closed) return emptyList()
         val holistic = holisticHelper
         if (holistic != null) {
             val result = runCatching { holistic.detect(bitmap) }.getOrNull()
@@ -1544,7 +1549,10 @@ private class LiveLandmarkDetector(context: Context) : AutoCloseable {
         }
     }
 
+    @Synchronized
     override fun close() {
+        if (closed) return
+        closed = true
         runCatching { holisticHelper?.close() }
         runCatching { fallbackPoseHelper?.close() }
     }
