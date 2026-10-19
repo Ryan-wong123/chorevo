@@ -6,6 +6,7 @@ import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.example.chorevo.core.VideoMedia
 import com.example.chorevo.core.VideoMedia.putFileWithProgress
@@ -29,7 +30,8 @@ import javax.inject.Singleton
 @Singleton
 class VideoUploadsRepository @Inject constructor(
     private val db: FirebaseFirestore,
-    private val storage: FirebaseStorage
+    private val storage: FirebaseStorage,
+    private val workManager: WorkManager
 ) {
 
     // ============================================================
@@ -226,7 +228,6 @@ class VideoUploadsRepository @Inject constructor(
             } else if (generateTemplate) {
                 onStageChanged?.invoke("Queuing background analysis")
                 enqueueTemplateGeneration(
-                    context = ctx,
                     danceId = danceId,
                     storagePath = storagePath,
                     fps = fps,
@@ -248,7 +249,6 @@ class VideoUploadsRepository @Inject constructor(
     }
 
     private fun enqueueTemplateGeneration(
-        context: Context,
         danceId: String,
         storagePath: String,
         fps: Int,
@@ -271,9 +271,11 @@ class VideoUploadsRepository @Inject constructor(
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
             )
+            // Start promptly; falls back to normal work when the expedited quota is used up.
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
 
-        WorkManager.getInstance(context).enqueue(workRequest)
+        workManager.enqueue(workRequest)
     }
 
     private suspend fun uploadFileWithProgress(

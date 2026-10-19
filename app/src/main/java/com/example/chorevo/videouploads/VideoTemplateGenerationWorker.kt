@@ -1,9 +1,16 @@
 package com.example.chorevo.videouploads
 
 import android.content.Context
+import android.content.pm.ServiceInfo
 import android.net.Uri
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
+import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
+import com.example.chorevo.R
+import com.example.chorevo.notification.NotificationChannels
 import com.example.chorevo.posedetection.PoseTemplateJson
 import com.example.chorevo.posedetection.PoseTemplateStorage
 import com.example.chorevo.posedetection.VideoPoseTemplateGenerator
@@ -12,12 +19,22 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
 import kotlinx.coroutines.tasks.await
 import java.io.File
 
-class VideoTemplateGenerationWorker(
-    appContext: Context,
-    params: WorkerParameters
+/**
+ * Analyses an uploaded dance video in the background and saves its pose template.
+ * Runs as a foreground worker (with a notification) so Android doesn't stop a
+ * long analysis part-way.
+ */
+@HiltWorker
+class VideoTemplateGenerationWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted params: WorkerParameters,
+    private val firestore: FirebaseFirestore,
+    private val storage: FirebaseStorage
 ) : CoroutineWorker(appContext, params) {
 
     companion object {
@@ -25,6 +42,26 @@ class VideoTemplateGenerationWorker(
         const val KEY_STORAGE_PATH = "storage_path"
         const val KEY_FPS = "template_fps"
         const val KEY_COLLECT_HAND_LANDMARKS = "collect_hand_landmarks"
+        private const val NOTIFICATION_ID = 4_201
+    }
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val notification = NotificationCompat.Builder(
+            applicationContext,
+            NotificationChannels.DANCE_ANALYSIS_CHANNEL_ID
+        )
+            .setSmallIcon(R.drawable.ic_stat_reminder)
+            .setContentTitle("Analysing your dance")
+            .setContentText("Finding the dancers' moves. This can take a few minutes.")
+            .setProgress(0, 0, true)
+            .setOngoing(true)
+            .setSilent(true)
+            .build()
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+        } else {
+            ForegroundInfo(NOTIFICATION_ID, notification)
+        }
     }
 
     override suspend fun doWork(): Result {
@@ -34,8 +71,6 @@ class VideoTemplateGenerationWorker(
         val collectHandLandmarks = inputData.getBoolean(KEY_COLLECT_HAND_LANDMARKS, true)
         val ownerUid = PoseTemplateStorage.ownerUidFromVideoPath(storagePath) ?: return Result.failure()
 
-        val firestore = FirebaseFirestore.getInstance()
-        val storage = FirebaseStorage.getInstance()
         val tempFile = File(
             applicationContext.cacheDir,
             "template_source_${danceId}_${System.currentTimeMillis()}.mp4"
@@ -55,6 +90,9 @@ class VideoTemplateGenerationWorker(
         }
 
         return try {
+            // Best effort: if the app may not start a foreground service right now,
+            // the analysis still runs as a normal background worker.
+            runCatching { setForeground(getForegroundInfo()) }
             updateStatus("processing")
 
             storage.reference

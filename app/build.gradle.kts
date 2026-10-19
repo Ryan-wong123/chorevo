@@ -112,6 +112,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     ksp(libs.hilt.android.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
 
     // --- Core Android / Lifecycle ---
     implementation(libs.androidx.core.ktx)
