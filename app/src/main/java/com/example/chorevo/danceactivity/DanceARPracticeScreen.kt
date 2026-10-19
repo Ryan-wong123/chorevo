@@ -1,5 +1,6 @@
 package com.example.chorevo.danceactivity
 
+import com.example.chorevo.posedetection.loadDancerThumbnails
 import androidx.activity.compose.LocalActivity
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.chorevo.danceactivity.ViewModel.PracticeSubmission
@@ -10,7 +11,6 @@ import com.example.chorevo.ui.theme.ChorevoTheme
 import android.Manifest
 import android.graphics.Bitmap
 import android.graphics.Matrix
-import android.media.MediaMetadataRetriever
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageAnalysis
@@ -87,8 +87,6 @@ import com.example.chorevo.posedetection.PoseOverlay
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTrack
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /** Displays the dance practice screen. State and logic live in [PracticeViewModel]. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -770,7 +768,7 @@ private fun ReferenceDancerSelectorCard(
         videoUrl,
         selectionPreview
     ) {
-        value = loadReferenceTrackThumbnails(videoUrl, selectionPreview)
+        value = loadDancerThumbnails(videoUrl, selectionPreview)
     }
 
     Card(
@@ -854,47 +852,6 @@ private fun ReferenceDancerSelectorCard(
             }
         }
     }
-}
-
-private suspend fun loadReferenceTrackThumbnails(
-    videoUrl: String,
-    selectionPreview: PoseSelectionPreview?
-): Map<String, Bitmap> = withContext(Dispatchers.IO) {
-    if (videoUrl.isBlank() || selectionPreview == null || selectionPreview.candidates.isEmpty()) {
-        return@withContext emptyMap()
-    }
-
-    val retriever = MediaMetadataRetriever()
-    return@withContext try {
-        retriever.setDataSource(videoUrl, emptyMap())
-        val frame = retriever.getFrameAtTime(
-            selectionPreview.timeMs * 1000L,
-            MediaMetadataRetriever.OPTION_CLOSEST
-        ) ?: return@withContext emptyMap()
-
-        selectionPreview.candidates.associate { candidate ->
-            candidate.trackId to cropReferenceThumbnail(frame, candidate.bounds)
-        }
-    } catch (_: Exception) {
-        emptyMap()
-    } finally {
-        runCatching { retriever.release() }
-    }
-}
-
-private fun cropReferenceThumbnail(
-    source: Bitmap,
-    bounds: com.example.chorevo.posedetection.PoseBounds
-): Bitmap {
-    val left = (bounds.left * source.width).toInt().coerceIn(0, source.width - 1)
-    val top = (bounds.top * source.height).toInt().coerceIn(0, source.height - 1)
-    val right = (bounds.right * source.width).toInt().coerceIn(left + 1, source.width)
-    val bottom = (bounds.bottom * source.height).toInt().coerceIn(top + 1, source.height)
-
-    val cropped = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
-    val targetWidth = 160
-    val targetHeight = 220
-    return Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
 }
 
 private fun ImageProxy.toBitmapFrontCamera(): Bitmap {
