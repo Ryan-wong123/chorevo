@@ -452,6 +452,8 @@ class VideoUploadsViewModel @Inject constructor(
         fps: Int = 2,
         continueWithoutTemplateOnFailure: Boolean = true
     ) {
+        // The upload can outlive the screen; don't hold on to the Activity.
+        val appContext = context.applicationContext
         val draft = _uiState.value.uploadDraft
         val dancerReview = _uiState.value.dancerReview
         val videoUri = draft.selectedVideoUri ?: return
@@ -497,7 +499,7 @@ class VideoUploadsViewModel @Inject constructor(
                 }
 
                 val res = videoUploadRepository.uploadDance(
-                    context = context,
+                    context = appContext,
                     educatorUid = uid,
                     educatorName = educatorName,
                     title = draft.title,
