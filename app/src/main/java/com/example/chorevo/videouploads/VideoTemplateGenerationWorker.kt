@@ -34,7 +34,8 @@ class VideoTemplateGenerationWorker @AssistedInject constructor(
     @Assisted appContext: Context,
     @Assisted params: WorkerParameters,
     private val firestore: FirebaseFirestore,
-    private val storage: FirebaseStorage
+    private val storage: FirebaseStorage,
+    private val templateGenerator: VideoPoseTemplateGenerator
 ) : CoroutineWorker(appContext, params) {
 
     companion object {
@@ -100,8 +101,7 @@ class VideoTemplateGenerationWorker @AssistedInject constructor(
                 .getFile(tempFile)
                 .await()
 
-            val templateResult = VideoPoseTemplateGenerator.generate(
-                context = applicationContext,
+            val templateResult = templateGenerator.generate(
                 videoUriString = Uri.fromFile(tempFile).toString(),
                 fps = fps,
                 collectHandLandmarks = collectHandLandmarks

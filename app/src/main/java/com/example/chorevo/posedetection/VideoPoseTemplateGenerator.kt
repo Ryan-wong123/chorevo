@@ -4,18 +4,32 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import com.example.chorevo.core.Database.di.DefaultDispatcher
 import com.google.mediapipe.tasks.vision.core.RunningMode
-import kotlinx.coroutines.Dispatchers
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.math.max
 import kotlin.math.min
 
 
-object VideoPoseTemplateGenerator {
-    private const val MAX_TRACKED_DANCERS = 8
-    private const val LITE_MODEL_ASSET = "pose_landmarker_lite.task"
-    private const val FULL_MODEL_ASSET = "pose_landmarker_full.task"
-    const val WARNING_HAND_EXTRACTION_PARTIAL = "handExtractionPartial"
+/**
+ * Turns a dance video into a pose template with MediaPipe, on the phone.
+ * CPU-heavy: runs on the injected default dispatcher.
+ */
+@Singleton
+class VideoPoseTemplateGenerator @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher
+) {
+    companion object {
+        private const val MAX_TRACKED_DANCERS = 8
+        private const val LITE_MODEL_ASSET = "pose_landmarker_lite.task"
+        private const val FULL_MODEL_ASSET = "pose_landmarker_full.task"
+        const val WARNING_HAND_EXTRACTION_PARTIAL = "handExtractionPartial"
+    }
 
     enum class GenerationProfile {
         STANDARD,
@@ -34,7 +48,6 @@ object VideoPoseTemplateGenerator {
 
     /** Handles generate. */
     suspend fun generate(
-        context: Context,
         videoUriString: String,
         fps: Int = 5,
         maxDurationMs: Long = 120_000L, // safety cap: 2 minutes
@@ -44,7 +57,8 @@ object VideoPoseTemplateGenerator {
         collectHandLandmarks: Boolean = false,
         onProgress: ((Float) -> Unit)? = null
     ): Result<PoseTemplate> {
-        return withContext(Dispatchers.Default) {
+        val context = appContext
+        return withContext(defaultDispatcher) {
             val retriever = MediaMetadataRetriever()
             val highRecall = profile == GenerationProfile.HIGH_RECALL
             val handEnabledHighRecall = highRecall && collectHandLandmarks
