@@ -142,7 +142,7 @@ Shared infrastructure includes:
 - `AppDb` and `DanceSessionDao` for Room.
 - Hilt modules under `core/Database/di`.
 - `AutoRetryUploaderService` (`firebase`): a plain injected class (not an Android `Service`) that re-uploads an account's unsynced sessions.
-- Camera helpers (`CameraPreview`, `CameraBinder`, `CameraUseCaseFactory`) and video player helpers (`FeedPlayerFactory`, `VideoPlayerCache`, `SharedPlayerView`) under `core`.
+- Camera helpers (`CameraPreview`, which owns one `CameraBinder` and releases the camera when it leaves the screen, `CameraUseCaseFactory`) and video player helpers (`FeedPlayerFactory`, `VideoPlayerCache`, `SharedPlayerView`) under `core`.
 - `VideoTemplateGenerationWorker` and `VideoCompressor` under `videouploads`.
 - Notification scheduling under `notification` (`ReminderScheduler`, `ReminderReceiver`, `BootReceiver`, `NotificationChannels`, `NotificationPreferencesDataStore`).
 - Pose detection and scoring under `posedetection`.
@@ -168,13 +168,13 @@ Navigation chrome: `AppNavigationRoute` floats `AppBottomNavBar` (a 64dp translu
 
 Hilt modules live in `core/Database/di`:
 
-- `FirebaseModule`: FirebaseAuth, FirebaseFirestore, and FirebaseStorage singletons.
+- `FirebaseModule`: FirebaseAuth, FirebaseFirestore, FirebaseStorage, FirebaseFunctions and FirebaseMessaging singletons.
 - `DatabaseModule`: Room `AppDb` (`app.db`, `fallbackToDestructiveMigration`) and `DanceSessionDao`.
 - `DispatcherModule`: `@IoDispatcher` and `@DefaultDispatcher` `CoroutineDispatcher`s (qualifiers in `IoQualifier.kt`), injected into repositories and ViewModels instead of hardcoding `Dispatchers`.
 - `WorkModule`: the app's `WorkManager`. `Chorevo` configures WorkManager with `HiltWorkerFactory`, so workers can be `@HiltWorker`s.
 Repositories are bound through their `@Inject` constructors and are `@Singleton`.
 
-ViewModels receive repositories through constructor injection. `VideoTemplateGenerationWorker` is a `@HiltWorker` with Firestore and Storage injected. `ReminderScheduler` is constructed inside `AppViewModel`.
+ViewModels receive repositories through constructor injection. `VideoTemplateGenerationWorker` is a `@HiltWorker` with Firestore, Storage and `VideoPoseTemplateGenerator` injected. `ReminderScheduler`, `PushTokens` and `VideoPoseTemplateGenerator` are injected `@Singleton`s; `ChorevoMessagingService` is an `@AndroidEntryPoint`, and the reminder BroadcastReceivers get their dependencies through `NotificationEntryPoint` (a Hilt `@EntryPoint`).
 
 ## 5. Data Storage
 
@@ -183,7 +183,7 @@ ViewModels receive repositories through constructor injection. `VideoTemplateGen
 Main collections:
 
 - `users/{uid}`: profile records (uid, email, role, displayName, photoUrl, lastSeen, username).
-- `users/{uid}/fcmTokens/{token}`: `{token, platform, updatedAt}` for push notifications, written by `notification/PushTokens` after sign-in and on token refresh (`ChorevoMessagingService.onNewToken`). Sign-out deletes the device token (`FirebaseMessaging.deleteToken`), and the function removes tokens that stop working.
+- `users/{uid}/fcmTokens/{token}`: `{token, platform, updatedAt}` for push notifications, written by `notification/PushTokens` (registered by `AppViewModel` whenever the signed-in user changes) and on token refresh (`ChorevoMessagingService.onNewToken`). Sign-out deletes the device token (`FirebaseMessaging.deleteToken`), and the function removes tokens that stop working.
 - `usernames/{handle}`: `{uid, createdAt}`; the document ID is the username, which makes it unique.
 - `users/{uid}/danceLearningSessions/{sessionId}`: learner session results with a nested `analysis` map.
 - `users/{uid}/friends/{friendUid}`: friend references (uid, displayName, photoUrl, addedAt).
@@ -275,7 +275,7 @@ Key fields:
 ### Dance Upload Flow
 
 1. Step 1 (Video): user picks a gallery video or records one. Step 2 (Cover): `CoverFramePicker` sets `UploadDraft.coverFrameMs`. Step 3 (Details): title, dance type, description.
-2. Step 4 (Dancers), "Analyze Dancers" or the "analyze in the background" checkbox: `VideoUploadsViewModel.analyzeDancers` runs `VideoPoseTemplateGenerator.generate` with the high-recall profile (8 fps, YOLO person detector, hands) on device; the user selects dancers and a default dancer and confirms.
+2. Step 4 (Dancers), "Analyze Dancers" or the "analyze in the background" checkbox: `VideoUploadsViewModel.analyzeDancers` runs the injected `VideoPoseTemplateGenerator.generate` with the high-recall profile (8 fps, YOLO person detector, hands) on device; the user selects dancers and a default dancer and confirms.
 3. Step 5 (Publish): `VideoUploadsViewModel.uploadDance` gathers profile and draft data (including visibility and `coverFrameMs`); it uses `generateTemplate = false` when the review was confirmed and `true` (background analysis) otherwise.
 4. `VideoUploadsRepository` compresses the video (720p, up to 24 fps) and uploads the smaller of the original and compressed files.
 5. Video uploads to `danceVideos/{uid}/{danceId}.mp4`.
@@ -444,7 +444,7 @@ Rules:
 
 ### Template Generation
 
-`VideoPoseTemplateGenerator` (an `object`) runs on `Dispatchers.Default`. It:
+`VideoPoseTemplateGenerator` (an injected singleton) runs on the `@DefaultDispatcher`. It:
 
 - reads frames with `MediaMetadataRetriever` (up to 120 seconds of video; at least 5 fps for the standard profile and 8 fps for high-recall),
 - runs full-frame MediaPipe in VIDEO mode; per-crop inference uses IMAGE mode,
@@ -604,8 +604,9 @@ Deployment:
 - Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`); the Navigation Compose dependencies are declared but unused. This may become hard to scale if nested flows grow.
 - Package segments `ViewModel`, `Repository` and `Database` are mixed-case, `videouploads/repository` is lowercase, and the router files declare `package com.routes`. New packages should be lowercase and match their folders.
 - Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).
-- Leaderboard values are client-written; high-trust ranking would need server-side verification.
-- Template generation is compute-heavy and runs off the main thread (`Dispatchers.Default` or WorkManager).
+- Leaderboard values are computed by Cloud Functions from sessions, but practice scores themselves are computed on the phone; high-trust ranking would need server-side pose scoring.
+- Threading: template generation, template JSON parsing and serialising use the `@DefaultDispatcher`; file and media work uses the `@IoDispatcher` or `Dispatchers.IO`; live pose detection runs on the camera analysis thread. Firebase calls are already asynchronous.
+- `VideoUploadsRepository.uploadDance` and `GroupsRepository`'s post upload still take a `Context` from the caller (for compression and the cover frame) instead of the application context; `VideoCompressor`, `VideoMedia` and `VideoPlayerCache` are still `object`s.
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
 - Search is built on Firestore: candidates come from word-prefix tokens and trigrams, and are scored on the device, so it handles prefixes and small typos but not synonyms, stemming or relevance learned from usage. Results are capped (40 exact + 60 typo candidates per search). A hosted search service (Algolia, Typesense) would be the next step for a much larger library.
 - Older uploads have no `thumbnailUrl` (nothing generates thumbnails for existing videos); their grids decode a video frame and their link previews use the default image.
