@@ -8,6 +8,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
+import com.example.chorevo.core.Database.di.DefaultDispatcher
 import com.example.chorevo.core.VideoMedia
 import com.example.chorevo.core.VideoMedia.putFileWithProgress
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
@@ -21,7 +22,9 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 import javax.inject.Inject
@@ -31,7 +34,8 @@ import javax.inject.Singleton
 class VideoUploadsRepository @Inject constructor(
     private val db: FirebaseFirestore,
     private val storage: FirebaseStorage,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher
 ) {
 
     // ============================================================
@@ -198,9 +202,12 @@ class VideoUploadsRepository @Inject constructor(
             if (confirmedTemplate != null) {
                 onStageChanged?.invoke("Saving confirmed dancer template")
                 val templateStoragePath = PoseTemplateStorage.jsonPath(uid, danceId)
-                val templateJsonBytes = PoseTemplateJson
-                    .toJson(confirmedTemplate)
-                    .toByteArray(Charsets.UTF_8)
+                // Templates can be several MB; serialise off the main thread.
+                val templateJsonBytes = withContext(defaultDispatcher) {
+                    PoseTemplateJson
+                        .toJson(confirmedTemplate)
+                        .toByteArray(Charsets.UTF_8)
+                }
 
                 storage.reference
                     .child(templateStoragePath)
