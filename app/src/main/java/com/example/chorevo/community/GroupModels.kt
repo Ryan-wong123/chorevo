@@ -2,7 +2,7 @@ package com.example.chorevo.community
 
 import android.net.Uri
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.firebase.Repository.UserSearchResult
+import com.example.chorevo.firebase.repository.UserSearchResult
 
 /** A dance group. Public groups are listed and open to anyone; private ones need an invite code. */
 data class DanceGroup(

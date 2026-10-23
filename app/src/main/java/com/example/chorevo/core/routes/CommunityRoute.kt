@@ -3,7 +3,7 @@ package com.example.chorevo.core.routes
 import androidx.compose.runtime.Composable
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.chorevo.community.GroupsScreen
-import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.community.viewmodel.GroupsViewModel
 import com.example.chorevo.firebase.UserProfile
 
 @Composable

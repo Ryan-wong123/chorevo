@@ -95,7 +95,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTrack
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 
 /** Displays the video upload activity screen. */
 @OptIn(ExperimentalMaterial3Api::class)

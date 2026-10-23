@@ -63,7 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
-import com.example.chorevo.leaderboard.ViewModel.LeaderboardViewModel
+import com.example.chorevo.leaderboard.viewmodel.LeaderboardViewModel
 
 /** Displays the leaderboard screen. */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)

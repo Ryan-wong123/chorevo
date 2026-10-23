@@ -73,7 +73,7 @@ import com.example.chorevo.core.ShimmerGrid
 import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.core.VideoThumbnailTile
 import com.example.chorevo.core.rememberFeedPlayerFactory
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 
 /** Which uploads a grid shows; null keeps the classic card list. */
 enum class UploadsGridFilter { PUBLIC, PRIVATE }

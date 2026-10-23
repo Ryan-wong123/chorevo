@@ -1,6 +1,6 @@
 package com.example.chorevo.firebase
 
-import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
+import com.example.chorevo.firebase.repository.FirebaseAuthRepository
 import com.example.chorevo.testing.MainDispatcherRule
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.auth.AuthResult

@@ -15,12 +15,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Modifier
-import com.example.chorevo.core.ViewModel.AppViewModel
-import com.example.chorevo.core.ViewModel.ThemeMode
+import com.example.chorevo.core.viewmodel.AppViewModel
+import com.example.chorevo.core.viewmodel.ThemeMode
 import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.notification.ChorevoMessagingService
 import com.example.chorevo.ui.theme.ChorevoTheme
-import com.routes.AppRouter
+import com.example.chorevo.core.routes.AppRouter
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map

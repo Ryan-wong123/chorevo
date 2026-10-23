@@ -3,7 +3,7 @@ package com.example.chorevo.videouploads
 import android.content.Context
 import android.net.Uri
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
+import com.example.chorevo.firebase.repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.posedetection.PoseAnalysisWarning
 import com.example.chorevo.posedetection.PoseBounds
@@ -15,9 +15,9 @@ import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.testing.MainDispatcherRule
-import com.example.chorevo.videouploads.ViewModel.DancerReviewUiState
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
-import com.example.chorevo.videouploads.ViewModel.confirmedTemplate
+import com.example.chorevo.videouploads.viewmodel.DancerReviewUiState
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.confirmedTemplate
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify

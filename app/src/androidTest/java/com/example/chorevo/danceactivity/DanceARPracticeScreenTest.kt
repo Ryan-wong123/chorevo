@@ -2,7 +2,7 @@ package com.example.chorevo.danceactivity
 
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
-import com.example.chorevo.danceactivity.ViewModel.PracticeViewModel
+import com.example.chorevo.danceactivity.viewmodel.PracticeViewModel
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
@@ -14,14 +14,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
-import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
-import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.danceactivity.viewmodel.AchievementViewModel
+import com.example.chorevo.danceactivity.repository.FirebaseStreakRepository
+import com.example.chorevo.weeklychallenge.viewmodel.WeeklyChallengeViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.stubFeed
-import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
-import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.dancelibrarylist.repository.DanceLibraryRepository
+import com.example.chorevo.leaderboard.repository.LeaderboardRepository
 import com.example.chorevo.posedetection.PoseFrame
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack

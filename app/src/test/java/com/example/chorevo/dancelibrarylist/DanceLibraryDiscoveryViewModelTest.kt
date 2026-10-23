@@ -1,9 +1,9 @@
 package com.example.chorevo.dancelibrarylist
 
-import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
-import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
-import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.danceactivity.repository.FirebaseStreakRepository
+import com.example.chorevo.dancelibrarylist.repository.DanceLibraryRepository
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
+import com.example.chorevo.leaderboard.repository.LeaderboardRepository
 import com.example.chorevo.testing.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify

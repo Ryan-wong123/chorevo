@@ -65,7 +65,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.community.viewmodel.GroupsViewModel
 import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.firebase.UserProfile

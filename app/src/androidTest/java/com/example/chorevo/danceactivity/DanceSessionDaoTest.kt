@@ -1,11 +1,11 @@
 package com.example.chorevo.danceactivity
 
 import android.content.Context
-import androidx.room.Database
+import androidx.room.database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.test.platform.app.InstrumentationRegistry
-import com.example.chorevo.danceactivity.Repository.DanceSessionDao
+import com.example.chorevo.danceactivity.repository.DanceSessionDao
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After

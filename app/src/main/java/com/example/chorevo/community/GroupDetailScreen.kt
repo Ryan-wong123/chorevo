@@ -99,7 +99,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
 import coil.compose.AsyncImage
-import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.community.viewmodel.GroupsViewModel
 import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.ShimmerList
@@ -107,7 +107,7 @@ import com.example.chorevo.core.rememberFeedPlayerFactory
 import com.example.chorevo.core.isTrustedMediaUrl
 import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.firebase.Repository.UserSearchResult
+import com.example.chorevo.firebase.repository.UserSearchResult
 import com.example.chorevo.ui.theme.ChorevoTheme
 import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.videouploads.VideoCaptureFileProvider

@@ -5,7 +5,7 @@
 Chorevo is a single-module native Android application:
 
 - Module: `:app`
-- Package: `com.example.chorevo` (the router files in `core/routes` declare `package com.routes`)
+- Package: `com.example.chorevo`; every package is lowercase and matches its folder (for example `danceactivity.viewmodel`, `community.repository`, `core.database.di`, `core.routes`)
 - UI: Jetpack Compose and Material 3, with the Chorevo design system in `ui/theme`
 - App architecture: MVVM-style presentation with repositories for data access
 - Dependency injection: Hilt
@@ -140,7 +140,7 @@ Repositories isolate Firebase, Room, and Storage APIs:
 Shared infrastructure includes:
 
 - `AppDb` and `DanceSessionDao` for Room.
-- Hilt modules under `core/Database/di`.
+- Hilt modules under `core/database/di`.
 - `AutoRetryUploaderService` (`firebase`): a plain injected class (not an Android `Service`) that re-uploads an account's unsynced sessions.
 - Camera helpers (`CameraPreview`, which owns one `CameraBinder` and releases the camera when it leaves the screen, `CameraUseCaseFactory`) and video player helpers under `core`: `FeedPlayerFactory` (injected; players share one 200 MB `SimpleCache` from `VideoCacheModule`; composables get it with `rememberFeedPlayerFactory()`) and `SharedPlayerView`. `VideoCompressor` (videouploads) and `VideoFrames` (cover images, `core`) are injected into the upload repositories.
 - `VideoTemplateGenerationWorker` and `VideoCompressor` under `videouploads`.
@@ -166,7 +166,7 @@ Navigation chrome: `AppNavigationRoute` floats `AppBottomNavBar` (a 64dp translu
 
 ## 4. Dependency Injection
 
-Hilt modules live in `core/Database/di`:
+Hilt modules live in `core/database/di`:
 
 - `FirebaseModule`: FirebaseAuth, FirebaseFirestore, FirebaseStorage, FirebaseFunctions and FirebaseMessaging singletons.
 - `DatabaseModule`: Room `AppDb` (`app.db`, `fallbackToDestructiveMigration`) and `DanceSessionDao`.
@@ -602,7 +602,6 @@ Deployment:
 ## 10. Known Architectural Considerations
 
 - Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`), without Navigation Compose. This may become hard to scale if nested flows grow.
-- Package segments `ViewModel`, `Repository` and `Database` are mixed-case, `videouploads/repository` is lowercase, and the router files declare `package com.routes`. New packages should be lowercase and match their folders.
 - Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).
 - Leaderboard values are computed by Cloud Functions from sessions, but practice scores themselves are computed on the phone; high-trust ranking would need server-side pose scoring.
 - Threading: template generation, template JSON parsing and serialising use the `@DefaultDispatcher`; file and media work uses the `@IoDispatcher` or `Dispatchers.IO`; live pose detection runs on the camera analysis thread. Firebase calls are already asynchronous.
