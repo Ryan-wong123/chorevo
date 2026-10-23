@@ -2,7 +2,7 @@ package com.example.chorevo.community.viewmodel
 
 import android.content.Context
 import android.net.Uri
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.community.GroupInvitation
 import com.example.chorevo.community.GroupPost

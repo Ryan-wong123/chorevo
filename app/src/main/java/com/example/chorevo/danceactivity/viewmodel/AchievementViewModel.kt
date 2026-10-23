@@ -1,7 +1,7 @@
 package com.example.chorevo.danceactivity.viewmodel
 
 
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.danceactivity.ALL_BADGES
 import com.example.chorevo.danceactivity.repository.AchievementRepository

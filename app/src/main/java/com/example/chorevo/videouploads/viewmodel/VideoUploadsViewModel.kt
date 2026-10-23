@@ -2,7 +2,7 @@ package com.example.chorevo.videouploads.viewmodel
 
 import android.content.Context
 import android.net.Uri
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.repository.FirebaseAuthRepository

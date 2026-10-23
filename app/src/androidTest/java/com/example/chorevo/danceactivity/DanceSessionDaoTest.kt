@@ -1,7 +1,7 @@
 package com.example.chorevo.danceactivity
 
 import android.content.Context
-import androidx.room.database
+import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.test.platform.app.InstrumentationRegistry

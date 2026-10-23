@@ -1,6 +1,6 @@
 package com.example.chorevo.firebase.viewmodel
 
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.firebase.repository.UsernameRepository
 import com.example.chorevo.firebase.Usernames

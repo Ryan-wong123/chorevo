@@ -1,6 +1,6 @@
 package com.example.chorevo.firebase.viewmodel
 
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.danceactivity.repository.FirebaseStreakRepository
 import com.example.chorevo.danceactivity.repository.PointsRepository
