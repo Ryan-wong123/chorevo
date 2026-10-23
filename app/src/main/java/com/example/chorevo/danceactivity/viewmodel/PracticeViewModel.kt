@@ -4,7 +4,7 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Bitmap
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.analytics.FeedbackMessage
 import com.example.chorevo.analytics.PerformanceSegment

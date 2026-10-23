@@ -1,7 +1,7 @@
 package com.example.chorevo.core.database
 
 import android.content.Context
-import androidx.room.database
+import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase

@@ -4,7 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.SavedStateHandle
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.core.LocalUserFiles
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
@@ -81,9 +81,14 @@ class AppViewModel @Inject constructor(
             // Back to practice if Android killed the app while practising
             // (a link that opened the app takes precedence).
             if (p != null && practiceToRestore != null && pendingDeepLinkDanceId == null) {
-                restorePractice(practiceToRestore)
+                // In parallel, so it doesn't hold up the rest of start-up.
+                viewModelScope.launch {
+                    restorePractice(practiceToRestore)
+                    rememberPracticeDance()
+                }
+            } else {
+                rememberPracticeDance()
             }
-            rememberPracticeDance()
 
             if (p != null) {
                 retryUploader.retryUnsyncedSessions(p.uid)
@@ -354,7 +359,7 @@ class AppViewModel @Inject constructor(
         }
     }
 
-    /** Reloads [danceId] with its template and reopens practice; stays on home if it fails. */
+    /** Reloads [danceId] with its template and reopens practice; stays put if it fails. */
     private suspend fun restorePractice(danceId: String) {
         val dance = danceLibraryRepository
             .getDanceById(danceId, _uiState.value.profile?.uid)
@@ -364,7 +369,11 @@ class AppViewModel @Inject constructor(
         } else {
             danceLibraryRepository.loadTemplate(dance).getOrNull()?.let { dance.copy(template = it) } ?: return
         }
-        pickDance(withTemplate)
+        // Only if the user hasn't gone somewhere else while it loaded.
+        val state = _uiState.value
+        if (state.screen == Screen.HOME && state.selectedDanceItem == null && state.sharedDance == null) {
+            pickDance(withTemplate)
+        }
     }
 
     /** Opens the selected dance and moves the app into practice mode for that routine. */

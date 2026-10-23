@@ -1,6 +1,6 @@
 package com.example.chorevo.analytics.viewmodel
 
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.analytics.DanceDashboardArgs
 import com.example.chorevo.analytics.DanceSessionDetail

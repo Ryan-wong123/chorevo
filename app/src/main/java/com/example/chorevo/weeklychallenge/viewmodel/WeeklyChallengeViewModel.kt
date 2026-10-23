@@ -1,6 +1,6 @@
 package com.example.chorevo.weeklychallenge.viewmodel
 
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.danceactivity.SessionRewards
 import com.example.chorevo.weeklychallenge.ChallengeType

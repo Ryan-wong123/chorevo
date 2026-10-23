@@ -1,7 +1,7 @@
 package com.example.chorevo.leaderboard.viewmodel
 
 import android.util.Log
-import androidx.lifecycle.viewmodel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.leaderboard.LeaderboardEntry
 import com.example.chorevo.leaderboard.LeaderboardMetric
