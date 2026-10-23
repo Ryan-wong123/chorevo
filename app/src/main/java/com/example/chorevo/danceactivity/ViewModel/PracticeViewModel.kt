@@ -3,6 +3,7 @@ package com.example.chorevo.danceactivity.ViewModel
 import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Bitmap
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.analytics.FeedbackMessage
@@ -111,8 +112,18 @@ data class PracticeSubmission(
 class PracticeViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val personalBests: PersonalBestStore,
-    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val savedState: SavedStateHandle = SavedStateHandle()
 ) : ViewModel() {
+
+    // The dancer, mode and step survive Android killing the app (see AppViewModel,
+    // which reopens practice for the same dance).
+    private companion object {
+        const val KEY_DANCE_ID = "practice.danceId"
+        const val KEY_TRACK_ID = "practice.trackId"
+        const val KEY_MODE = "practice.mode"
+        const val KEY_STEP = "practice.step"
+    }
 
     private val _uiState = MutableStateFlow(PracticeUiState())
     val uiState: StateFlow<PracticeUiState> = _uiState.asStateFlow()
@@ -137,6 +148,10 @@ class PracticeViewModel @Inject constructor(
     /** Shows [item]. Calling it again for the same dance keeps the current state. */
     fun bind(item: DanceLibraryModel, testMode: Boolean) {
         if (boundDanceId == item.danceId && this.testMode == testMode) return
+        val restoring = savedState.get<String>(KEY_DANCE_ID) == item.danceId
+        val savedTrackId = if (restoring) savedState.get<String>(KEY_TRACK_ID) else null
+        val savedMode = if (restoring) savedState.get<String>(KEY_MODE) else null
+        val savedStep = if (restoring) savedState.get<Int>(KEY_STEP) else null
         release()
         boundDanceId = item.danceId
         this.item = item
@@ -153,7 +168,17 @@ class PracticeViewModel @Inject constructor(
                 selectionPreview = template?.selectionPreview
             )
         )
-        selectTrackInternal(template?.resolveTrack(null)?.trackId)
+        selectTrackInternal(savedTrackId ?: template?.resolveTrack(null)?.trackId)
+        val segments = _uiState.value.practiceSegments
+        if (savedMode == PracticeMode.STEP_BY_STEP.name && segments.size > 1) {
+            _uiState.update {
+                it.copy(
+                    practiceMode = PracticeMode.STEP_BY_STEP,
+                    currentStepIndex = (savedStep ?: 0).coerceIn(0, segments.lastIndex)
+                )
+            }
+            updateActiveTemplate()
+        }
         // Test mode starts "practising" straight away, as before.
         if (testMode) {
             tsStart = System.currentTimeMillis()
@@ -176,6 +201,7 @@ class PracticeViewModel @Inject constructor(
         activeTemplate = null
         item = null
         boundDanceId = null
+        listOf(KEY_DANCE_ID, KEY_TRACK_ID, KEY_MODE, KEY_STEP).forEach { savedState.remove<Any>(it) }
         _uiState.value = PracticeUiState()
     }
 
@@ -397,6 +423,7 @@ class PracticeViewModel @Inject constructor(
     }
 
     private fun updateActiveTemplate() {
+        saveSelection()
         val segment = _uiState.value.currentPracticeSegment
         activeTemplate = if (segment != null) {
             sliceTemplateForStep(selectedTrackTemplate, segment) ?: selectedTrackTemplate
@@ -404,6 +431,15 @@ class PracticeViewModel @Inject constructor(
             selectedTrackTemplate
         }
         newEvaluators()
+    }
+
+    private fun saveSelection() {
+        val danceId = boundDanceId ?: return
+        val state = _uiState.value
+        savedState[KEY_DANCE_ID] = danceId
+        savedState[KEY_TRACK_ID] = state.selectedReferenceTrack?.trackId
+        savedState[KEY_MODE] = state.practiceMode.name
+        savedState[KEY_STEP] = state.currentStepIndex
     }
 
     /** Fresh scoring for a new attempt, so earlier attempts don't count. */

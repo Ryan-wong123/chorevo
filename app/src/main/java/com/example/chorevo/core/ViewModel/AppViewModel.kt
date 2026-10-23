@@ -3,6 +3,7 @@ package com.example.chorevo.core.ViewModel
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.core.LocalUserFiles
@@ -33,8 +34,14 @@ class AppViewModel @Inject constructor(
     private val settings: NotificationPreferencesDataStore,
     private val danceLibraryRepository: DanceLibraryRepository,
     private val reminderScheduler: ReminderScheduler,
-    private val pushTokens: PushTokens
+    private val pushTokens: PushTokens,
+    private val savedState: SavedStateHandle = SavedStateHandle()
 ) : ViewModel() {
+
+    private companion object {
+        /** The dance being practised, so practice reopens after Android kills the app. */
+        const val KEY_PRACTICE_DANCE_ID = "practiceDanceId"
+    }
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -61,6 +68,7 @@ class AppViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            val practiceToRestore: String? = savedState[KEY_PRACTICE_DANCE_ID]
             val p = authRepository.getCurrentUserProfile()
             _uiState.update {
                 it.copy(
@@ -69,6 +77,13 @@ class AppViewModel @Inject constructor(
                     didAuthCheck = true
                 )
             }
+
+            // Back to practice if Android killed the app while practising
+            // (a link that opened the app takes precedence).
+            if (p != null && practiceToRestore != null && pendingDeepLinkDanceId == null) {
+                restorePractice(practiceToRestore)
+            }
+            rememberPracticeDance()
 
             if (p != null) {
                 retryUploader.retryUnsyncedSessions(p.uid)
@@ -327,6 +342,29 @@ class AppViewModel @Inject constructor(
                 deepLinkError = null
             )
         }
+    }
+
+    /** Keeps the id of the dance being practised in the saved state. */
+    private fun rememberPracticeDance() {
+        viewModelScope.launch {
+            _uiState
+                .map { if (it.screen == Screen.DANCE_PRACTICE) it.selectedDanceItem?.danceId else null }
+                .distinctUntilChanged()
+                .collect { danceId -> savedState[KEY_PRACTICE_DANCE_ID] = danceId }
+        }
+    }
+
+    /** Reloads [danceId] with its template and reopens practice; stays on home if it fails. */
+    private suspend fun restorePractice(danceId: String) {
+        val dance = danceLibraryRepository
+            .getDanceById(danceId, _uiState.value.profile?.uid)
+            .getOrNull() ?: return
+        val withTemplate = if (dance.template != null) {
+            dance
+        } else {
+            danceLibraryRepository.loadTemplate(dance).getOrNull()?.let { dance.copy(template = it) } ?: return
+        }
+        pickDance(withTemplate)
     }
 
     /** Opens the selected dance and moves the app into practice mode for that routine. */
