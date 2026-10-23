@@ -31,6 +31,7 @@ import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.posedetection.poseBounds
 import com.example.chorevo.core.Database.di.DefaultDispatcher
+import com.example.chorevo.core.Database.di.MainDispatcher
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -113,6 +114,8 @@ class PracticeViewModel @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val personalBests: PersonalBestStore,
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    // Runs the countdown and practice timer; tests pass a dispatcher they control.
+    @MainDispatcher private val timerDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val savedState: SavedStateHandle = SavedStateHandle()
 ) : ViewModel() {
 
@@ -507,7 +510,7 @@ class PracticeViewModel @Inject constructor(
                 status = if (segment != null) "Starting ${segment.title.lowercase()} in 3..." else "Starting in 3..."
             )
         }
-        countdownJob = viewModelScope.launch {
+        countdownJob = viewModelScope.launch(timerDispatcher) {
             for (next in 2 downTo 1) {
                 delay(1_000)
                 _uiState.update { it.copy(countdownSecondsRemaining = next, status = "Starting in $next...") }
@@ -533,7 +536,7 @@ class PracticeViewModel @Inject constructor(
 
     private fun startTimer() {
         timerJob?.cancel()
-        timerJob = viewModelScope.launch {
+        timerJob = viewModelScope.launch(timerDispatcher) {
             while (isActive && _uiState.value.isPracticeActive) {
                 onTimerTick(System.currentTimeMillis() - tsStart)
                 delay(33)
