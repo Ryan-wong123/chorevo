@@ -20,7 +20,7 @@ Chorevo is a single-module native Android application:
 - Push notifications: `notifyGroupInvitation` (trigger on creating `groupInvitations/{id}`) sends the invitee an FCM message (`notification` + `data {type: "group_invitation", groupId}`, Android channel `group_invites`) to the tokens in `users/{uid}/fcmTokens` and deletes tokens FCM reports as dead. Message building is in `functions/groups.js` (`invitationMessage`, `deadTokens`, tested).
 - Groups maintenance: `groupMemberCount` (trigger on `groups/{id}/members/{uid}`) keeps `memberCount`, and `groupCleanup` (on group delete) removes the invite code, pending invitations, group files and subcollections.
 
-Navigation Compose and Hilt Navigation Compose are declared as dependencies, but navigation uses a custom `Screen` enum rather than a `NavHost`. The Firebase Analytics SDK is included but logs no events.
+Navigation uses a custom `Screen` enum rather than Navigation Compose's `NavHost`; ViewModels come from `hiltViewModel()` (`androidx.hilt:hilt-lifecycle-viewmodel-compose`). The Firebase Analytics SDK is included but logs no events.
 
 The app starts in `Chorevo`, initializes Firebase/App Check, then `MainActivity` hosts the Compose tree and calls `AppRouter`.
 
@@ -601,7 +601,7 @@ Deployment:
 
 ## 10. Known Architectural Considerations
 
-- Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`); the Navigation Compose dependencies are declared but unused. This may become hard to scale if nested flows grow.
+- Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`), without Navigation Compose. This may become hard to scale if nested flows grow.
 - Package segments `ViewModel`, `Repository` and `Database` are mixed-case, `videouploads/repository` is lowercase, and the router files declare `package com.routes`. New packages should be lowercase and match their folders.
 - Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).
 - Leaderboard values are computed by Cloud Functions from sessions, but practice scores themselves are computed on the phone; high-trust ranking would need server-side pose scoring.
@@ -613,7 +613,6 @@ Deployment:
 - Like counts and trending scores are written by Cloud Functions, so they lag a like by a second or two, and trending ages every 6 hours.
 - Older app builds query the feed with `enabled == true` only; once the privacy rules are deployed that query is denied, so those builds show an empty feed until updated.
 - App Links: `public/.well-known/assetlinks.json` is UTF-8 and deployed with Hosting (the old `**/.*` ignore rule that skipped it is gone). Verification only succeeds for builds signed by a certificate whose SHA-256 fingerprint is listed there; CI builds are signed with a throwaway debug key per run, so links from CI APKs open the chooser or browser.
-- `PoseEstimator`/`NoOpPoseEstimator` and `PoseTemplateRepository` in `posedetection` are unused scaffolding.
 
 ## 11. Multi-Dancer AI Architecture
 

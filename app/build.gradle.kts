@@ -111,7 +111,7 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     ksp(libs.hilt.android.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
     implementation(libs.androidx.hilt.work)
     ksp(libs.androidx.hilt.compiler)
 
@@ -152,7 +152,6 @@ dependencies {
     implementation(libs.tensorflow.lite)
     implementation("io.github.sceneview:sceneview:2.2.1")
 
-    implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
 
     // Group invite QR codes: scanning (Play services) and generating (ZXing)
