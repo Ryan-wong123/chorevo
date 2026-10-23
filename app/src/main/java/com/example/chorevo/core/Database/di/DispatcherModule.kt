@@ -20,4 +20,9 @@ object DispatcherModule {
     @Provides
     @DefaultDispatcher
     fun provideDefaultDispatcher(): CoroutineDispatcher = Dispatchers.Default
+
+    /** Provides the main-thread dispatcher. */
+    @Provides
+    @MainDispatcher
+    fun provideMainDispatcher(): CoroutineDispatcher = Dispatchers.Main.immediate
 }

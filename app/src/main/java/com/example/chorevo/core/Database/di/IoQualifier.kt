@@ -11,3 +11,9 @@ annotation class IoDispatcher
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class DefaultDispatcher
+
+
+/** The main-thread dispatcher (Dispatchers.Main.immediate); tests can replace it. */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class MainDispatcher

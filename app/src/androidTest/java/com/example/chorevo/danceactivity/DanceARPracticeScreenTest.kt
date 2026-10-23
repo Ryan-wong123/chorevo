@@ -1,5 +1,7 @@
 package com.example.chorevo.danceactivity
 
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import com.example.chorevo.danceactivity.ViewModel.PracticeViewModel
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.activity.ComponentActivity
@@ -45,6 +47,8 @@ class DanceARPracticeScreenTest {
     private lateinit var achievementVm: AchievementViewModel
     private lateinit var weeklyChallengeVm: WeeklyChallengeViewModel
     private lateinit var practiceVm: PracticeViewModel
+    // Drives PracticeViewModel's countdown and timer, so the test controls time.
+    private lateinit var practiceScheduler: TestCoroutineScheduler
 
     // Shared test data
     private lateinit var item: DanceLibraryModel
@@ -82,7 +86,12 @@ class DanceARPracticeScreenTest {
         )
 
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        practiceVm = PracticeViewModel(context, PersonalBestStore(context))
+        practiceScheduler = TestCoroutineScheduler()
+        practiceVm = PracticeViewModel(
+            context,
+            PersonalBestStore(context),
+            timerDispatcher = StandardTestDispatcher(practiceScheduler)
+        )
 
         item = DanceLibraryModel(
             danceId = "d1",
@@ -164,14 +173,12 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithTag("practiceStartCountdown").assertIsDisplayed()
         composeRule.onNodeWithText("3").assertIsDisplayed()
 
-        composeRule.mainClock.advanceTimeBy(3_500)
-        // The countdown runs in PracticeViewModel on real time, so let frames run while it finishes.
+        // Run the ViewModel's 3-second countdown, then let the screen recompose.
+        practiceScheduler.advanceTimeBy(3_100)
         composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
 
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithTag("practiceStartCountdown").fetchSemanticsNodes().isEmpty()
-        }
+        composeRule.onAllNodesWithTag("practiceStartCountdown").assertCountEquals(0)
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
         composeRule.onNodeWithText("Back").assertIsDisplayed()
