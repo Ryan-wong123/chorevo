@@ -132,7 +132,7 @@ Repositories isolate Firebase, Room, and Storage APIs:
 - `FirebaseStreakRepository`, `AchievementRepository`, `PointsRepository`: read the streak, badges and points (written only by Cloud Functions).
 - `SessionRewardsRepository`: observes `users/{uid}/sessionRewards/{sessionId}`, the server's result for one session.
 - `UsernameRepository`: availability checks, a free suggestion from the display name, claiming/changing a username (one batch: `usernames/{new}`, `users/{uid}.username`, delete `usernames/{old}`), and prefix search for invites. Format rules live in `firebase/Usernames.kt`.
-- `GroupsRepository`: groups, members, posts and replies (snapshot listeners), the user's invitations by username (send, accept as one batch with the membership, decline), creating a group with its owner membership and invite in one batch, joining by invite code via `groupInvites/{code}`, and group video uploads (720p compression, cover frame via `core/VideoMedia`).
+- `GroupsRepository`: groups, members, posts and replies (snapshot listeners), the user's invitations by username (send, accept as one batch with the membership, decline), creating a group with its owner membership and invite in one batch, joining by invite code via `groupInvites/{code}`, and group video uploads (720p compression, cover frame via `core/VideoFrames`).
 - `WeeklyChallengeRepository`: reads this week's challenges; the first time in a week it calls the `weeklyChallenges` callable function to create them (via `FirebaseFunctions`).
 
 ### Infrastructure Layer
@@ -142,7 +142,7 @@ Shared infrastructure includes:
 - `AppDb` and `DanceSessionDao` for Room.
 - Hilt modules under `core/Database/di`.
 - `AutoRetryUploaderService` (`firebase`): a plain injected class (not an Android `Service`) that re-uploads an account's unsynced sessions.
-- Camera helpers (`CameraPreview`, which owns one `CameraBinder` and releases the camera when it leaves the screen, `CameraUseCaseFactory`) and video player helpers (`FeedPlayerFactory`, `VideoPlayerCache`, `SharedPlayerView`) under `core`.
+- Camera helpers (`CameraPreview`, which owns one `CameraBinder` and releases the camera when it leaves the screen, `CameraUseCaseFactory`) and video player helpers under `core`: `FeedPlayerFactory` (injected; players share one 200 MB `SimpleCache` from `VideoCacheModule`; composables get it with `rememberFeedPlayerFactory()`) and `SharedPlayerView`. `VideoCompressor` (videouploads) and `VideoFrames` (cover images, `core`) are injected into the upload repositories.
 - `VideoTemplateGenerationWorker` and `VideoCompressor` under `videouploads`.
 - Notification scheduling under `notification` (`ReminderScheduler`, `ReminderReceiver`, `BootReceiver`, `NotificationChannels`, `NotificationPreferencesDataStore`).
 - Pose detection and scoring under `posedetection`.
@@ -606,7 +606,7 @@ Deployment:
 - Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).
 - Leaderboard values are computed by Cloud Functions from sessions, but practice scores themselves are computed on the phone; high-trust ranking would need server-side pose scoring.
 - Threading: template generation, template JSON parsing and serialising use the `@DefaultDispatcher`; file and media work uses the `@IoDispatcher` or `Dispatchers.IO`; live pose detection runs on the camera analysis thread. Firebase calls are already asynchronous.
-- `VideoUploadsRepository.uploadDance` and `GroupsRepository`'s post upload take a `Context` parameter (their ViewModels pass the application context) for compression and the cover frame; `VideoCompressor`, `VideoMedia` and `VideoPlayerCache` are still `object`s.
+- `VideoUploadsRepository.uploadDance` and `GroupsRepository`'s post upload take a `Context` parameter (their ViewModels pass the application context) to read the picked video's size.
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
 - Search is built on Firestore: candidates come from word-prefix tokens and trigrams, and are scored on the device, so it handles prefixes and small typos but not synonyms, stemming or relevance learned from usage. Results are capped (40 exact + 60 typo candidates per search). A hosted search service (Algolia, Typesense) would be the next step for a much larger library.
 - Older uploads have no `thumbnailUrl` (nothing generates thumbnails for existing videos); their grids decode a video frame and their link previews use the default image.

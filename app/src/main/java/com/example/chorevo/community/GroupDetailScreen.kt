@@ -103,7 +103,7 @@ import com.example.chorevo.community.ViewModel.GroupsViewModel
 import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.ShimmerList
-import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.rememberFeedPlayerFactory
 import com.example.chorevo.core.isTrustedMediaUrl
 import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
@@ -1000,8 +1000,9 @@ private fun InviteQrDialog(group: DanceGroup, onShare: () -> Unit, onDismiss: ()
 @Composable
 private fun VideoDialog(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val feedPlayerFactory = rememberFeedPlayerFactory()
     val player = remember(url) {
-        createCachedFeedExoPlayer(context, repeat = true).apply {
+        feedPlayerFactory.create(repeat = true).apply {
             setMediaItem(MediaItem.fromUri(url))
             prepare()
             playWhenReady = true

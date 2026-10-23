@@ -9,8 +9,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
 import com.example.chorevo.core.Database.di.DefaultDispatcher
-import com.example.chorevo.core.VideoMedia
-import com.example.chorevo.core.VideoMedia.putFileWithProgress
+import com.example.chorevo.core.VideoFrames
+import com.example.chorevo.core.putFileWithProgress
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
@@ -35,6 +35,8 @@ class VideoUploadsRepository @Inject constructor(
     private val db: FirebaseFirestore,
     private val storage: FirebaseStorage,
     private val workManager: WorkManager,
+    private val videoCompressor: VideoCompressor,
+    private val videoFrames: VideoFrames,
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher
 ) {
 
@@ -96,8 +98,7 @@ class VideoUploadsRepository @Inject constructor(
             // 1) Compress video
             onStageChanged?.invoke("Compressing video")
             onProgress?.invoke(0.1f)
-            compressedFile = VideoCompressor.compressVideo(
-                context = ctx,
+            compressedFile = videoCompressor.compressVideo(
                 inputUri = videoUri,
                 outputHeight = 720,
                 maxFrameRate = 24     // use 30 if needed
@@ -144,7 +145,7 @@ class VideoUploadsRepository @Inject constructor(
             // an upload without one still works (grids fall back to the video).
             onStageChanged?.invoke("Saving cover image")
             val thumbnailUrl = runCatching {
-                uploadThumbnail(ctx, videoUri, uid, danceId, coverFrameMs)
+                uploadThumbnail(videoUri, uid, danceId, coverFrameMs)
             }.getOrNull().orEmpty()
 
             // 4) Save Firestore doc immediately, then build template in background.
@@ -402,13 +403,12 @@ class VideoUploadsRepository @Inject constructor(
      * most [THUMBNAIL_MAX_SIDE] px, uploads it as a JPEG and returns its URL.
      */
     private suspend fun uploadThumbnail(
-        context: Context,
         videoUri: Uri,
         uid: String,
         danceId: String,
         coverFrameMs: Long
     ): String {
-        val jpeg = VideoMedia.coverJpeg(context, videoUri, coverFrameMs, THUMBNAIL_MAX_SIDE, THUMBNAIL_JPEG_QUALITY)
+        val jpeg = videoFrames.coverJpeg(videoUri, coverFrameMs, THUMBNAIL_MAX_SIDE, THUMBNAIL_JPEG_QUALITY)
         val ref = storage.reference.child(thumbnailPath(uid, danceId))
         ref.putBytes(jpeg, StorageMetadata.Builder().setContentType("image/jpeg").build()).await()
         return ref.downloadUrl.await().toString()
