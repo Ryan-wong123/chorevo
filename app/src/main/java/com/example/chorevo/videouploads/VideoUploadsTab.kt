@@ -72,7 +72,7 @@ import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.ShimmerGrid
 import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.core.VideoThumbnailTile
-import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.rememberFeedPlayerFactory
 import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
 
 /** Which uploads a grid shows; null keeps the classic card list. */
@@ -492,8 +492,9 @@ private fun VideoPreviewPlayer(
 ) {
     val context = LocalContext.current
 
+    val feedPlayerFactory = rememberFeedPlayerFactory()
     val exoPlayer = remember {
-        createCachedFeedExoPlayer(context = context, repeat = true)
+        feedPlayerFactory.create(repeat = true)
     }
 
     LaunchedEffect(videoUrl) {

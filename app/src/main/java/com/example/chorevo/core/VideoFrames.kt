@@ -6,27 +6,34 @@ import android.media.MediaMetadataRetriever
 import android.net.Uri
 import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.StorageReference
-import kotlinx.coroutines.Dispatchers
+import com.example.chorevo.core.Database.di.IoDispatcher
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import javax.inject.Inject
+import javax.inject.Singleton
 
-/** Shared helpers for uploading videos and their cover thumbnails. */
-object VideoMedia {
+/** Cover images for uploaded videos. */
+@Singleton
+class VideoFrames @Inject constructor(
+    @ApplicationContext private val context: Context,
+    @IoDispatcher private val ioDispatcher: CoroutineDispatcher
+) {
 
     /**
      * JPEG of the frame at [timeMs] in a local video (the first frame if that
      * fails), scaled so its longer side is at most [maxSide] px.
      */
     suspend fun coverJpeg(
-        context: Context,
         videoUri: Uri,
         timeMs: Long,
         maxSide: Int = 720,
         quality: Int = 82
-    ): ByteArray = withContext(Dispatchers.IO) {
+    ): ByteArray = withContext(ioDispatcher) {
         val retriever = MediaMetadataRetriever()
         try {
             retriever.setDataSource(context, videoUri)
@@ -47,29 +54,29 @@ object VideoMedia {
             retriever.release()
         }
     }
+}
 
-    /**
-     * Uploads [uri] to this reference, reporting progress mapped onto
-     * [baseProgress]..[maxProgress]. Cancelling the coroutine cancels the upload.
-     */
-    suspend fun StorageReference.putFileWithProgress(
-        uri: Uri,
-        metadata: StorageMetadata,
-        baseProgress: Float = 0f,
-        maxProgress: Float = 1f,
-        onProgress: ((Float) -> Unit)? = null
-    ) = suspendCancellableCoroutine<Unit> { cont ->
-        val task = putFile(uri, metadata)
-        task
-            .addOnProgressListener { snapshot ->
-                val total = snapshot.totalByteCount.takeIf { it > 0L } ?: return@addOnProgressListener
-                val fraction = snapshot.bytesTransferred.toFloat() / total.toFloat()
-                onProgress?.invoke(baseProgress + (maxProgress - baseProgress) * fraction.coerceIn(0f, 1f))
-            }
-            .addOnSuccessListener { if (cont.isActive) cont.resume(Unit) }
-            .addOnFailureListener { error -> if (cont.isActive) cont.resumeWithException(error) }
-        cont.invokeOnCancellation { task.cancel() }
-    }
+/**
+ * Uploads [uri] to this reference, reporting progress mapped onto
+ * [baseProgress]..[maxProgress]. Cancelling the coroutine cancels the upload.
+ */
+suspend fun StorageReference.putFileWithProgress(
+    uri: Uri,
+    metadata: StorageMetadata,
+    baseProgress: Float = 0f,
+    maxProgress: Float = 1f,
+    onProgress: ((Float) -> Unit)? = null
+) = suspendCancellableCoroutine<Unit> { cont ->
+    val task = putFile(uri, metadata)
+    task
+        .addOnProgressListener { snapshot ->
+            val total = snapshot.totalByteCount.takeIf { it > 0L } ?: return@addOnProgressListener
+            val fraction = snapshot.bytesTransferred.toFloat() / total.toFloat()
+            onProgress?.invoke(baseProgress + (maxProgress - baseProgress) * fraction.coerceIn(0f, 1f))
+        }
+        .addOnSuccessListener { if (cont.isActive) cont.resume(Unit) }
+        .addOnFailureListener { error -> if (cont.isActive) cont.resumeWithException(error) }
+    cont.invokeOnCancellation { task.cancel() }
 }
 
 /**

@@ -54,7 +54,7 @@ import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.LocalFloatingBarInset
 import com.example.chorevo.core.LocalFloatingBarState
 import com.example.chorevo.core.SharedPlayerView
-import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.rememberFeedPlayerFactory
 import com.example.chorevo.core.rememberHaptics
 import com.example.chorevo.core.shimmer
 import com.example.chorevo.core.share.ShareBottomSheet
@@ -144,12 +144,13 @@ fun DanceLibraryListView(
         if (pagerState.currentPage != 0) pagerState.scrollToPage(0)
     }
 
+    val feedPlayerFactory = rememberFeedPlayerFactory()
     val mainPlayer = remember {
-        createCachedFeedExoPlayer(context = context, repeat = true)
+        feedPlayerFactory.create(repeat = true)
     }
 
     val preloadPlayer = remember {
-        createCachedFeedExoPlayer(context = context, repeat = false).apply {
+        feedPlayerFactory.create(repeat = false).apply {
             volume = 0f
             playWhenReady = false
         }

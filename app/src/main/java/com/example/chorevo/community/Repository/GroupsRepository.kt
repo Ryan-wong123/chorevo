@@ -13,8 +13,8 @@ import com.example.chorevo.community.INVITE_CODE_ALPHABET
 import com.example.chorevo.community.INVITE_CODE_LENGTH
 import com.example.chorevo.community.invitationId
 import com.example.chorevo.community.isValidGroupName
-import com.example.chorevo.core.VideoMedia
-import com.example.chorevo.core.VideoMedia.putFileWithProgress
+import com.example.chorevo.core.VideoFrames
+import com.example.chorevo.core.putFileWithProgress
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.firebase.Repository.UserSearchResult
 import com.example.chorevo.videouploads.VideoCompressor
@@ -48,7 +48,9 @@ import javax.inject.Singleton
 @Singleton
 class GroupsRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
-    private val storage: FirebaseStorage
+    private val storage: FirebaseStorage,
+    private val videoCompressor: VideoCompressor,
+    private val videoFrames: VideoFrames
 ) {
     private val random = SecureRandom()
 
@@ -352,7 +354,7 @@ class GroupsRepository @Inject constructor(
 
         onProgress(0.02f)
         val compressed: File? = runCatching {
-            VideoCompressor.compressVideo(context, videoUri, outputHeight = 720)
+            videoCompressor.compressVideo(videoUri, outputHeight = 720)
         }.getOrNull()
         val originalSize = runCatching {
             context.contentResolver.openAssetFileDescriptor(videoUri, "r")?.use { it.length }
@@ -374,7 +376,7 @@ class GroupsRepository @Inject constructor(
         compressed?.delete()
 
         val thumbnailUrl = runCatching {
-            val jpeg = VideoMedia.coverJpeg(context, videoUri, timeMs = 1_000L)
+            val jpeg = videoFrames.coverJpeg(videoUri, timeMs = 1_000L)
             val thumbRef = storage.reference.child(thumbPath)
             thumbRef.putBytes(jpeg, StorageMetadata.Builder().setContentType("image/jpeg").build()).await()
             thumbRef.downloadUrl.await().toString()

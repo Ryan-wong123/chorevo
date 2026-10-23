@@ -65,7 +65,7 @@ import com.example.chorevo.analytics.DanceDashboardArgs
 import com.example.chorevo.analytics.DanceDashboardMode
 import com.example.chorevo.analytics.viewmodel.AnalyticsDashboardViewModel
 import com.example.chorevo.core.SharedPlayerView
-import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.rememberFeedPlayerFactory
 import com.example.chorevo.core.share.ShareBottomSheet
 import com.example.chorevo.core.share.ShareContent
 import com.example.chorevo.danceactivity.AchievementLevel
@@ -437,9 +437,10 @@ private fun LikedVideosFeed(
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = startIndex, pageCount = { dances.size })
 
-    val mainPlayer = remember { createCachedFeedExoPlayer(context = context, repeat = true) }
+    val feedPlayerFactory = rememberFeedPlayerFactory()
+    val mainPlayer = remember { feedPlayerFactory.create(repeat = true) }
     val preloadPlayer = remember {
-        createCachedFeedExoPlayer(context = context, repeat = false).apply {
+        feedPlayerFactory.create(repeat = false).apply {
             volume = 0f
             playWhenReady = false
         }
