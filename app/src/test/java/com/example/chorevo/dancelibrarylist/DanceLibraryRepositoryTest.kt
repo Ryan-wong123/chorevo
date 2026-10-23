@@ -1,9 +1,9 @@
 package com.example.chorevo.dancelibrarylist
 
-import com.example.chorevo.core.Database.AppDb
+import com.example.chorevo.core.database.AppDb
 import com.example.chorevo.danceactivity.DanceSessionEntity
-import com.example.chorevo.danceactivity.Repository.DanceSessionDao
-import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
+import com.example.chorevo.danceactivity.repository.DanceSessionDao
+import com.example.chorevo.dancelibrarylist.repository.DanceLibraryRepository
 import com.example.chorevo.posedetection.PoseFrame
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson

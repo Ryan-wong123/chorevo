@@ -1,10 +1,10 @@
 package com.example.chorevo.firebase
 
-import com.example.chorevo.core.Database.di.IoDispatcher
-import com.example.chorevo.danceactivity.Repository.DanceSessionDao
-import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
-import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
-import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.core.database.di.IoDispatcher
+import com.example.chorevo.danceactivity.repository.DanceSessionDao
+import com.example.chorevo.danceactivity.repository.FirebaseStreakRepository
+import com.example.chorevo.dancelibrarylist.repository.DanceLibraryRepository
+import com.example.chorevo.leaderboard.repository.LeaderboardRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject

@@ -12,8 +12,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
-import com.example.chorevo.leaderboard.ViewModel.LeaderboardViewModel
+import com.example.chorevo.leaderboard.repository.LeaderboardRepository
+import com.example.chorevo.leaderboard.viewmodel.LeaderboardViewModel
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk

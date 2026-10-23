@@ -12,10 +12,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
-import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
-import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
-import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.danceactivity.repository.FirebaseStreakRepository
+import com.example.chorevo.dancelibrarylist.repository.DanceLibraryRepository
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
+import com.example.chorevo.leaderboard.repository.LeaderboardRepository
 import com.example.chorevo.posedetection.PoseTemplate
 import io.mockk.coEvery
 import io.mockk.mockk

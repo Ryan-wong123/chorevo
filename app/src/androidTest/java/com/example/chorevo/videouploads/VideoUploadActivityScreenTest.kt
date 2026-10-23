@@ -1,10 +1,10 @@
 package com.example.chorevo.videouploads
 
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
+import com.example.chorevo.firebase.repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.testing.MainDispatcherRule
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi

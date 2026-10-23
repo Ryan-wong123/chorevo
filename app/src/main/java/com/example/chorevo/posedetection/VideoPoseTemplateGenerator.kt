@@ -4,7 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import com.example.chorevo.core.Database.di.DefaultDispatcher
+import com.example.chorevo.core.database.di.DefaultDispatcher
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher

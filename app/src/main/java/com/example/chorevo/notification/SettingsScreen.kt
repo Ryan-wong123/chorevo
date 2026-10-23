@@ -64,7 +64,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import com.example.chorevo.firebase.UsernameDialog
 import androidx.compose.material.icons.outlined.DarkMode
-import com.example.chorevo.core.ViewModel.ThemeMode
+import com.example.chorevo.core.viewmodel.ThemeMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -75,7 +75,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.example.chorevo.core.ViewModel.AppViewModel
+import com.example.chorevo.core.viewmodel.AppViewModel
 import com.example.chorevo.firebase.UserProfile
 import java.util.Calendar
 import java.util.Locale

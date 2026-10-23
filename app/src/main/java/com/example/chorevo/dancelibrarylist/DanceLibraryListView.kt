@@ -59,9 +59,9 @@ import com.example.chorevo.core.rememberHaptics
 import com.example.chorevo.core.shimmer
 import com.example.chorevo.core.share.ShareBottomSheet
 import com.example.chorevo.core.share.ShareContent
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceSocialState
-import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceSocialState
+import com.example.chorevo.dancelibrarylist.repository.DanceLibraryRepository
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt

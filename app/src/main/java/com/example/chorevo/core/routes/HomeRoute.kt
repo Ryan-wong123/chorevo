@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryListView
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
 
 /** Renders the home feed where users browse dance routines. */
 @Composable

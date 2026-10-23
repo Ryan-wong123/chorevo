@@ -1,4 +1,4 @@
-package com.routes
+package com.example.chorevo.core.routes
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
@@ -37,11 +37,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.core.ViewModel.AppViewModel
-import com.example.chorevo.core.ViewModel.Screen
+import com.example.chorevo.core.viewmodel.AppViewModel
+import com.example.chorevo.core.viewmodel.Screen
 import com.example.chorevo.core.routes.AuthRoute
 import com.example.chorevo.core.routes.CommunityRoute
-import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.community.viewmodel.GroupsViewModel
 import com.example.chorevo.firebase.UsernameDialog
 import androidx.compose.ui.platform.LocalContext
 import android.Manifest
@@ -56,9 +56,9 @@ import com.example.chorevo.core.routes.LeaderboardRoute
 import com.example.chorevo.core.routes.ProfileSectionRoute
 import com.example.chorevo.core.routes.UploadRoute
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
 import com.example.chorevo.firebase.UserProfile
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 
 /**
  * Routes the user to the correct top-level screen based on app state and auth status.

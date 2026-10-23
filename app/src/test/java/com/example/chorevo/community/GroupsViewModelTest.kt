@@ -1,10 +1,10 @@
 package com.example.chorevo.community
 
-import com.example.chorevo.community.Repository.GroupsRepository
-import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.community.repository.GroupsRepository
+import com.example.chorevo.community.viewmodel.GroupsViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.firebase.Repository.UserSearchResult
-import com.example.chorevo.firebase.Repository.UsernameRepository
+import com.example.chorevo.firebase.repository.UserSearchResult
+import com.example.chorevo.firebase.repository.UsernameRepository
 import com.example.chorevo.testing.MainDispatcherRule
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import io.mockk.coEvery

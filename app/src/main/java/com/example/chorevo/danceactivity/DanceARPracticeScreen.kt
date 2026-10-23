@@ -3,8 +3,8 @@ package com.example.chorevo.danceactivity
 import com.example.chorevo.posedetection.loadDancerThumbnails
 import androidx.activity.compose.LocalActivity
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import com.example.chorevo.danceactivity.ViewModel.PracticeSubmission
-import com.example.chorevo.danceactivity.ViewModel.PracticeViewModel
+import com.example.chorevo.danceactivity.viewmodel.PracticeSubmission
+import com.example.chorevo.danceactivity.viewmodel.PracticeViewModel
 import com.example.chorevo.core.rememberHaptics
 import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.ui.theme.ChorevoTheme
@@ -75,11 +75,11 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.chorevo.core.CameraPreview
 import com.example.chorevo.core.SharedPlayerView
-import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
-import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
+import com.example.chorevo.danceactivity.viewmodel.AchievementViewModel
+import com.example.chorevo.weeklychallenge.viewmodel.WeeklyChallengeViewModel
 import com.example.chorevo.weeklychallenge.WeeklyChallengeCelebrationDialog
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
 import com.example.chorevo.posedetection.ImageProxyUtils
 import com.example.chorevo.posedetection.InstructorAvatarOverlay
 import com.example.chorevo.posedetection.PoseDrawSpec

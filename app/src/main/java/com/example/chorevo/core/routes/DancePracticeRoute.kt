@@ -3,10 +3,10 @@ package com.example.chorevo.core.routes
 import androidx.compose.runtime.Composable
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.chorevo.danceactivity.DanceARPracticeScreen
-import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
+import com.example.chorevo.danceactivity.viewmodel.AchievementViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
-import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
+import com.example.chorevo.weeklychallenge.viewmodel.WeeklyChallengeViewModel
 
 /** Renders the dance practice screen for the selected routine. */
 @Composable
