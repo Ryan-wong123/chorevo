@@ -1,5 +1,7 @@
 package com.example.chorevo.dancelibrarylist.viewmodel
 
+import com.example.chorevo.core.telemetry.Telemetry
+import com.example.chorevo.core.telemetry.NoOpTelemetry
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.danceactivity.DanceSessionEntity
@@ -72,7 +74,8 @@ private const val MAX_EMPTY_PAGES = 5
 class DanceLibraryListViewModel @Inject constructor(
     private val repo: DanceLibraryRepository,
     private val streakRepository: FirebaseStreakRepository,
-    private val leaderboardRepository: LeaderboardRepository
+    private val leaderboardRepository: LeaderboardRepository,
+    private val telemetry: Telemetry = NoOpTelemetry
 ) : ViewModel() {
 
     private val templateCache = linkedMapOf<String, PoseTemplate>()
@@ -225,6 +228,7 @@ class DanceLibraryListViewModel @Inject constructor(
                     onSuccess?.invoke()
                 },
                 onFailure = { e ->
+                    telemetry.recordError(e, "saveSessionAndUpload")
                     _uploadState.update {
                         it.copy(
                             isWorking = false,
@@ -255,7 +259,7 @@ class DanceLibraryListViewModel @Inject constructor(
         return repo.loadTemplate(item).mapCatching { template ->
             templateCache[item.danceId] = template
             item.copy(template = template)
-        }
+        }.onFailure { e -> telemetry.recordError(e, "preparePracticeItem") }
     }
 
     // ── Social actions ────────────────────────────────────────────────────

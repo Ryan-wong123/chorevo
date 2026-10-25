@@ -1,5 +1,8 @@
 package com.example.chorevo.firebase.viewmodel
 
+import com.example.chorevo.core.telemetry.Telemetry
+import com.example.chorevo.core.telemetry.NoOpTelemetry
+import com.example.chorevo.core.telemetry.AnalyticsEvents
 import androidx.lifecycle.ViewModel
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -40,7 +43,8 @@ data class AuthUiState(
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val repo: FirebaseAuthRepository
+    private val repo: FirebaseAuthRepository,
+    private val telemetry: Telemetry = NoOpTelemetry
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AuthUiState())
@@ -153,6 +157,7 @@ class AuthViewModel @Inject constructor(
         block: suspend () -> Result<UserProfile>
     ) {
         if (_uiState.value.loading && provider != AuthProvider.GOOGLE) return
+        val isSignUp = provider == AuthProvider.EMAIL && _uiState.value.mode == AuthMode.SIGNUP
 
         viewModelScope.launch {
             _uiState.update {
@@ -165,6 +170,10 @@ class AuthViewModel @Inject constructor(
             try {
                 val res = block()
                 if (res.isSuccess) {
+                    telemetry.logEvent(
+                        if (isSignUp) AnalyticsEvents.SIGN_UP else AnalyticsEvents.LOGIN,
+                        mapOf(AnalyticsEvents.PARAM_METHOD to if (provider == AuthProvider.GOOGLE) "google" else "email")
+                    )
                     _events.tryEmit(AuthEvent.Authed(res.getOrThrow()))
                 } else {
                     _uiState.update { state ->

@@ -46,6 +46,7 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 
 # Firebase Analytics SDK (version controlled by BOM)
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
+firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }
 
 # Firebase Bill of Materials (aligns all Firebase libs)
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
@@ -210,3 +211,5 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 
 # Required for Firebase configuration (google-services.json)
 google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
+# Crashlytics: uploads R8 mapping files so release crash reports are readable
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version = "3.0.2" }

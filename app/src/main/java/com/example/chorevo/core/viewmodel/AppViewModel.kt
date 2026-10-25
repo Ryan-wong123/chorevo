@@ -1,5 +1,7 @@
 package com.example.chorevo.core.viewmodel
 
+import com.example.chorevo.core.telemetry.Telemetry
+import com.example.chorevo.core.telemetry.NoOpTelemetry
 import android.content.Context
 import android.net.Uri
 import android.util.Log
@@ -35,7 +37,8 @@ class AppViewModel @Inject constructor(
     private val danceLibraryRepository: DanceLibraryRepository,
     private val reminderScheduler: ReminderScheduler,
     private val pushTokens: PushTokens,
-    private val savedState: SavedStateHandle = SavedStateHandle()
+    private val savedState: SavedStateHandle = SavedStateHandle(),
+    private val telemetry: Telemetry = NoOpTelemetry
 ) : ViewModel() {
 
     private companion object {
@@ -64,7 +67,11 @@ class AppViewModel @Inject constructor(
             _uiState
                 .map { it.profile?.uid }
                 .distinctUntilChanged()
-                .collect { uid -> if (!uid.isNullOrBlank()) pushTokens.register(uid) }
+                .collect { uid ->
+                    // Analytics and crash reports carry the user's id (never their name or email).
+                    telemetry.setUserId(uid?.takeIf { it.isNotBlank() })
+                    if (!uid.isNullOrBlank()) pushTokens.register(uid)
+                }
         }
 
         viewModelScope.launch {

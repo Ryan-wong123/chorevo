@@ -1,5 +1,8 @@
 package com.example.chorevo.videouploads.viewmodel
 
+import com.example.chorevo.core.telemetry.Telemetry
+import com.example.chorevo.core.telemetry.NoOpTelemetry
+import com.example.chorevo.core.telemetry.AnalyticsEvents
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -21,7 +24,8 @@ import javax.inject.Inject
 class VideoUploadsViewModel @Inject constructor(
     val authRepository: FirebaseAuthRepository,
     val videoUploadRepository: VideoUploadsRepository,
-    private val templateGenerator: VideoPoseTemplateGenerator
+    private val templateGenerator: VideoPoseTemplateGenerator,
+    private val telemetry: Telemetry = NoOpTelemetry
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(VideoUploadsUiState())
@@ -157,6 +161,13 @@ class VideoUploadsViewModel @Inject constructor(
             result.fold(
                 onSuccess = { template ->
                     val tracks = template.availableTracks()
+                    telemetry.logEvent(
+                        AnalyticsEvents.DANCE_ANALYSIS_COMPLETED,
+                        mapOf(
+                            AnalyticsEvents.PARAM_DANCER_COUNT to tracks.size,
+                            AnalyticsEvents.PARAM_DURATION_S to (template.frames.lastOrNull()?.tMs ?: 0L) / 1000L
+                        )
+                    )
                     val selectableTrackIds = template.selectableTrackIds()
                     val selectedTrackIds = tracks
                         .map { track -> track.trackId }
@@ -175,6 +186,8 @@ class VideoUploadsViewModel @Inject constructor(
                     }
                 },
                 onFailure = { error ->
+                    telemetry.logEvent(AnalyticsEvents.DANCE_ANALYSIS_FAILED)
+                    telemetry.recordError(error, "analyzeDancers")
                     mutate {
                         it.copy(
                             dancerReview = DancerReviewUiState(
@@ -498,6 +511,12 @@ class VideoUploadsViewModel @Inject constructor(
                     return@launch
                 }
 
+                val uploadParams = mapOf(
+                    AnalyticsEvents.PARAM_ANALYSIS to if (confirmedTemplate != null) "confirmed" else "background",
+                    AnalyticsEvents.PARAM_VISIBILITY to draft.visibility
+                )
+                telemetry.logEvent(AnalyticsEvents.DANCE_UPLOAD_STARTED, uploadParams)
+
                 val res = videoUploadRepository.uploadDance(
                     context = appContext,
                     educatorUid = uid,
@@ -526,6 +545,7 @@ class VideoUploadsViewModel @Inject constructor(
 
                 res.fold(
                     onSuccess = {
+                        telemetry.logEvent(AnalyticsEvents.DANCE_UPLOAD_COMPLETED, uploadParams)
                         mutate {
                             it.copy(
                                 statusMessage = confirmedTemplate?.let { template ->
@@ -539,6 +559,8 @@ class VideoUploadsViewModel @Inject constructor(
                         refreshMyUploads()
                     },
                     onFailure = { e ->
+                        telemetry.logEvent(AnalyticsEvents.DANCE_UPLOAD_FAILED, uploadParams)
+                        telemetry.recordError(e, "uploadDance")
                         mutate { it.copy(statusMessage = "Upload failed: ${e.message}") }
                     }
                 )

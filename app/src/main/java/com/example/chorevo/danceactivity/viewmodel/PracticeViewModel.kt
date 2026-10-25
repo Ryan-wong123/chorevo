@@ -1,5 +1,8 @@
 package com.example.chorevo.danceactivity.viewmodel
 
+import com.example.chorevo.core.telemetry.Telemetry
+import com.example.chorevo.core.telemetry.NoOpTelemetry
+import com.example.chorevo.core.telemetry.AnalyticsEvents
 import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Bitmap
@@ -116,7 +119,8 @@ class PracticeViewModel @Inject constructor(
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
     // Runs the countdown and practice timer; tests pass a dispatcher they control.
     @MainDispatcher private val timerDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
-    private val savedState: SavedStateHandle = SavedStateHandle()
+    private val savedState: SavedStateHandle = SavedStateHandle(),
+    private val telemetry: Telemetry = NoOpTelemetry
 ) : ViewModel() {
 
     // The dancer, mode and step survive Android killing the app (see AppViewModel,
@@ -523,6 +527,13 @@ class PracticeViewModel @Inject constructor(
     private fun startPractice() {
         tsStart = System.currentTimeMillis()
         val segment = _uiState.value.currentPracticeSegment
+        telemetry.logEvent(
+            AnalyticsEvents.PRACTICE_STARTED,
+            mapOf(
+                AnalyticsEvents.PARAM_DANCE_ID to boundDanceId,
+                AnalyticsEvents.PARAM_MODE to if (segment != null) "step_by_step" else "full_routine"
+            )
+        )
         _uiState.update {
             it.copy(
                 countdownSecondsRemaining = null,
@@ -682,6 +693,15 @@ class PracticeViewModel @Inject constructor(
             timing = state.timingConsistencyScore,
             smoothness = state.smoothnessScore,
             isPersonalBest = personalBests.recordIfBest(uid, dance.danceId, state.alignmentScore)
+        )
+        telemetry.logEvent(
+            AnalyticsEvents.PRACTICE_COMPLETED,
+            mapOf(
+                AnalyticsEvents.PARAM_DANCE_ID to dance.danceId,
+                AnalyticsEvents.PARAM_SCORE to (state.alignmentScore * 100).toInt(),
+                AnalyticsEvents.PARAM_DURATION_S to (tsEnd - tsStart) / 1000L,
+                AnalyticsEvents.PARAM_PERSONAL_BEST to result.isPersonalBest
+            )
         )
 
         _uiState.update {

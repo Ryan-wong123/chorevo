@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import com.example.chorevo.notification.NotificationChannels
 import com.google.firebase.FirebaseApp
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import dagger.hilt.android.HiltAndroidApp
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -32,6 +33,8 @@ class Chorevo : Application(), Configuration.Provider {
         super.onCreate()
 
         FirebaseApp.initializeApp(this)
+        // Crash reports only from release builds; debug crashes show in Logcat.
+        FirebaseCrashlytics.getInstance().setCrashlyticsCollectionEnabled(!BuildConfig.DEBUG)
         // Push notifications arrive on these channels even before any reminder is scheduled.
         NotificationChannels.create(this)
 
