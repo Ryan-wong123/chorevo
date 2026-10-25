@@ -166,7 +166,9 @@ committed (`*.jks`, `*.keystore` and `keystore.properties` are gitignored).
    - Publish a privacy policy URL.
    - Fill in the Data safety form. The app collects email, name, photos,
      videos, user-generated content, practice activity and device push
-     tokens.
+     tokens, plus crash logs and diagnostics (Crashlytics) and app
+     interactions (Analytics events), linked to the user id.
+   - Declare the `dataSync` foreground service (background dance analysis).
    - Give the account deletion URL:
      https://chorevo-dea05.web.app/delete-account.html.
    - Fill in that page's contact line first.
