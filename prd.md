@@ -102,7 +102,7 @@ Creators upload dance demo videos, analyse and confirm detected dancer tracks, c
 
 ### Pose Template Generation
 
-- MediaPipe extracts landmarks from sampled video frames (up to 120 seconds of video).
+- MediaPipe extracts landmarks from sampled video frames (up to 5 minutes of video).
 - Two generation profiles:
   - **High-recall** (the "Analyze Dancers" button, on device, 8 fps): YOLO person detection (`person_detector_yolo.tflite`), ByteTrack tracking, low-light preprocessing, per-dancer crops through `holistic_landmarker.task` for pose + left/right hands, track fragment merging and short-gap interpolation. `pose_landmarker_full.task` is the body-only fallback (or `pose_landmarker_lite.task` if the full model is missing).
   - **Standard** (background WorkManager job): full-frame Holistic Landmarker for one dancer's pose + hands, with `pose_landmarker_lite.task` for body pose and as the fallback. No YOLO, preprocessing, or track cleanup.

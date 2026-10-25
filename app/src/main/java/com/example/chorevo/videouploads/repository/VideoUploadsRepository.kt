@@ -6,9 +6,11 @@ import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
-import com.example.chorevo.core.VideoMedia
-import com.example.chorevo.core.VideoMedia.putFileWithProgress
+import com.example.chorevo.core.database.di.DefaultDispatcher
+import com.example.chorevo.core.VideoFrames
+import com.example.chorevo.core.putFileWithProgress
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTemplateJson
@@ -20,7 +22,9 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
 import javax.inject.Inject
@@ -29,7 +33,11 @@ import javax.inject.Singleton
 @Singleton
 class VideoUploadsRepository @Inject constructor(
     private val db: FirebaseFirestore,
-    private val storage: FirebaseStorage
+    private val storage: FirebaseStorage,
+    private val workManager: WorkManager,
+    private val videoCompressor: VideoCompressor,
+    private val videoFrames: VideoFrames,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher
 ) {
 
     // ============================================================
@@ -90,8 +98,7 @@ class VideoUploadsRepository @Inject constructor(
             // 1) Compress video
             onStageChanged?.invoke("Compressing video")
             onProgress?.invoke(0.1f)
-            compressedFile = VideoCompressor.compressVideo(
-                context = ctx,
+            compressedFile = videoCompressor.compressVideo(
                 inputUri = videoUri,
                 outputHeight = 720,
                 maxFrameRate = 24     // use 30 if needed
@@ -138,7 +145,7 @@ class VideoUploadsRepository @Inject constructor(
             // an upload without one still works (grids fall back to the video).
             onStageChanged?.invoke("Saving cover image")
             val thumbnailUrl = runCatching {
-                uploadThumbnail(ctx, videoUri, uid, danceId, coverFrameMs)
+                uploadThumbnail(videoUri, uid, danceId, coverFrameMs)
             }.getOrNull().orEmpty()
 
             // 4) Save Firestore doc immediately, then build template in background.
@@ -196,9 +203,12 @@ class VideoUploadsRepository @Inject constructor(
             if (confirmedTemplate != null) {
                 onStageChanged?.invoke("Saving confirmed dancer template")
                 val templateStoragePath = PoseTemplateStorage.jsonPath(uid, danceId)
-                val templateJsonBytes = PoseTemplateJson
-                    .toJson(confirmedTemplate)
-                    .toByteArray(Charsets.UTF_8)
+                // Templates can be several MB; serialise off the main thread.
+                val templateJsonBytes = withContext(defaultDispatcher) {
+                    PoseTemplateJson
+                        .toJson(confirmedTemplate)
+                        .toByteArray(Charsets.UTF_8)
+                }
 
                 storage.reference
                     .child(templateStoragePath)
@@ -226,7 +236,6 @@ class VideoUploadsRepository @Inject constructor(
             } else if (generateTemplate) {
                 onStageChanged?.invoke("Queuing background analysis")
                 enqueueTemplateGeneration(
-                    context = ctx,
                     danceId = danceId,
                     storagePath = storagePath,
                     fps = fps,
@@ -248,7 +257,6 @@ class VideoUploadsRepository @Inject constructor(
     }
 
     private fun enqueueTemplateGeneration(
-        context: Context,
         danceId: String,
         storagePath: String,
         fps: Int,
@@ -271,9 +279,11 @@ class VideoUploadsRepository @Inject constructor(
                     .setRequiredNetworkType(NetworkType.CONNECTED)
                     .build()
             )
+            // Start promptly; falls back to normal work when the expedited quota is used up.
+            .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
 
-        WorkManager.getInstance(context).enqueue(workRequest)
+        workManager.enqueue(workRequest)
     }
 
     private suspend fun uploadFileWithProgress(
@@ -393,13 +403,12 @@ class VideoUploadsRepository @Inject constructor(
      * most [THUMBNAIL_MAX_SIDE] px, uploads it as a JPEG and returns its URL.
      */
     private suspend fun uploadThumbnail(
-        context: Context,
         videoUri: Uri,
         uid: String,
         danceId: String,
         coverFrameMs: Long
     ): String {
-        val jpeg = VideoMedia.coverJpeg(context, videoUri, coverFrameMs, THUMBNAIL_MAX_SIDE, THUMBNAIL_JPEG_QUALITY)
+        val jpeg = videoFrames.coverJpeg(videoUri, coverFrameMs, THUMBNAIL_MAX_SIDE, THUMBNAIL_JPEG_QUALITY)
         val ref = storage.reference.child(thumbnailPath(uid, danceId))
         ref.putBytes(jpeg, StorageMetadata.Builder().setContentType("image/jpeg").build()).await()
         return ref.downloadUrl.await().toString()

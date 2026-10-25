@@ -7,11 +7,15 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.util.Log
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import java.util.Calendar
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class ReminderScheduler(
-    private val context: Context,
+@Singleton
+class ReminderScheduler @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val prefs: NotificationPreferencesDataStore
 ) {
     private val alarmManager =

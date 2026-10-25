@@ -1,8 +1,8 @@
 package com.example.chorevo.leaderboard
 
 import android.util.Log
-import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
-import com.example.chorevo.leaderboard.ViewModel.LeaderboardViewModel
+import com.example.chorevo.leaderboard.repository.LeaderboardRepository
+import com.example.chorevo.leaderboard.viewmodel.LeaderboardViewModel
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every

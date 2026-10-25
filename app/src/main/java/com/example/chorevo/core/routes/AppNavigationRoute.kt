@@ -1,4 +1,4 @@
-package com.routes
+package com.example.chorevo.core.routes
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -27,7 +27,7 @@ import com.example.chorevo.core.FloatingBarHeight
 import com.example.chorevo.core.FloatingBarState
 import com.example.chorevo.core.LocalFloatingBarInset
 import com.example.chorevo.core.LocalFloatingBarState
-import com.example.chorevo.core.ViewModel.Screen
+import com.example.chorevo.core.viewmodel.Screen
 
 /**
  * Wraps app content with the floating bottom navigation bar.

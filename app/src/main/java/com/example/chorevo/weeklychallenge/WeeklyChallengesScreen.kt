@@ -42,7 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.chorevo.ui.theme.SegmentColors
-import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
+import com.example.chorevo.weeklychallenge.viewmodel.WeeklyChallengeViewModel
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 

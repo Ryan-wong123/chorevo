@@ -32,7 +32,7 @@ When adding a feature, prefer a small model/repository/ViewModel/UI grouping ins
 
 - Use PascalCase for classes, composables, data classes, and enum names.
 - Use camelCase for functions, properties, and local variables.
-- Prefer package names that are all lowercase. Existing mixed-case folders such as `ViewModel` are present, but new packages should avoid adding more mixed-case package segments.
+- Package names are all lowercase and match their folders (`viewmodel`, `repository`, `database`). Keep it that way for new packages.
 - Name ViewModels as `<Feature>ViewModel`.
 - Name immutable screen state as `<Feature>UiState`.
 - Name repositories as `<Feature>Repository`.

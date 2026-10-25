@@ -2,6 +2,9 @@ package com.example.chorevo.danceactivity
 
 import android.content.Context
 import android.content.Intent
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import android.graphics.Bitmap
 import android.graphics.LinearGradient
 import android.graphics.Paint
@@ -84,7 +87,8 @@ internal fun gradeFor(score: Double): String = when {
 }
 
 /** Remembers each user's best alignment per dance on this device. */
-internal class PersonalBestStore(context: Context) {
+@Singleton
+class PersonalBestStore @Inject constructor(@ApplicationContext context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("practice_personal_bests", Context.MODE_PRIVATE)
 
     /** Records [score] and returns true if it beats (or is the first) best for this dance. */

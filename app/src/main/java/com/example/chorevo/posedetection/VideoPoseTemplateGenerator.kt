@@ -4,18 +4,54 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import com.example.chorevo.core.database.di.DefaultDispatcher
 import com.google.mediapipe.tasks.vision.core.RunningMode
-import kotlinx.coroutines.Dispatchers
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlin.math.max
 import kotlin.math.min
 
 
-object VideoPoseTemplateGenerator {
-    private const val MAX_TRACKED_DANCERS = 8
-    private const val LITE_MODEL_ASSET = "pose_landmarker_lite.task"
-    private const val FULL_MODEL_ASSET = "pose_landmarker_full.task"
-    const val WARNING_HAND_EXTRACTION_PARTIAL = "handExtractionPartial"
+/**
+ * Turns a dance video into a pose template with MediaPipe, on the phone.
+ * CPU-heavy: runs on the injected default dispatcher.
+ */
+@Singleton
+class VideoPoseTemplateGenerator @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher
+) {
+    companion object {
+        private const val MAX_TRACKED_DANCERS = 8
+        private const val LITE_MODEL_ASSET = "pose_landmarker_lite.task"
+        private const val FULL_MODEL_ASSET = "pose_landmarker_full.task"
+        const val WARNING_HAND_EXTRACTION_PARTIAL = "handExtractionPartial"
+        const val WARNING_VIDEO_TRIMMED = "videoTrimmed"
+
+        /** Longest part of a video that is analysed. */
+        const val MAX_ANALYSED_DURATION_MS = 5 * 60_000L
+
+        /**
+         * At most this many frames are analysed (2 minutes at 8 fps), so a
+         * longer video is sampled less often instead of taking longer or
+         * producing a bigger template. Never below [MIN_FPS].
+         */
+        private const val MAX_ANALYSED_FRAMES = 960
+        private const val MIN_FPS = 3
+
+        /** Time in the video of the [index]th sampled frame at [fps]. */
+        internal fun frameTimeMs(index: Int, fps: Int): Long = index * 1000L / fps.coerceAtLeast(1)
+
+        /** Frames per second to sample a [durationMs] video at, given the profile's [preferredFps]. */
+        internal fun samplingFps(durationMs: Long, preferredFps: Int): Int {
+            if (durationMs <= 0L) return preferredFps
+            val budgetFps = (MAX_ANALYSED_FRAMES * 1000L / durationMs).toInt()
+            return minOf(preferredFps, maxOf(MIN_FPS, budgetFps))
+        }
+    }
 
     enum class GenerationProfile {
         STANDARD,
@@ -34,17 +70,17 @@ object VideoPoseTemplateGenerator {
 
     /** Handles generate. */
     suspend fun generate(
-        context: Context,
         videoUriString: String,
         fps: Int = 5,
-        maxDurationMs: Long = 120_000L, // safety cap: 2 minutes
+        maxDurationMs: Long = MAX_ANALYSED_DURATION_MS,
         profile: GenerationProfile = GenerationProfile.STANDARD,
         framePreprocessorConfig: FramePreprocessorConfig = FramePreprocessorConfig(),
         personDetectorConfig: PersonDetectorConfig = PersonDetectorConfig.disabled(),
         collectHandLandmarks: Boolean = false,
         onProgress: ((Float) -> Unit)? = null
     ): Result<PoseTemplate> {
-        return withContext(Dispatchers.Default) {
+        val context = appContext
+        return withContext(defaultDispatcher) {
             val retriever = MediaMetadataRetriever()
             val highRecall = profile == GenerationProfile.HIGH_RECALL
             val handEnabledHighRecall = highRecall && collectHandLandmarks
@@ -178,13 +214,23 @@ object VideoPoseTemplateGenerator {
                         ?: return@withContext Result.failure(IllegalStateException("Cannot read video duration"))
 
                 val safeDurationMs = min(durationMs, maxDurationMs)
-                val safeFps = if (highRecall) max(8, fps) else max(5, fps)
-                val stepMs = 1000L / safeFps
-
+                if (durationMs > maxDurationMs) {
+                    analysisWarnings.putIfAbsent(
+                        WARNING_VIDEO_TRIMMED,
+                        PoseAnalysisWarning(
+                            code = WARNING_VIDEO_TRIMMED,
+                            message = "Only the first ${maxDurationMs / 60_000L} minutes of this video were analysed."
+                        )
+                    )
+                }
+                val safeFps = samplingFps(
+                    durationMs = safeDurationMs,
+                    preferredFps = if (highRecall) max(8, fps) else max(5, fps)
+                )
                 val trackingConfig = if (highRecall) {
                     PoseTrackingConfig.highRecall(safeFps)
                 } else {
-                    PoseTrackingConfig.standard()
+                    PoseTrackingConfig.standard(safeFps)
                 }
                 val tracker = MultiPersonPoseTracker(
                     fps = safeFps,
@@ -199,7 +245,7 @@ object VideoPoseTemplateGenerator {
 
                 var tMs = 0L
                 var idx = 0
-                val totalSteps = max(1, (safeDurationMs / stepMs).toInt())
+                val totalSteps = max(1, (safeDurationMs * safeFps / 1000L).toInt())
 
                 while (tMs <= safeDurationMs) {
                     // getFrameAtTime expects microseconds
@@ -334,7 +380,9 @@ object VideoPoseTemplateGenerator {
                     idx++
                     onProgress?.invoke(idx.toFloat() / totalSteps.toFloat())
 
-                    tMs += stepMs
+                    // From the index, not by adding a fixed step: 1000 / fps is rounded down at 3, 6 or 7 fps,
+                    // and practice scoring finds frames by index * 1000 / fps.
+                    tMs = frameTimeMs(idx, safeFps)
                 }
 
                 val template = tracker.buildTemplate()

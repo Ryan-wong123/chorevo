@@ -1,8 +1,8 @@
 package com.example.chorevo.danceactivity
 
-import com.example.chorevo.danceactivity.Repository.AchievementRepository
-import com.example.chorevo.danceactivity.Repository.SessionRewardsRepository
-import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
+import com.example.chorevo.danceactivity.repository.AchievementRepository
+import com.example.chorevo.danceactivity.repository.SessionRewardsRepository
+import com.example.chorevo.danceactivity.viewmodel.AchievementViewModel
 import com.example.chorevo.testing.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.every

@@ -9,6 +9,8 @@ object NotificationChannels {
     const val REMINDER_CHANNEL_ID = "daily_reminders"
     /** Push notifications for group invitations (sent by the notifyGroupInvitation function). */
     const val GROUP_INVITES_CHANNEL_ID = "group_invites"
+    /** The ongoing notification shown while an uploaded dance is analysed in the background. */
+    const val DANCE_ANALYSIS_CHANNEL_ID = "dance_analysis"
 
     /** Handles create. */
     fun create(context: Context) {
@@ -31,6 +33,15 @@ object NotificationChannels {
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 description = "When someone invites you to a dance group"
+            }
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(
+                DANCE_ANALYSIS_CHANNEL_ID,
+                "Dance analysis",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Shown while an uploaded dance is being analysed"
             }
         )
     }

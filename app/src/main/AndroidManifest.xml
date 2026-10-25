@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Background dance analysis runs as a foreground worker so Android doesn't stop it. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <!-- Lets the share sheet detect which social apps are installed (Android 11+). -->
     <queries>
@@ -135,6 +138,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/video_capture_paths" />
         </provider>
+
+        <!-- WorkManager's foreground service, used by VideoTemplateGenerationWorker. -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
 
         <provider
             android:name="androidx.startup.InitializationProvider"

@@ -10,8 +10,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
-import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
-import com.example.chorevo.firebase.ViewModel.AuthViewModel
+import com.example.chorevo.firebase.repository.FirebaseAuthRepository
+import com.example.chorevo.firebase.viewmodel.AuthViewModel
 import io.mockk.coEvery
 import io.mockk.mockk
 import org.junit.Assert.assertEquals

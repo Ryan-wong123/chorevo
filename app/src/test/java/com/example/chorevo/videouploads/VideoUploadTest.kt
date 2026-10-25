@@ -3,7 +3,7 @@ package com.example.chorevo.videouploads
 import android.content.Context
 import android.net.Uri
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.firebase.Repository.FirebaseAuthRepository
+import com.example.chorevo.firebase.repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.posedetection.PoseAnalysisWarning
 import com.example.chorevo.posedetection.PoseBounds
@@ -15,9 +15,9 @@ import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack
 import com.example.chorevo.testing.MainDispatcherRule
-import com.example.chorevo.videouploads.ViewModel.DancerReviewUiState
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
-import com.example.chorevo.videouploads.ViewModel.confirmedTemplate
+import com.example.chorevo.videouploads.viewmodel.DancerReviewUiState
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.confirmedTemplate
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -65,7 +65,8 @@ class VideoUploadsViewModelTest {
 
         val vm = VideoUploadsViewModel(
             authRepository = authRepo,
-            videoUploadRepository = uploadsRepo
+            videoUploadRepository = uploadsRepo,
+            templateGenerator = mockk(relaxed = true)
         )
         advanceUntilIdle()
 
@@ -86,7 +87,7 @@ class VideoUploadsViewModelTest {
         val item2 = mockk<DanceLibraryModel>(relaxed = true)
         coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(listOf(item1, item2))
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         val s = vm.uiState.value
@@ -104,7 +105,7 @@ class VideoUploadsViewModelTest {
         coEvery { authRepo.getCurrentUserProfile() } returns user
         coEvery { uploadsRepo.loadVideos("uid123") } returns Result.failure(RuntimeException("boom"))
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         val s = vm.uiState.value
@@ -121,7 +122,7 @@ class VideoUploadsViewModelTest {
         coEvery { authRepo.getCurrentUserProfile() } returns user
         coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(emptyList())
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         val galleryUri = mockk<Uri> {
@@ -153,6 +154,7 @@ class VideoUploadsViewModelTest {
             every { email } returns "coach@example.com"
         }
         val context = mockk<Context>(relaxed = true)
+        every { context.applicationContext } returns context
         val recordedUri = mockk<Uri>(relaxed = true)
 
         coEvery { authRepo.getCurrentUserProfile() } returns user
@@ -178,7 +180,7 @@ class VideoUploadsViewModelTest {
             )
         } returns Result.success("dance-id")
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         vm.uploadTitleChanged("Routine")
@@ -353,7 +355,7 @@ class VideoUploadsViewModelTest {
         coEvery { authRepo.getCurrentUserProfile() } returns user
         coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(emptyList())
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         val item = mockk<DanceLibraryModel>(relaxed = true) {
@@ -388,7 +390,7 @@ class VideoUploadsViewModelTest {
             )
         } returns Result.success(Unit)
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         val item = mockk<DanceLibraryModel>(relaxed = true) {
@@ -430,7 +432,7 @@ class VideoUploadsViewModelTest {
         coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(emptyList())
         coEvery { uploadsRepo.deleteDance("d1", "uid123") } returns Result.success(Unit)
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         val item = mockk<DanceLibraryModel>(relaxed = true) {
@@ -461,7 +463,7 @@ class VideoUploadsViewModelTest {
             uploadsRepo.setVisibility("d1", DanceLibraryModel.VISIBILITY_PRIVATE)
         } returns Result.success(Unit)
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         vm.setVisibility(upload, DanceLibraryModel.VISIBILITY_PRIVATE)
@@ -482,7 +484,7 @@ class VideoUploadsViewModelTest {
         coEvery { uploadsRepo.loadVideos("uid123") } returns Result.success(listOf(upload))
         coEvery { uploadsRepo.setVisibility(any(), any()) } returns Result.failure(RuntimeException("offline"))
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         vm.setVisibility(upload, DanceLibraryModel.VISIBILITY_PRIVATE)
@@ -514,7 +516,7 @@ class VideoUploadsViewModelTest {
             )
         } returns Result.success("dance-id")
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         vm.uploadTitleChanged("Routine")
@@ -559,7 +561,7 @@ class VideoUploadsViewModelTest {
             )
         } returns Result.success("dance-id")
 
-        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo)
+        val vm = VideoUploadsViewModel(authRepository = authRepo, videoUploadRepository = uploadsRepo, templateGenerator = mockk(relaxed = true))
         advanceUntilIdle()
 
         vm.uploadTitleChanged("Routine")

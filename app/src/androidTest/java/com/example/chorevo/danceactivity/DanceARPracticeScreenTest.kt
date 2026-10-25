@@ -1,5 +1,9 @@
 package com.example.chorevo.danceactivity
 
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
+import com.example.chorevo.danceactivity.viewmodel.PracticeViewModel
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -10,14 +14,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import com.example.chorevo.danceactivity.ViewModel.AchievementViewModel
-import com.example.chorevo.danceactivity.Repository.FirebaseStreakRepository
-import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.danceactivity.viewmodel.AchievementViewModel
+import com.example.chorevo.danceactivity.repository.FirebaseStreakRepository
+import com.example.chorevo.weeklychallenge.viewmodel.WeeklyChallengeViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import com.example.chorevo.dancelibrarylist.stubFeed
-import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
-import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.dancelibrarylist.repository.DanceLibraryRepository
+import com.example.chorevo.leaderboard.repository.LeaderboardRepository
 import com.example.chorevo.posedetection.PoseFrame
 import com.example.chorevo.posedetection.PoseTemplate
 import com.example.chorevo.posedetection.PoseTrack
@@ -42,6 +46,9 @@ class DanceARPracticeScreenTest {
     // New dependency now required by the screen
     private lateinit var achievementVm: AchievementViewModel
     private lateinit var weeklyChallengeVm: WeeklyChallengeViewModel
+    private lateinit var practiceVm: PracticeViewModel
+    // Drives PracticeViewModel's countdown and timer, so the test controls time.
+    private lateinit var practiceScheduler: TestCoroutineScheduler
 
     // Shared test data
     private lateinit var item: DanceLibraryModel
@@ -78,6 +85,14 @@ class DanceARPracticeScreenTest {
             repository = mockk(relaxed = true)
         )
 
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        practiceScheduler = TestCoroutineScheduler()
+        practiceVm = PracticeViewModel(
+            context,
+            PersonalBestStore(context),
+            timerDispatcher = StandardTestDispatcher(practiceScheduler)
+        )
+
         item = DanceLibraryModel(
             danceId = "d1",
             title = "Salsa Basics",
@@ -110,7 +125,8 @@ class DanceARPracticeScreenTest {
                 achievementVm = achievementVm,
                 weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
-                testMode = true
+                testMode = true,
+                practiceVm = practiceVm
                 
             )
         }
@@ -138,7 +154,8 @@ class DanceARPracticeScreenTest {
                 achievementVm = achievementVm,
                 weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
-                testMode = true
+                testMode = true,
+                practiceVm = practiceVm
             )
         }
 
@@ -156,12 +173,12 @@ class DanceARPracticeScreenTest {
         composeRule.onNodeWithTag("practiceStartCountdown").assertIsDisplayed()
         composeRule.onNodeWithText("3").assertIsDisplayed()
 
-        composeRule.mainClock.advanceTimeBy(3_500)
+        // Run the ViewModel's 3-second countdown, then let the screen recompose.
+        practiceScheduler.advanceTimeBy(3_100)
+        composeRule.mainClock.autoAdvance = true
         composeRule.waitForIdle()
 
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            composeRule.onAllNodesWithTag("practiceStartCountdown").fetchSemanticsNodes().isEmpty()
-        }
+        composeRule.onAllNodesWithTag("practiceStartCountdown").assertCountEquals(0)
         composeRule.onNodeWithText("Reset").assertIsDisplayed()
         composeRule.onNodeWithText("Submit").assertIsDisplayed()
         composeRule.onNodeWithText("Back").assertIsDisplayed()
@@ -196,7 +213,8 @@ class DanceARPracticeScreenTest {
                 achievementVm = achievementVm,
                 weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
-                testMode = true
+                testMode = true,
+                practiceVm = practiceVm
             )
         }
 
@@ -231,7 +249,8 @@ class DanceARPracticeScreenTest {
                 achievementVm = achievementVm,
                 weeklyChallengeVm = weeklyChallengeVm,
                 uid = "uid123",
-                testMode = true
+                testMode = true,
+                practiceVm = practiceVm
             )
         }
 
