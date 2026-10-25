@@ -43,7 +43,7 @@ class AuthAnalyticsTest {
 
     @Test
     fun firstGoogleSignIn_isLoggedAsSignUp() = runTest {
-        val events = googleSignIn(isNewAccount = true).also { advanceUntilIdle() }
+        val events = googleSignIn(isNewAccount = true)
         advanceUntilIdle()
         assertEquals(listOf(AnalyticsEvents.SIGN_UP to mapOf(AnalyticsEvents.PARAM_METHOD to "google")), events)
     }
