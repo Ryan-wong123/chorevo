@@ -27,7 +27,11 @@ object DatabaseModule {
             "app.db"
         )
             .addMigrations(AppDb.MIGRATION_5_6)
-            .fallbackToDestructiveMigration()
+            // Only pre-release development versions (1–4) and downgrades are
+            // wiped; any other missing migration fails loudly instead of
+            // deleting users' unsynced sessions.
+            .fallbackToDestructiveMigrationFrom(true, 1, 2, 3, 4)
+            .fallbackToDestructiveMigrationOnDowngrade(true)
             .build()
     }
 
