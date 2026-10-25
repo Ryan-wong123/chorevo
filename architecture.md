@@ -21,7 +21,7 @@ Chorevo is a single-module native Android application:
 - Push notifications: `notifyGroupInvitation` (trigger on creating `groupInvitations/{id}`) sends the invitee an FCM message (`notification` + `data {type: "group_invitation", groupId}`, Android channel `group_invites`) to the tokens in `users/{uid}/fcmTokens` and deletes tokens FCM reports as dead. Message building is in `functions/groups.js` (`invitationMessage`, `deadTokens`, tested).
 - Groups maintenance: `groupMemberCount` (trigger on `groups/{id}/members/{uid}`) keeps `memberCount`, and `groupCleanup` (on group delete) removes the invite code, pending invitations, group files and subcollections.
 
-Navigation uses a custom `Screen` enum rather than Navigation Compose's `NavHost`; ViewModels come from `hiltViewModel()` (`androidx.hilt:hilt-lifecycle-viewmodel-compose`). The Firebase Analytics SDK is included but logs no events.
+Navigation uses a custom `Screen` enum rather than Navigation Compose's `NavHost`; ViewModels come from `hiltViewModel()` (`androidx.hilt:hilt-lifecycle-viewmodel-compose`). Firebase Analytics logs product events and Crashlytics reports crashes and handled errors, both through the injected `core/telemetry/Telemetry` (see Observability).
 
 The app starts in `Chorevo`, initializes Firebase/App Check, then `MainActivity` hosts the Compose tree and calls `AppRouter`.
 
@@ -825,3 +825,11 @@ Known limitations:
 - The maximum number of tracked dancers is 8.
 - Crop bitmaps and the preprocessor's copy are recycled; the frame bitmap from `getFrameAtTime` is not recycled (partially implemented).
 - Detector, tracker, MediaPipe, and frame resources are closed in `finally` blocks.
+
+## Observability
+
+- **Crashlytics** reports crashes and non-fatal errors from release builds (collection is off in debug builds, set in `Chorevo`). The Gradle plugin uploads R8 mapping files, so stack traces are readable.
+- **Analytics events** (`AnalyticsEvents`): `sign_up` and `login` (method), `dance_analysis_completed`/`dance_analysis_failed` (dancer count, duration), `dance_upload_started`/`completed`/`failed` (confirmed or background analysis, visibility), `practice_started` (dance, mode), `practice_completed` (dance, score 0–100, duration, personal best), `group_created` (visibility), `group_joined` (code, invitation or public).
+- Handled errors recorded as non-fatals: dance analysis, upload, session submission, template loading.
+- Events and reports carry the user's uid (set by `AppViewModel`), never their name, email or free text.
+- ViewModels take a `Telemetry`; tests use `NoOpTelemetry` (the default).
