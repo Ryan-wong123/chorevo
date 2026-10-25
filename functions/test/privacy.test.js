@@ -102,6 +102,7 @@ test("a file that can't be updated keeps its URL", async () => {
   }, { newToken: tokens(), nowMs: 1, logger: quiet });
   assert.strictEqual(updates.videoUrl, undefined);
   assert.strictEqual(updates.thumbnailUrl, url("danceThumbnails/alice/d1.jpg", "new2"));
+  assert.strictEqual(updates.linksRevokedAt, undefined); // retried by the next catch-up
 });
 
 test("the catch-up pass revokes only private dances not done yet", async () => {

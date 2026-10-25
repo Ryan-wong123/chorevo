@@ -125,10 +125,17 @@ exports.refreshDiscovery = onSchedule(
     const db = getFirestore();
     await backfillLikeUidsOnce(db, { logger });
     await refreshAllDances(db, { logger });
-    // Dances made private before revokeLinksWhenPrivate existed (runs once each).
-    logger.info("Old private dance links", await revokeOldPrivateLinks(db, getStorage().bucket(), { newToken: randomUUID, logger }));
-    // Group videos posted before they used short-lived links (runs once each).
-    logger.info("Old group media", await lockOldGroupMedia(db, getStorage().bucket(), { deleteField: FieldValue.delete, logger }));
+    // One-off catch-ups (each item once). A failure is logged and retried on
+    // the next run, without stopping the rest of this job.
+    const catchUp = async (name, work) => {
+      try {
+        logger.info(name, await work());
+      } catch (err) {
+        logger.error(`${name} failed`, { error: String(err && err.message) });
+      }
+    };
+    await catchUp("Old private dance links", () => revokeOldPrivateLinks(db, getStorage().bucket(), { newToken: randomUUID, logger }));
+    await catchUp("Old group media", () => lockOldGroupMedia(db, getStorage().bucket(), { deleteField: FieldValue.delete, logger }));
     logger.info("Profile email cleanup", await removeProfileEmails(db));
   }
 );
@@ -140,7 +147,7 @@ const { getMessaging } = require("firebase-admin/messaging");
 const { FieldValue } = require("firebase-admin/firestore");
 const {
   storagePathsOfPosts, isInviteCode, invitationMessage, deadTokens, invitePushAllowance,
-  MEDIA_LINK_TTL_MS, parseGroupMediaRequest, canSeeGroup, groupPostMediaPaths, removeDownloadTokens, lockOldGroupMedia,
+  MEDIA_LINK_TTL_MS, parseGroupMediaRequest, canSeeGroup, groupPostMediaPaths, lockPostMedia, lockOldGroupMedia,
 } = require("./groups");
 
 /**
@@ -170,16 +177,17 @@ exports.groupMediaUrls = onCall({ region: "us-central1" }, async (request) => {
   };
   const posts = await db.getAll(...req.postIds.map((id) => groupRef.collection("posts").doc(id)));
   const urls = {};
-  for (const post of posts) {
-    if (!post.exists) continue;
+  // Signed in parallel: each signature is a round trip to IAM.
+  await Promise.all(posts.map(async (post) => {
+    if (!post.exists) return;
     const paths = groupPostMediaPaths(post.id, post.data());
-    if (!paths.video) continue;
-    urls[post.id] = {
-      videoUrl: await sign(paths.video),
-      thumbnailUrl: paths.thumbnail ? await sign(paths.thumbnail) : null,
-      expiresAt,
-    };
-  }
+    if (!paths.video) return;
+    const [videoUrl, thumbnailUrl] = await Promise.all([
+      sign(paths.video),
+      paths.thumbnail ? sign(paths.thumbnail) : Promise.resolve(null),
+    ]);
+    urls[post.id] = { videoUrl, thumbnailUrl, expiresAt };
+  }));
   return { urls };
 });
 
@@ -190,9 +198,11 @@ exports.groupMediaUrls = onCall({ region: "us-central1" }, async (request) => {
 exports.lockGroupPostMedia = onDocumentCreated(
   { document: "groups/{groupId}/posts/{postId}", region: "us-central1", retry: true },
   async (event) => {
-    const paths = groupPostMediaPaths(event.params.postId, event.data && event.data.data());
-    const bucket = getStorage().bucket();
-    for (const path of Object.values(paths)) await removeDownloadTokens(bucket.file(path));
+    const post = event.data && event.data.data();
+    if (!post || post.kind !== "video") return;
+    // Also drops a permanent link an older app version stored, so nothing
+    // tries to play a link that no longer works.
+    await lockPostMedia(event.data.ref, event.params.postId, post, getStorage().bucket(), { deleteField: FieldValue.delete });
   }
 );
 

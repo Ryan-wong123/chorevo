@@ -87,6 +87,22 @@ group videos and other people's dances stop loading.
 Check afterwards: a group video plays from another account, and practising
 someone else's public dance works.
 
+### Release order for private group videos
+
+App versions from before short-lived group video links read the permanent
+links stored on each post. Once `lockGroupPostMedia` and the nightly
+`refreshDiscovery` catch-up run, those links stop working, so **older apps
+can no longer play group videos**. Release the updated app first, give users
+time to update, then deploy the functions.
+
+### Room database schemas (once, then with every schema change)
+
+The app exports its Room schema to `app/schemas/` so future versions can
+ship tested migrations instead of wiping local data. After pulling this
+change, build once (`./gradlew assembleDebug`) and commit the generated
+`app/schemas/` folder. Whenever `AppDb`'s `version` goes up, add a
+`Migration` and commit the new schema file with it.
+
 ### By hand
 
 From the repository root, on an up-to-date `main`, with the Firebase CLI

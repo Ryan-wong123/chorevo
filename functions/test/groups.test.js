@@ -145,24 +145,31 @@ test("removing download tokens only touches files that have one", async () => {
   assert.strictEqual(await removeDownloadTokens(fakeFile(null, { missing: true })), false);
 });
 
-test("the catch-up locks old video posts' files and drops their stored links", async () => {
+test("the catch-up locks unlocked video posts once, and a failure leaves the post for the next run", async () => {
   const files = {
     "groupVideos/alice/p1.mp4": fakeFile({ metadata: { firebaseStorageDownloadTokens: "t" } }),
     "groupThumbnails/alice/p1.jpg": fakeFile({ metadata: {} }),
+    "groupVideos/carol/p3.mp4": { getMetadata: async () => { throw new Error("storage down"); } },
   };
   const updates = {};
   const posts = [
     { id: "p1", data: { kind: "video", uid: "alice", storagePath: "groupVideos/alice/p1.mp4", thumbnailPath: "groupThumbnails/alice/p1.jpg", videoUrl: "https://x", thumbnailUrl: "https://y" } },
-    { id: "p2", data: { kind: "text", uid: "bob", body: "hi" } },
+    { id: "p2", data: { kind: "video", uid: "bob", storagePath: "groupVideos/bob/p2.mp4", mediaLocked: true } },
+    { id: "p3", data: { kind: "video", uid: "carol", storagePath: "groupVideos/carol/p3.mp4" } },
   ];
   const db = {
     collectionGroup: (name) => {
       assert.strictEqual(name, "posts");
-      return { get: async () => ({ size: posts.length, docs: posts.map((p) => ({ id: p.id, data: () => p.data, ref: { update: async (u) => { updates[p.id] = u; } } })) }) };
+      return {
+        where: (field, op, value) => {
+          assert.deepStrictEqual([field, op, value], ["kind", "==", "video"]);
+          return { get: async () => ({ size: posts.length, docs: posts.map((p) => ({ id: p.id, data: () => p.data, ref: { path: `groups/g/posts/${p.id}`, update: async (u) => { updates[p.id] = u; } } })) }) };
+        },
+      };
     },
   };
   const bucket = { file: (path) => files[path] };
   const result = await lockOldGroupMedia(db, bucket, { deleteField: () => "DELETE", logger: { warn: () => {} } });
-  assert.deepStrictEqual(result, { posts: 2, filesLocked: 1 });
-  assert.deepStrictEqual(updates, { p1: { videoUrl: "DELETE", thumbnailUrl: "DELETE" } });
+  assert.deepStrictEqual(result, { videoPosts: 3, attempted: 2, filesLocked: 1 });
+  assert.deepStrictEqual(updates, { p1: { videoUrl: "DELETE", thumbnailUrl: "DELETE", mediaLocked: true } });
 });

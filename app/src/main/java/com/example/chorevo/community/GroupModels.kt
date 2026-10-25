@@ -146,6 +146,8 @@ data class GroupsUiState(
     val bannedMembers: List<BannedMember> = emptyList(),
     /** Short-lived links to the open group's video posts (by post id), from groupMediaUrls. */
     val postMedia: Map<String, PostMedia> = emptyMap(),
+    /** A group video link ready to play (the screen opens it, then calls onVideoShown). */
+    val playVideoUrl: String? = null,
     val posts: List<GroupPost> = emptyList(),
     val isLoadingPosts: Boolean = false,
     val composer: PostComposer = PostComposer(),

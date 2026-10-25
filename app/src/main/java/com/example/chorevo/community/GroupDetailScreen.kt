@@ -260,8 +260,7 @@ fun GroupDetailScreen(
                         media = state.postMedia[post.id],
                         canDelete = post.uid == myUid || state.isOwner,
                         onOpenDance = onOpenDance,
-                        onPlay = { playingUrl = it },
-                        onRefreshMedia = vm::loadPostMedia,
+                        onPlayVideo = { vm.playPost(post.id) },
                         onReplies = { vm.openPost(post.id) },
                         onDelete = { vm.deletePost(post) }
                     )
@@ -319,6 +318,13 @@ fun GroupDetailScreen(
             onConfirm = { confirmDelete = false; vm.deleteOpenGroup() },
             onDismiss = { confirmDelete = false }
         )
+    }
+    // A video the ViewModel has a fresh link for (it fetches one first if needed).
+    LaunchedEffect(state.playVideoUrl) {
+        state.playVideoUrl?.let { url ->
+            playingUrl = url
+            vm.onVideoShown()
+        }
     }
     playingUrl?.let { url -> VideoDialog(url = url, onDismiss = { playingUrl = null }) }
     if (showInvite && group != null && state.isMember) {
@@ -434,8 +440,7 @@ private fun PostCard(
     media: PostMedia?,
     canDelete: Boolean,
     onOpenDance: (String) -> Unit,
-    onPlay: (String) -> Unit,
-    onRefreshMedia: () -> Unit,
+    onPlayVideo: () -> Unit,
     onReplies: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -471,21 +476,13 @@ private fun PostCard(
                     }
                 }
                 GroupPostKind.VIDEO -> {
-                    // Short-lived links from groupMediaUrls; older posts may still
-                    // carry a stored link until the server removes it.
-                    val legacyVideoUrl = post.videoUrl?.takeIf(::isTrustedMediaUrl)
+                    // Group videos have no permanent link: the cover and video use
+                    // short-lived links from groupMediaUrls (GroupsViewModel).
                     Thumbnail(
-                        url = media?.thumbnailUrl ?: post.thumbnailUrl?.takeIf(::isTrustedMediaUrl),
+                        url = media?.thumbnailUrl,
                         label = null,
                         icon = Icons.Filled.PlayArrow,
-                        onClick = {
-                            val fresh = media?.takeIf { it.isFresh(System.currentTimeMillis(), marginMs = 0L) }
-                            when {
-                                fresh != null -> onPlay(fresh.videoUrl)
-                                legacyVideoUrl != null -> onPlay(legacyVideoUrl)
-                                else -> onRefreshMedia()
-                            }
-                        }
+                        onClick = onPlayVideo
                     )
                 }
                 GroupPostKind.TEXT -> Unit
