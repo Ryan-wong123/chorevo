@@ -29,6 +29,25 @@ class VideoPoseTemplateGenerator @Inject constructor(
         private const val LITE_MODEL_ASSET = "pose_landmarker_lite.task"
         private const val FULL_MODEL_ASSET = "pose_landmarker_full.task"
         const val WARNING_HAND_EXTRACTION_PARTIAL = "handExtractionPartial"
+        const val WARNING_VIDEO_TRIMMED = "videoTrimmed"
+
+        /** Longest part of a video that is analysed. */
+        const val MAX_ANALYSED_DURATION_MS = 5 * 60_000L
+
+        /**
+         * At most this many frames are analysed (2 minutes at 8 fps), so a
+         * longer video is sampled less often instead of taking longer or
+         * producing a bigger template. Never below [MIN_FPS].
+         */
+        private const val MAX_ANALYSED_FRAMES = 960
+        private const val MIN_FPS = 3
+
+        /** Frames per second to sample a [durationMs] video at, given the profile's [preferredFps]. */
+        internal fun samplingFps(durationMs: Long, preferredFps: Int): Int {
+            if (durationMs <= 0L) return preferredFps
+            val budgetFps = (MAX_ANALYSED_FRAMES * 1000L / durationMs).toInt()
+            return minOf(preferredFps, maxOf(MIN_FPS, budgetFps))
+        }
     }
 
     enum class GenerationProfile {
@@ -50,7 +69,7 @@ class VideoPoseTemplateGenerator @Inject constructor(
     suspend fun generate(
         videoUriString: String,
         fps: Int = 5,
-        maxDurationMs: Long = 120_000L, // safety cap: 2 minutes
+        maxDurationMs: Long = MAX_ANALYSED_DURATION_MS,
         profile: GenerationProfile = GenerationProfile.STANDARD,
         framePreprocessorConfig: FramePreprocessorConfig = FramePreprocessorConfig(),
         personDetectorConfig: PersonDetectorConfig = PersonDetectorConfig.disabled(),
@@ -192,7 +211,19 @@ class VideoPoseTemplateGenerator @Inject constructor(
                         ?: return@withContext Result.failure(IllegalStateException("Cannot read video duration"))
 
                 val safeDurationMs = min(durationMs, maxDurationMs)
-                val safeFps = if (highRecall) max(8, fps) else max(5, fps)
+                if (durationMs > maxDurationMs) {
+                    analysisWarnings.putIfAbsent(
+                        WARNING_VIDEO_TRIMMED,
+                        PoseAnalysisWarning(
+                            code = WARNING_VIDEO_TRIMMED,
+                            message = "Only the first ${maxDurationMs / 60_000L} minutes of this video were analysed."
+                        )
+                    )
+                }
+                val safeFps = samplingFps(
+                    durationMs = safeDurationMs,
+                    preferredFps = if (highRecall) max(8, fps) else max(5, fps)
+                )
                 val stepMs = 1000L / safeFps
 
                 val trackingConfig = if (highRecall) {
