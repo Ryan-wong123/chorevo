@@ -185,6 +185,10 @@ The main source package is `app/src/main/java/com/example/chorevo/`.
   - MediaPipe Holistic model for pose + hands. Live practice uses this for body pose plus left/right hand/finger landmarks. Hand-enabled upload generation also uses it after dancer crops are produced by the high-recall YOLO pipeline. Face output is intentionally ignored.
 - `app/google-services.json`
   - Firebase configuration required at runtime
+- `DEPLOYMENT.md`
+  - deploying Firebase by hand and the full Play Store release checklist
+- `SECURITY.md`
+  - how the app protects users and data, and known limitations
 
 ## Build Requirements
 
@@ -328,6 +332,10 @@ Each Android CI run uploads (kept 3 days; an upload that fails, for example beca
 
 ## Setup for Release
 
+The full release checklist (keys, Firebase, Google Cloud, GitHub and Play
+Console steps, including the Data safety answers) is in
+[DEPLOYMENT.md](DEPLOYMENT.md). The signing setup in short:
+
 Release builds are signed with your **upload key**. Without it, the release
 build is left unsigned. The key and its passwords are never committed:
 `*.jks`, `*.keystore` and `keystore.properties` are gitignored.
@@ -391,7 +399,7 @@ App integrity → App signing.
 
 The other steps before publishing (application ID, App Check enforcement, API
 key restrictions, Data safety, privacy policy, testing the release build) are
-listed in [SECURITY.md](SECURITY.md#before-releasing-on-google-play-console-actions).
+in the release checklist in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Firebase Setup
 

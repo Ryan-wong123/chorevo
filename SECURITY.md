@@ -1,8 +1,8 @@
 # Chorevo security
 
-This is how Chorevo protects its users and data. It also lists what still has
-to be done in the Firebase, Google Cloud, GitHub and Play consoles before the
-Play Store release.
+This is how Chorevo protects its users and data. The steps still to do in the
+Firebase, Google Cloud, GitHub and Play consoles before the Play Store release
+are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Threat model
 
@@ -99,86 +99,11 @@ hours for dances).
   dependencies with `--ignore-scripts` before any credentials reach the
   runner.
 
-## Release signing
+## Release signing and Play Store checklist
 
-Release builds are signed with your **upload key** when it is configured;
-otherwise the release APK is unsigned and can't be installed. The key is never
-committed (`*.jks`, `*.keystore` and `keystore.properties` are gitignored).
-
-1. Create the upload key once and keep it, and its passwords, somewhere safe
-   (a password manager). If you lose it, you have to ask Google to reset the
-   upload key.
-   ```
-   keytool -genkeypair -v -keystore chorevo-upload-key.jks -alias upload \
-     -keyalg RSA -keysize 2048 -validity 10000
-   ```
-2. **Local builds:** copy `keystore.properties.example` to
-   `keystore.properties` and fill it in. `./gradlew assembleRelease` then
-   produces a signed, installable APK, and `./gradlew bundleRelease` produces
-   the App Bundle for Play.
-3. **CI:** add these repository secrets (GitHub → Settings → Secrets and
-   variables → Actions):
-   - `RELEASE_KEYSTORE_BASE64`: the output of `base64 -w0 chorevo-upload-key.jks`
-     (on macOS, `base64 -i chorevo-upload-key.jks`)
-   - `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS` (`upload`) and
-     `RELEASE_KEY_PASSWORD`
-
-   With these set, the Android CI build job signs the release APK and also
-   uploads a signed `chorevo-release-aab` for Play. Secrets aren't available
-   to pull requests from forks, so those builds stay unsigned.
-4. In Play Console, turn on **Play App Signing**. Google then re-signs the app
-   for users with the app signing key, and your key stays the upload key. Add
-   the SHA-1/SHA-256 of **both** keys to Firebase and to `assetlinks.json`
-   (step 2 below). Get your upload key's fingerprints with
-   `keytool -list -v -keystore chorevo-upload-key.jks -alias upload`.
-
-## Before releasing on Google Play (console actions)
-
-1. **Application ID:** `com.example.chorevo` is rejected by Play.
-   - Choose the final ID in `app/build.gradle.kts` (`applicationId`).
-   - Register it as a new Android app in Firebase and replace
-     `app/google-services.json`.
-   - Update `public/.well-known/assetlinks.json` and `ANDROID_PACKAGE` in
-     `public/js/*.js`.
-2. **SHA fingerprints:** add the SHA-1 and SHA-256 of the upload key and the
-   Play App Signing key to the Firebase Android app (Google sign-in and App
-   Check need them) and to `assetlinks.json` (App Links).
-3. **App Check:**
-   - Link Play Console to the Firebase project and register the app for
-     Play Integrity.
-   - Register your debug token for development builds.
-   - Watch the App Check metrics, then **enforce** App Check on Firestore,
-     Storage and Authentication.
-4. **API key:** in Google Cloud Console → Credentials, restrict the Android key
-   to your package and SHA-1. Allow only the Firebase APIs the app uses.
-5. **Firebase Authentication:**
-   - Set the password policy to at least 8 characters.
-   - Keep email enumeration protection on.
-6. **Budget alerts:** add Cloud Billing budget alerts, and alerts on function
-   errors and invocations.
-7. **GitHub:**
-   - Add required reviewers to the `production` environment.
-   - Protect `main`.
-   - Turn on secret scanning.
-   - Prefer Workload Identity Federation over a JSON key for
-     `FIREBASE_SERVICE_ACCOUNT`.
-8. **Play Console:**
-   - Publish a privacy policy URL.
-   - Fill in the Data safety form. The app collects email, name, photos,
-     videos, user-generated content, practice activity and device push
-     tokens, plus crash logs and diagnostics (Crashlytics) and app
-     interactions (Analytics events), linked to the user id.
-   - Declare the `dataSync` foreground service (background dance analysis).
-   - Give the account deletion URL:
-     https://chorevo-dea05.web.app/delete-account.html.
-   - Fill in that page's contact line first.
-   - Declare the exact-alarm use (practice reminders).
-9. **Test the release build:** install `assembleRelease` on a device and check
-   that sign-in, the feed, practice, uploads, groups, invites and push all
-   still work. Unit tests don't run R8.
-10. **16 KB pages:** check that the native libraries (TensorFlow Lite,
-    MediaPipe, Filament) support 16 KB page sizes, which Play requires for
-    Android 15+ targets. Use the APK Analyzer or `zipalign -c -P 16`.
+Creating the upload key, signing, and every console step before releasing
+(Firebase, Google Cloud, GitHub, Play Console including the Data safety
+answers) are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Known limitations
 
@@ -193,4 +118,5 @@ committed (`*.jks`, `*.keystore` and `keystore.properties` are gitignored).
   server, which clamps scores and limits rewarded sessions per day, but a
   modified app could still submit good scores. Fully preventing that would
   need server-side pose scoring.
-- A removed group member stays banned. There is no "unban" button yet.
+- A removed group member stays banned until the group owner unbans them
+  (members dialog → Removed → Unban).
