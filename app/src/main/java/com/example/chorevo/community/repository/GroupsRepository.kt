@@ -3,6 +3,7 @@ package com.example.chorevo.community.repository
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.example.chorevo.community.BannedMember
 import com.example.chorevo.community.DanceGroup
 import com.example.chorevo.community.GroupInvitation
 import com.example.chorevo.community.GroupMember
@@ -314,6 +315,32 @@ class GroupsRepository @Inject constructor(
             mapOf("uid" to memberUid, "bannedAt" to System.currentTimeMillis())
         )
         batch.commit().await()
+    }
+
+    /** People removed from the group (owner only), newest first, with their current name and photo. */
+    suspend fun bannedMembers(groupId: String): Result<List<BannedMember>> = runCatching {
+        val bans = groupRef(groupId).collection(BANS).get().await().documents
+        coroutineScope {
+            bans.map { ban ->
+                async {
+                    val profile = runCatching {
+                        firestore.collection("users").document(ban.id).get().await()
+                    }.getOrNull()
+                    BannedMember(
+                        uid = ban.id,
+                        displayName = profile?.getString("displayName")?.trim()?.takeIf { it.isNotBlank() }
+                            ?: "Removed member",
+                        photoUrl = profile?.getString("photoUrl"),
+                        bannedAt = ban.getLong("bannedAt") ?: 0L
+                    )
+                }
+            }.awaitAll()
+        }.sortedByDescending { it.bannedAt }
+    }
+
+    /** Owner only: lets a removed member join again (with an invite code or invitation). */
+    suspend fun unbanMember(groupId: String, memberUid: String): Result<Unit> = runCatching {
+        groupRef(groupId).collection(BANS).document(memberUid).delete().await()
     }
 
     // ── Posts and replies ───────────────────────────────────────────────

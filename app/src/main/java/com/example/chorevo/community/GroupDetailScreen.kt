@@ -77,6 +77,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -281,11 +282,14 @@ fun GroupDetailScreen(
     }
 
     if (showMembers) {
+        LaunchedEffect(Unit) { vm.loadBannedMembers() }
         MembersDialog(
             members = state.members,
+            banned = state.bannedMembers,
             myUid = myUid,
             canRemove = state.isOwner,
             onRemove = vm::removeMember,
+            onUnban = vm::unbanMember,
             onDismiss = { showMembers = false }
         )
     }
@@ -785,9 +789,11 @@ private fun RepliesSheet(
 @Composable
 private fun MembersDialog(
     members: List<GroupMember>,
+    banned: List<BannedMember>,
     myUid: String,
     canRemove: Boolean,
     onRemove: (String) -> Unit,
+    onUnban: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -803,6 +809,24 @@ private fun MembersDialog(
                         } else if (canRemove && m.uid != myUid) {
                             TextButton(onClick = { onRemove(m.uid) }, modifier = Modifier.testTag("removeMember_${m.uid}")) {
                                 Text("Remove")
+                            }
+                        }
+                    }
+                }
+                // Removed members stay out (even with the invite code) until unbanned.
+                if (canRemove && banned.isNotEmpty()) {
+                    item(key = "bannedHeader") {
+                        Text(
+                            "Removed (${banned.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    items(banned, key = { "banned_${it.uid}" }) { b ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { AuthorRow(b.displayName, b.photoUrl, 0L) }
+                            TextButton(onClick = { onUnban(b.uid) }, modifier = Modifier.testTag("unbanMember_${b.uid}")) {
+                                Text("Unban")
                             }
                         }
                     }
