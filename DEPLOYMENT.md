@@ -22,6 +22,8 @@ app on Google Play, in order. Tick items off as you go.
 - [ ] App Check: Play Integrity registered, metrics checked, then enforced
 
 **Google Cloud Console**
+- [ ] Functions allowed to sign group video links ([one-time setup](#one-time-google-cloud-permissions))
+- [ ] Storage rules allowed to read Firestore ([one-time setup](#one-time-google-cloud-permissions))
 - [ ] Android API key restricted to the package name and SHA-1
 - [ ] Budget alerts, and alerts on function errors
 
@@ -56,6 +58,34 @@ Firestore rules last. Setting up its service account is described in the
 README under **Automatic Firebase deploys**.
 
 If GitHub Actions can't run (for example a billing problem), deploy by hand.
+
+### One-time Google Cloud permissions
+
+Two features need permissions that a deploy doesn't set up by itself. Do
+both **before** deploying the functions and Storage rules that use them, or
+group videos and other people's dances stop loading.
+
+1. **Signing group video links** (`groupMediaUrls`). Group videos are played
+   through links that expire after an hour; the functions sign them with
+   their service account.
+   - Google Cloud Console → APIs & Services → enable **IAM Service Account
+     Credentials API**.
+   - IAM & Admin → Service Accounts → the functions' runtime account (by
+     default **Default compute service account**,
+     `<project-number>-compute@developer.gserviceaccount.com`) →
+     Permissions → Grant access → principal: that same account, role:
+     **Service Account Token Creator**.
+2. **Storage rules reading Firestore** (only a private dance's creator can
+   read its pose template). The first deploy of these Storage rules asks
+   to grant Cloud Storage for Firebase access to Firestore; answer **yes**.
+   If you deploy from the console or non-interactively, open Firebase
+   Console → Storage → Rules once and accept the prompt, or grant the
+   **Firebase Rules Firestore Service Agent** role to
+   `service-<project-number>@gcp-sa-firebasestorage.iam.gserviceaccount.com`
+   in IAM.
+
+Check afterwards: a group video plays from another account, and practising
+someone else's public dance works.
 
 ### By hand
 

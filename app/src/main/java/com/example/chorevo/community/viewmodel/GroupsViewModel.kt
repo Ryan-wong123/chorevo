@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.chorevo.community.GroupInvitation
 import com.example.chorevo.community.GroupPost
+import com.example.chorevo.community.GroupPostKind
 import com.example.chorevo.community.InviteSearch
 import com.example.chorevo.community.GroupsTab
 import com.example.chorevo.community.GroupsUiState
@@ -42,6 +43,9 @@ class GroupsViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GroupsUiState())
+
+    /** Video posts whose links are being fetched, so they aren't requested twice. */
+    private val mediaRequests = mutableSetOf<String>()
     val uiState: StateFlow<GroupsUiState> = _uiState.asStateFlow()
 
     private var author: GroupsRepository.Author? = null
@@ -189,6 +193,36 @@ class GroupsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Fetches short-lived links for the open group's video posts that have no
+     * fresh link yet. Called when posts change and when an expired one is tapped.
+     */
+    fun loadPostMedia() {
+        val state = _uiState.value
+        val groupId = state.openGroupId ?: return
+        val now = System.currentTimeMillis()
+        val needed = state.posts
+            .filter { it.kind == GroupPostKind.VIDEO && !it.storagePath.isNullOrBlank() }
+            .map { it.id }
+            .filter { id -> state.postMedia[id]?.isFresh(now) != true && id !in mediaRequests }
+        if (needed.isEmpty()) return
+        mediaRequests += needed
+        viewModelScope.launch {
+            try {
+                needed.chunked(MEDIA_BATCH).forEach { batch ->
+                    repository.groupMediaUrls(groupId, batch)
+                        .onSuccess { media ->
+                            _uiState.update { s ->
+                                if (s.openGroupId == groupId) s.copy(postMedia = s.postMedia + media) else s
+                            }
+                        }
+                }
+            } finally {
+                mediaRequests -= needed.toSet()
+            }
+        }
+    }
+
     /** Owner only: loads who has been removed from the open group. */
     fun loadBannedMembers() {
         val groupId = _uiState.value.openGroupId ?: return
@@ -321,6 +355,7 @@ class GroupsViewModel @Inject constructor(
                 membership = null,
                 members = emptyList(),
                 bannedMembers = emptyList(),
+                postMedia = emptyMap(),
                 posts = emptyList(),
                 isLoadingPosts = true,
                 composer = PostComposer(),
@@ -343,6 +378,7 @@ class GroupsViewModel @Inject constructor(
             viewModelScope.launch {
                 repository.observePosts(groupId).collect { posts ->
                     _uiState.update { s -> if (s.openGroupId == groupId) s.copy(posts = posts, isLoadingPosts = false) else s }
+                    loadPostMedia()
                 }
             },
             viewModelScope.launch {
@@ -365,6 +401,7 @@ class GroupsViewModel @Inject constructor(
                 membership = null,
                 members = emptyList(),
                 bannedMembers = emptyList(),
+                postMedia = emptyMap(),
                 posts = emptyList(),
                 composer = PostComposer(),
                 openPostId = null,
@@ -502,5 +539,7 @@ class GroupsViewModel @Inject constructor(
 
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 300L
+        /** Most posts per groupMediaUrls call (the function's limit). */
+        const val MEDIA_BATCH = 50
     }
 }
