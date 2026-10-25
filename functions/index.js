@@ -1,4 +1,4 @@
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -127,6 +127,8 @@ exports.refreshDiscovery = onSchedule(
     await refreshAllDances(db, { logger });
     // Dances made private before revokeLinksWhenPrivate existed (runs once each).
     logger.info("Old private dance links", await revokeOldPrivateLinks(db, getStorage().bucket(), { newToken: randomUUID, logger }));
+    // Group videos posted before they used short-lived links (runs once each).
+    logger.info("Old group media", await lockOldGroupMedia(db, getStorage().bucket(), { deleteField: FieldValue.delete, logger }));
     logger.info("Profile email cleanup", await removeProfileEmails(db));
   }
 );
@@ -136,7 +138,63 @@ const { onDocumentDeleted, onDocumentCreated } = require("firebase-functions/v2/
 const { getStorage } = require("firebase-admin/storage");
 const { getMessaging } = require("firebase-admin/messaging");
 const { FieldValue } = require("firebase-admin/firestore");
-const { storagePathsOfPosts, isInviteCode, invitationMessage, deadTokens, invitePushAllowance } = require("./groups");
+const {
+  storagePathsOfPosts, isInviteCode, invitationMessage, deadTokens, invitePushAllowance,
+  MEDIA_LINK_TTL_MS, parseGroupMediaRequest, canSeeGroup, groupPostMediaPaths, removeDownloadTokens, lockOldGroupMedia,
+} = require("./groups");
+
+/**
+ * Short-lived links for group post videos and covers. Group media has no
+ * permanent download link (see lockGroupPostMedia), so the app asks here for
+ * links that expire after an hour, for people who can see the group (anyone
+ * signed in for public groups, members for private ones).
+ */
+exports.groupMediaUrls = onCall({ region: "us-central1" }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
+  const req = parseGroupMediaRequest(request.data);
+  if (!req) throw new HttpsError("invalid-argument", "Expected a group id and 1-50 post ids.");
+
+  const db = getFirestore();
+  const groupRef = db.doc(`groups/${req.groupId}`);
+  const [group, membership] = await Promise.all([groupRef.get(), groupRef.collection("members").doc(uid).get()]);
+  if (!group.exists || !canSeeGroup(group.data(), membership.exists)) {
+    throw new HttpsError("permission-denied", "You can't see this group.");
+  }
+
+  const bucket = getStorage().bucket();
+  const expiresAt = Date.now() + MEDIA_LINK_TTL_MS;
+  const sign = async (path) => {
+    const [url] = await bucket.file(path).getSignedUrl({ version: "v4", action: "read", expires: expiresAt });
+    return url;
+  };
+  const posts = await db.getAll(...req.postIds.map((id) => groupRef.collection("posts").doc(id)));
+  const urls = {};
+  for (const post of posts) {
+    if (!post.exists) continue;
+    const paths = groupPostMediaPaths(post.id, post.data());
+    if (!paths.video) continue;
+    urls[post.id] = {
+      videoUrl: await sign(paths.video),
+      thumbnailUrl: paths.thumbnail ? await sign(paths.thumbnail) : null,
+      expiresAt,
+    };
+  }
+  return { urls };
+});
+
+/**
+ * When a video post is created, removes its files' permanent download links,
+ * so the video can only be played through groupMediaUrls.
+ */
+exports.lockGroupPostMedia = onDocumentCreated(
+  { document: "groups/{groupId}/posts/{postId}", region: "us-central1", retry: true },
+  async (event) => {
+    const paths = groupPostMediaPaths(event.params.postId, event.data && event.data.data());
+    const bucket = getStorage().bucket();
+    for (const path of Object.values(paths)) await removeDownloadTokens(bucket.file(path));
+  }
+);
 
 /** Keeps groups/{id}.memberCount exact whenever someone joins or leaves. */
 exports.groupMemberCount = onDocumentWritten(
@@ -241,7 +299,6 @@ exports.groupCleanup = onDocumentDeleted(
 // are all derived here from synced practice sessions. Clients can only read
 // them (firestore.rules). Logic: functions/rewards.js and leaderboard.js.
 const { AggregateField } = require("firebase-admin/firestore");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { leaderboardEntry } = require("./leaderboard");
 const rewards = require("./rewards");
 
