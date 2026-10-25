@@ -166,6 +166,12 @@ test("comments carry a bounded name and the current time", async () => {
 test("group posts can't reference someone else's files or outside URLs", async () => {
   const bob = as("bob");
   const post = (id, extra) => ({ id, uid: "bob", displayName: "Bob", photoUrl: null, body: "", createdAt: now(), ...extra });
+  // Current app: paths only, no permanent link.
+  await assertSucceeds(setDoc(doc(bob, "groups/g/posts/v1"), post("v1", {
+    kind: "video", storagePath: "groupVideos/bob/v1.mp4", thumbnailPath: "groupThumbnails/bob/v1.jpg",
+  })));
+  await assertFails(setDoc(doc(bob, "groups/g/posts/v2"), post("v2", { kind: "video", storagePath: "groupVideos/alice/v2.mp4" })));
+  await assertFails(setDoc(doc(bob, "groups/g/posts/v3"), post("v3", { kind: "video" })));
   await assertSucceeds(setDoc(doc(bob, "groups/g/posts/p1"), post("p1", {
     kind: "video", videoUrl: media("groupVideos", "bob", "p1.mp4"), thumbnailUrl: null,
     storagePath: "groupVideos/bob/p1.mp4", thumbnailPath: null,

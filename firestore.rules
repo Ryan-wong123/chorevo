@@ -380,7 +380,8 @@ service cloud.firestore {
           && (d.get('thumbnailUrl', null) == null || isStorageUrl(d.thumbnailUrl, 'danceThumbnails', uid))
           && noFiles)
         || (d.kind == 'video'
-          && isStorageUrl(d.videoUrl, 'groupVideos', uid)
+          // New posts store only paths; the app gets short-lived links from groupMediaUrls.
+          && (d.get('videoUrl', null) == null || isStorageUrl(d.videoUrl, 'groupVideos', uid))
           && d.storagePath == 'groupVideos/' + uid + '/' + postId + '.mp4'
           && (d.get('thumbnailUrl', null) == null || isStorageUrl(d.thumbnailUrl, 'groupThumbnails', uid))
           && (d.get('thumbnailPath', null) == null || d.thumbnailPath == 'groupThumbnails/' + uid + '/' + postId + '.jpg'));
