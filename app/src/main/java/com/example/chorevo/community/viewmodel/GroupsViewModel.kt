@@ -1,5 +1,8 @@
 package com.example.chorevo.community.viewmodel
 
+import com.example.chorevo.core.telemetry.Telemetry
+import com.example.chorevo.core.telemetry.NoOpTelemetry
+import com.example.chorevo.core.telemetry.AnalyticsEvents
 import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
@@ -34,7 +37,8 @@ import javax.inject.Inject
 class GroupsViewModel @Inject constructor(
     private val repository: GroupsRepository,
     private val uploads: VideoUploadsRepository,
-    private val usernames: UsernameRepository
+    private val usernames: UsernameRepository,
+    private val telemetry: Telemetry = NoOpTelemetry
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(GroupsUiState())
@@ -107,7 +111,13 @@ class GroupsViewModel @Inject constructor(
         if (!isValidGroupName(name) || _uiState.value.isWorking) return
         work {
             repository.createGroup(me.uid, me.displayName, me.photoUrl, name, description, private)
-                .onSuccess { group -> openGroup(group.id) }
+                .onSuccess { group ->
+                    telemetry.logEvent(
+                        AnalyticsEvents.GROUP_CREATED,
+                        mapOf(AnalyticsEvents.PARAM_VISIBILITY to if (private) "private" else "public")
+                    )
+                    openGroup(group.id)
+                }
                 .onFailure { e -> say("Couldn't create the group: ${e.message}") }
         }
     }
@@ -117,7 +127,10 @@ class GroupsViewModel @Inject constructor(
         val groupId = _uiState.value.openGroupId ?: return
         work {
             repository.joinPublicGroup(groupId, me.uid, me.displayName, me.photoUrl)
-                .onSuccess { say("You joined the group") }
+                .onSuccess {
+                    telemetry.logEvent(AnalyticsEvents.GROUP_JOINED, mapOf(AnalyticsEvents.PARAM_METHOD to "public"))
+                    say("You joined the group")
+                }
                 .onFailure { e -> say("Couldn't join: ${e.message}") }
         }
     }
@@ -132,6 +145,7 @@ class GroupsViewModel @Inject constructor(
         work {
             repository.joinWithCode(code, me.uid, me.displayName, me.photoUrl)
                 .onSuccess { groupId ->
+                    telemetry.logEvent(AnalyticsEvents.GROUP_JOINED, mapOf(AnalyticsEvents.PARAM_METHOD to "code"))
                     openGroup(groupId)
                     say("You joined the group")
                 }
@@ -183,6 +197,7 @@ class GroupsViewModel @Inject constructor(
         viewModelScope.launch {
             repository.acceptInvitation(invitation, me)
                 .onSuccess { groupId ->
+                    telemetry.logEvent(AnalyticsEvents.GROUP_JOINED, mapOf(AnalyticsEvents.PARAM_METHOD to "invitation"))
                     openGroup(groupId)
                     say("You joined ${invitation.groupName}")
                 }
