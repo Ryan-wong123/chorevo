@@ -10,6 +10,19 @@ service firebase.storage {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // A dance's pose template ({danceId}.json) is readable by its creator and,
+    // for public dances, by any signed-in user (to practise it). Private
+    // dances' templates stay private. Checks the dance in Firestore.
+    function canReadTemplate(fileName) {
+      let danceId = fileName.split('[.]')[0];
+      let dancePath = /databases/(default)/documents/danceLibrary/$(danceId);
+      return isSignedIn()
+        && fileName.matches('[A-Za-z0-9_-]{1,128}[.]json')
+        && firestore.exists(dancePath)
+        && (firestore.get(dancePath).data.get('visibility', 'private') == 'public'
+          || firestore.get(dancePath).data.educatorUid == request.auth.uid);
+    }
+
     function isUpload(maxBytes, contentTypePattern) {
       return request.resource.size < maxBytes
         && request.resource.contentType.matches(contentTypePattern);
@@ -70,9 +83,9 @@ service firebase.storage {
     }
 
     // Generated pose templates, scoped to the uploader. Practising someone
-    // else's dance reads its template by path.
+    // else's public dance reads its template by path.
     match /danceTemplates/{userId}/{fileName} {
-      allow get: if isSignedIn();
+      allow get: if isOwner(userId) || canReadTemplate(fileName);
       allow list: if false;
       allow create, update: if isOwner(userId)
         && fileName.matches('[A-Za-z0-9_-]{1,128}[.]json')
@@ -83,7 +96,7 @@ service firebase.storage {
 
     // Templates written before uploader scoping: readable, no longer writable.
     match /danceTemplates/{fileName} {
-      allow get: if isSignedIn();
+      allow get: if canReadTemplate(fileName);
       allow list, write: if false;
     }
 

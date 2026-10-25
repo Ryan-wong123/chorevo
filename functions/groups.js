@@ -73,7 +73,105 @@ function deadTokens(tokens, responses) {
   });
 }
 
+// ── Group video links ────────────────────────────────────────────────────────
+
+/** How long a group video or cover link works. */
+const MEDIA_LINK_TTL_MS = 60 * 60 * 1000;
+const MAX_MEDIA_POSTS = 50;
+const DOC_ID = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** Validates a groupMediaUrls request: { groupId, postIds: [...] } (at most 50 ids). Null if invalid. */
+function parseGroupMediaRequest(data) {
+  if (!data || typeof data.groupId !== "string" || !DOC_ID.test(data.groupId)) return null;
+  if (!Array.isArray(data.postIds) || data.postIds.length === 0 || data.postIds.length > MAX_MEDIA_POSTS) return null;
+  if (!data.postIds.every((id) => typeof id === "string" && DOC_ID.test(id))) return null;
+  return { groupId: data.groupId, postIds: [...new Set(data.postIds)] };
+}
+
+/** Who may see a group's posts (same as the Firestore rules): anyone for public groups, else members. */
+function canSeeGroup(group, isMember) {
+  return !!group && (group.visibility === "public" || isMember === true);
+}
+
+/**
+ * The Storage paths of a video post's own files, only if they are in its
+ * author's group folders and named after the post. Never anything else.
+ */
+function groupPostMediaPaths(postId, post) {
+  if (!post || post.kind !== "video" || typeof post.uid !== "string" || !post.uid) return {};
+  const paths = {};
+  if (post.storagePath === `groupVideos/${post.uid}/${postId}.mp4`) paths.video = post.storagePath;
+  if (post.thumbnailPath === `groupThumbnails/${post.uid}/${postId}.jpg`) paths.thumbnail = post.thumbnailPath;
+  return paths;
+}
+
+/** Group videos and covers are never shared through permanent download links. */
+function isGroupMediaPath(path) {
+  return typeof path === "string" && /^group(Videos|Thumbnails)\/[^/]+\/[^/]+$/.test(path);
+}
+
+/**
+ * Removes a file's Firebase download token, so its permanent download link
+ * stops working. Returns true if there was one. Missing files are ignored.
+ */
+async function removeDownloadTokens(file) {
+  let meta;
+  try {
+    [meta] = await file.getMetadata();
+  } catch (err) {
+    if (err && err.code === 404) return false;
+    throw err;
+  }
+  if (!meta || !meta.metadata || !meta.metadata.firebaseStorageDownloadTokens) return false;
+  await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: null } });
+  return true;
+}
+
+/**
+ * Catch-up for video posts made before group videos used short-lived links:
+ * removes their files' download tokens and the stored permanent URLs.
+ * Safe to repeat (later runs find nothing to do).
+ */
+async function lockOldGroupMedia(db, bucket, { deleteField, logger = console } = {}) {
+  const snap = await db.collectionGroup("posts").where("kind", "==", "video").get();
+  let locked = 0;
+  let attempted = 0;
+  for (const doc of snap.docs) {
+    const post = doc.data();
+    if (post.mediaLocked) continue;
+    try {
+      attempted += 1;
+      locked += await lockPostMedia(doc.ref, doc.id, post, bucket, { deleteField });
+    } catch (err) {
+      logger.warn?.("Couldn't lock group media", { post: doc.ref.path, error: String(err && err.message) });
+    }
+  }
+  return { videoPosts: snap.size, attempted, filesLocked: locked };
+}
+
+/**
+ * Removes a video post's files' download tokens and its stored permanent
+ * links, then marks it `mediaLocked`. Returns how many files had a token.
+ * Throws (without marking) if a file couldn't be updated, so it is retried.
+ */
+async function lockPostMedia(ref, postId, post, bucket, { deleteField }) {
+  let locked = 0;
+  for (const path of Object.values(groupPostMediaPaths(postId, post))) {
+    if (await removeDownloadTokens(bucket.file(path))) locked += 1;
+  }
+  await ref.update({ videoUrl: deleteField(), thumbnailUrl: deleteField(), mediaLocked: true });
+  return locked;
+}
+
 module.exports = {
+  lockPostMedia,
+  removeDownloadTokens,
+  lockOldGroupMedia,
+  MEDIA_LINK_TTL_MS,
+  parseGroupMediaRequest,
+  canSeeGroup,
+  groupPostMediaPaths,
+  isGroupMediaPath,
   storagePathsOfPosts,
   isInviteCode,
   invitationMessage,

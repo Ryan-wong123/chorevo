@@ -9,10 +9,16 @@ import com.example.chorevo.danceactivity.repository.DanceSessionDao
 import com.example.chorevo.danceactivity.DanceSessionEntity
 
 
+/**
+ * The local database (practice sessions waiting to sync). Every schema change
+ * needs a version bump, a [Migration] added to DatabaseModule, and the new
+ * exported schema in app/schemas committed; there is no destructive fallback,
+ * so unsynced sessions are never wiped by an update.
+ */
 @Database(
     entities = [DanceSessionEntity::class],
     version = 6,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDb : RoomDatabase() {
     /** Handles dance session dao. */

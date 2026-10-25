@@ -10,6 +10,7 @@ import com.example.chorevo.community.GroupMember
 import com.example.chorevo.community.GroupPost
 import com.example.chorevo.community.GroupPostKind
 import com.example.chorevo.community.GroupReply
+import com.example.chorevo.community.PostMedia
 import com.example.chorevo.community.INVITE_CODE_ALPHABET
 import com.example.chorevo.community.INVITE_CODE_LENGTH
 import com.example.chorevo.community.invitationId
@@ -21,6 +22,7 @@ import com.example.chorevo.firebase.repository.UserSearchResult
 import com.example.chorevo.videouploads.VideoCompressor
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
 import com.google.firebase.storage.StorageMetadata
@@ -51,7 +53,8 @@ class GroupsRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val storage: FirebaseStorage,
     private val videoCompressor: VideoCompressor,
-    private val videoFrames: VideoFrames
+    private val videoFrames: VideoFrames,
+    private val functions: FirebaseFunctions
 ) {
     private val random = SecureRandom()
 
@@ -399,25 +402,44 @@ class GroupsRepository @Inject constructor(
             maxProgress = 0.9f,
             onProgress = onProgress
         )
-        val videoUrl = videoRef.downloadUrl.await().toString()
         compressed?.delete()
 
-        val thumbnailUrl = runCatching {
+        val thumbnailUploaded = runCatching {
             val jpeg = videoFrames.coverJpeg(videoUri, timeMs = 1_000L)
             val thumbRef = storage.reference.child(thumbPath)
             thumbRef.putBytes(jpeg, StorageMetadata.Builder().setContentType("image/jpeg").build()).await()
-            thumbRef.downloadUrl.await().toString()
-        }.getOrNull()
+        }.isSuccess
         onProgress(0.97f)
 
+        // Only the paths: group media has no permanent link (the lockGroupPostMedia
+        // function removes it); viewers get short-lived links from groupMediaUrls.
         val data = postData(ref.id, author, body, GroupPostKind.VIDEO) + mapOf(
-            "videoUrl" to videoUrl,
-            "thumbnailUrl" to thumbnailUrl,
             "storagePath" to videoPath,
-            "thumbnailPath" to thumbnailUrl?.let { thumbPath }
+            "thumbnailPath" to if (thumbnailUploaded) thumbPath else null
         )
         ref.set(data).await()
         onProgress(1f)
+    }
+
+    /**
+     * Short-lived links (about an hour) to these video posts' files, for
+     * someone who can see the group. Posts without their own video are left out.
+     */
+    suspend fun groupMediaUrls(groupId: String, postIds: List<String>): Result<Map<String, PostMedia>> = runCatching {
+        if (postIds.isEmpty()) return@runCatching emptyMap()
+        val result = functions.getHttpsCallable("groupMediaUrls")
+            .call(mapOf("groupId" to groupId, "postIds" to postIds))
+            .await()
+        val urls = (result.getData() as? Map<*, *>)?.get("urls") as? Map<*, *> ?: emptyMap<Any, Any>()
+        urls.entries.mapNotNull { (postId, value) ->
+            val media = value as? Map<*, *> ?: return@mapNotNull null
+            val videoUrl = media["videoUrl"] as? String ?: return@mapNotNull null
+            postId.toString() to PostMedia(
+                videoUrl = videoUrl,
+                thumbnailUrl = media["thumbnailUrl"] as? String,
+                expiresAt = (media["expiresAt"] as? Number)?.toLong() ?: 0L
+            )
+        }.toMap()
     }
 
     /** Deletes a post (author or group owner), its replies, and an author's own group-only files. */
