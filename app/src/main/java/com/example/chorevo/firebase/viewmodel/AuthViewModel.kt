@@ -170,8 +170,9 @@ class AuthViewModel @Inject constructor(
             try {
                 val res = block()
                 if (res.isSuccess) {
+                    val createdAccount = isSignUp || res.getOrThrow().isNewAccount
                     telemetry.logEvent(
-                        if (isSignUp) AnalyticsEvents.SIGN_UP else AnalyticsEvents.LOGIN,
+                        if (createdAccount) AnalyticsEvents.SIGN_UP else AnalyticsEvents.LOGIN,
                         mapOf(AnalyticsEvents.PARAM_METHOD to if (provider == AuthProvider.GOOGLE) "google" else "email")
                     )
                     _events.tryEmit(AuthEvent.Authed(res.getOrThrow()))
