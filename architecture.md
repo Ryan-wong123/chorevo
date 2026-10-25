@@ -446,7 +446,7 @@ Rules:
 
 `VideoPoseTemplateGenerator` (an injected singleton) runs on the `@DefaultDispatcher`. It:
 
-- reads frames with `MediaMetadataRetriever` (up to 120 seconds of video; at least 5 fps for the standard profile and 8 fps for high-recall),
+- reads frames with `MediaMetadataRetriever` (up to 5 minutes of video; 5 fps for the standard profile and 8 fps for high-recall, lowered for videos over 2 minutes so at most 960 frames are analysed, never below 3 fps; a longer video gets a "only the first 5 minutes" warning),
 - runs full-frame MediaPipe in VIDEO mode; per-crop inference uses IMAGE mode,
 - **standard profile** (background worker): Pose Landmarker lite, plus full-frame Holistic (single person) when hands are requested. Holistic's pose becomes the frame's detection, and its hands are attached to that pose. If Holistic cannot initialize, a `handExtractionPartial` warning is added and generation continues body-only.
 - **high-recall profile** (on-device "Analyze Dancers"): low-light preprocessing, YOLO person detection (enabled automatically when hands are requested), same-frame duplicate removal, ByteTrack tracking, per-dancer padded crops through Holistic (falling back per dancer to body-only pose), remapping of pose and hand landmarks to full-frame coordinates, track fragment merging, and short-gap interpolation. Fixed-region crop passes run only for high-recall body-only generation, which the app does not currently request.

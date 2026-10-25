@@ -8,11 +8,13 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.VideoEncoderSettings
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.io.File
@@ -29,6 +31,10 @@ import kotlin.coroutines.resumeWithException
 class VideoCompressor @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+
+    private companion object {
+        const val VIDEO_BITRATE = 2_500_000 // bits per second
+    }
 
     /** Compresses [inputUri] into a new file in the cache folder. */
     @OptIn(UnstableApi::class)
@@ -53,7 +59,15 @@ class VideoCompressor @Inject constructor(
             )
             .build()
 
+        // A fixed bitrate keeps a 5-minute 720p dance well under the 200 MB upload limit.
+        val encoderFactory = DefaultEncoderFactory.Builder(context)
+            .setRequestedVideoEncoderSettings(
+                VideoEncoderSettings.Builder().setBitrate(VIDEO_BITRATE).build()
+            )
+            .build()
+
         val transformer = Transformer.Builder(context)
+            .setEncoderFactory(encoderFactory)
             .setVideoMimeType(MimeTypes.VIDEO_H264)
             .setAudioMimeType(MimeTypes.AUDIO_AAC)
             .addListener(object : Transformer.Listener {
