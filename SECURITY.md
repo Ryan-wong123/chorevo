@@ -46,6 +46,9 @@ hours for dances).
 - `deleteUserData` (Firebase Auth `onDelete`) removes the user's profile,
   username, dances, likes, comments, groups they own, memberships, posts,
   replies, invitations, leaderboard entry and all of their Storage folders.
+- `revokeLinksWhenPrivate` gives a dance's video and cover new download
+  tokens when it is made private (only files in the uploader's own dance
+  folders), so links shared earlier stop working.
 - `danceShare` accepts only well-formed dance IDs and renders only public
   dances. It embeds media only from this project's Storage and escapes all
   text.
@@ -178,8 +181,11 @@ committed (`*.jks`, `*.keystore` and `keystore.properties` are gitignored).
 ## Known limitations
 
 - Download URLs of dance and group videos work for anyone who has the URL.
-  Making a dance private hides it everywhere in the app, but doesn't revoke a
-  URL someone already copied.
+  Making a dance private revokes its video and cover links
+  (`revokeLinksWhenPrivate`), so copied links and group posts that shared it
+  stop playing; dances made private before that function existed keep their
+  old links until they are made public and private again. Group post videos
+  have no privacy setting and keep working for anyone with the link.
 - Practice scores are computed on the phone. Everything derived from them
   (points, badges, streaks, challenges, leaderboard) is computed by the
   server, which clamps scores and limits rewarded sessions per day, but a
