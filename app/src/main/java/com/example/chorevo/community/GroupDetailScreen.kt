@@ -257,9 +257,11 @@ fun GroupDetailScreen(
                 else -> items(state.posts, key = { it.id }) { post ->
                     PostCard(
                         post = post,
+                        media = state.postMedia[post.id],
                         canDelete = post.uid == myUid || state.isOwner,
                         onOpenDance = onOpenDance,
                         onPlay = { playingUrl = it },
+                        onRefreshMedia = vm::loadPostMedia,
                         onReplies = { vm.openPost(post.id) },
                         onDelete = { vm.deletePost(post) }
                     )
@@ -429,9 +431,11 @@ private fun JoinBanner(working: Boolean, onJoin: () -> Unit) {
 @Composable
 private fun PostCard(
     post: GroupPost,
+    media: PostMedia?,
     canDelete: Boolean,
     onOpenDance: (String) -> Unit,
     onPlay: (String) -> Unit,
+    onRefreshMedia: () -> Unit,
     onReplies: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -452,7 +456,7 @@ private fun PostCard(
                 GroupPostKind.DANCE -> {
                     val danceId = post.danceId
                     Thumbnail(
-                        url = post.thumbnailUrl,
+                        url = post.thumbnailUrl?.takeIf(::isTrustedMediaUrl),
                         label = post.danceTitle ?: "Dance",
                         icon = Icons.Filled.MusicNote,
                         onClick = { if (danceId != null) onOpenDance(danceId) }
@@ -467,12 +471,21 @@ private fun PostCard(
                     }
                 }
                 GroupPostKind.VIDEO -> {
-                    val url = post.videoUrl?.takeIf(::isTrustedMediaUrl)
+                    // Short-lived links from groupMediaUrls; older posts may still
+                    // carry a stored link until the server removes it.
+                    val legacyVideoUrl = post.videoUrl?.takeIf(::isTrustedMediaUrl)
                     Thumbnail(
-                        url = post.thumbnailUrl,
+                        url = media?.thumbnailUrl ?: post.thumbnailUrl?.takeIf(::isTrustedMediaUrl),
                         label = null,
                         icon = Icons.Filled.PlayArrow,
-                        onClick = { if (url != null) onPlay(url) }
+                        onClick = {
+                            val fresh = media?.takeIf { it.isFresh(System.currentTimeMillis(), marginMs = 0L) }
+                            when {
+                                fresh != null -> onPlay(fresh.videoUrl)
+                                legacyVideoUrl != null -> onPlay(legacyVideoUrl)
+                                else -> onRefreshMedia()
+                            }
+                        }
                     )
                 }
                 GroupPostKind.TEXT -> Unit
@@ -548,7 +561,8 @@ private fun Thumbnail(
             .aspectRatio(16f / 10f)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (isTrustedMediaUrl(url)) {
+            // Callers pass only links from this app's Storage (or the server).
+            if (url != null) {
                 AsyncImage(
                     model = url,
                     contentDescription = null,
