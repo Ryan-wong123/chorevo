@@ -1,4 +1,6 @@
-// Firestore rules tests for dance privacy and server-managed fields.
+// Firestore and Storage rules tests for dance privacy and server-managed fields.
+// Uses the emulator's own project (demo-chorevo) so Storage rules can read
+// Firestore (cross-service rules).
 // Run with `npm test` in rules-tests/ (starts the Firestore emulator).
 const test = require("node:test");
 const fs = require("node:fs");
@@ -20,6 +22,7 @@ const {
   where,
   getDocs,
 } = require("firebase/firestore");
+const { ref, uploadBytes, getBytes } = require("firebase/storage");
 
 let env;
 
@@ -27,6 +30,7 @@ test.before(async () => {
   env = await initializeTestEnvironment({
     projectId: "demo-chorevo",
     firestore: { rules: fs.readFileSync(path.join(__dirname, "..", "firestore.rules"), "utf8") },
+    storage: { rules: fs.readFileSync(path.join(__dirname, "..", "storage.rules"), "utf8") },
   });
 });
 
@@ -117,4 +121,30 @@ test("the uploader can still delete their dance and its likes", async () => {
   const db = as("owner");
   await assertSucceeds(deleteDoc(doc(db, "danceLibrary/pub/likes/viewer")));
   await assertSucceeds(deleteDoc(doc(db, "danceLibrary/priv")));
+});
+
+test("pose templates of private dances are readable only by their creator", async () => {
+  await env.clearStorage();
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const st = ctx.storage();
+    const json = new TextEncoder().encode("{}");
+    const meta = { contentType: "application/json" };
+    for (const p of ["danceTemplates/owner/pub.json", "danceTemplates/owner/priv.json",
+      "danceTemplates/owner/legacy.json", "danceTemplates/owner/gone.json", "danceTemplates/priv.json"]) {
+      await uploadBytes(ref(st, p), json, meta);
+    }
+  });
+  const storageAs = (uid) => env.authenticatedContext(uid).storage();
+
+  // Public dance: anyone signed in can practise it.
+  await assertSucceeds(getBytes(ref(storageAs("viewer"), "danceTemplates/owner/pub.json")));
+  await assertFails(getBytes(ref(env.unauthenticatedContext().storage(), "danceTemplates/owner/pub.json")));
+  // Private (or visibility missing, like Firestore treats it): only the creator.
+  await assertSucceeds(getBytes(ref(storageAs("owner"), "danceTemplates/owner/priv.json")));
+  await assertFails(getBytes(ref(storageAs("viewer"), "danceTemplates/owner/priv.json")));
+  await assertFails(getBytes(ref(storageAs("viewer"), "danceTemplates/owner/legacy.json")));
+  await assertFails(getBytes(ref(storageAs("viewer"), "danceTemplates/priv.json")));
+  // No dance document: only the folder's owner.
+  await assertSucceeds(getBytes(ref(storageAs("owner"), "danceTemplates/owner/gone.json")));
+  await assertFails(getBytes(ref(storageAs("viewer"), "danceTemplates/owner/gone.json")));
 });
