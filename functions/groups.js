@@ -133,26 +133,38 @@ async function removeDownloadTokens(file) {
  * Safe to repeat (later runs find nothing to do).
  */
 async function lockOldGroupMedia(db, bucket, { deleteField, logger = console } = {}) {
-  const snap = await db.collectionGroup("posts").get();
+  const snap = await db.collectionGroup("posts").where("kind", "==", "video").get();
   let locked = 0;
+  let attempted = 0;
   for (const doc of snap.docs) {
     const post = doc.data();
-    const paths = groupPostMediaPaths(doc.id, post);
-    for (const path of Object.values(paths)) {
-      try {
-        if (await removeDownloadTokens(bucket.file(path))) locked += 1;
-      } catch (err) {
-        logger.warn?.("Couldn't lock group media", { path, error: String(err && err.message) });
-      }
-    }
-    if (post.kind === "video" && (post.videoUrl || post.thumbnailUrl)) {
-      await doc.ref.update({ videoUrl: deleteField(), thumbnailUrl: deleteField() });
+    if (post.mediaLocked) continue;
+    try {
+      attempted += 1;
+      locked += await lockPostMedia(doc.ref, doc.id, post, bucket, { deleteField });
+    } catch (err) {
+      logger.warn?.("Couldn't lock group media", { post: doc.ref.path, error: String(err && err.message) });
     }
   }
-  return { posts: snap.size, filesLocked: locked };
+  return { videoPosts: snap.size, attempted, filesLocked: locked };
+}
+
+/**
+ * Removes a video post's files' download tokens and its stored permanent
+ * links, then marks it `mediaLocked`. Returns how many files had a token.
+ * Throws (without marking) if a file couldn't be updated, so it is retried.
+ */
+async function lockPostMedia(ref, postId, post, bucket, { deleteField }) {
+  let locked = 0;
+  for (const path of Object.values(groupPostMediaPaths(postId, post))) {
+    if (await removeDownloadTokens(bucket.file(path))) locked += 1;
+  }
+  await ref.update({ videoUrl: deleteField(), thumbnailUrl: deleteField(), mediaLocked: true });
+  return locked;
 }
 
 module.exports = {
+  lockPostMedia,
   removeDownloadTokens,
   lockOldGroupMedia,
   MEDIA_LINK_TTL_MS,

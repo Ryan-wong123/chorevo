@@ -63,20 +63,24 @@ function revocableMedia(dance, bucketName) {
 /**
  * Gives the dance's video and cover new download tokens. Returns the fields to
  * write to the dance: the new URLs plus `linksRevokedAt`. A file that can't be
- * updated keeps its URL (and is logged).
+ * updated keeps its URL (and is logged), and then `linksRevokedAt` is left out
+ * so the catch-up tries again.
  */
 async function rotateDanceLinks(bucket, dance, { newToken, nowMs = Date.now(), logger = console } = {}) {
   const updates = {};
+  let failed = false;
   for (const { field, path } of revocableMedia(dance, bucket.name)) {
     const token = newToken();
     try {
       await bucket.file(path).setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
       updates[field] = downloadUrl(bucket.name, path, token);
     } catch (err) {
+      failed = true;
       logger.warn?.("Couldn't revoke a download link", { danceId: dance.danceId, path, error: String(err && err.message) });
     }
   }
-  updates.linksRevokedAt = nowMs;
+  // Marked done only when every file got a new token, so failures are retried.
+  if (!failed) updates.linksRevokedAt = nowMs;
   return updates;
 }
 
@@ -91,8 +95,9 @@ async function revokeOldPrivateLinks(db, bucket, { newToken, nowMs = Date.now(),
   for (const doc of snap.docs) {
     const dance = doc.data();
     if (dance.linksRevokedAt) continue;
-    await doc.ref.update(await rotateDanceLinks(bucket, dance, { newToken, nowMs, logger }));
-    revoked += 1;
+    const updates = await rotateDanceLinks(bucket, dance, { newToken, nowMs, logger });
+    if (Object.keys(updates).length) await doc.ref.update(updates);
+    if (updates.linksRevokedAt) revoked += 1;
   }
   return { privateDances: snap.size, revoked };
 }

@@ -46,6 +46,10 @@ class GroupsViewModel @Inject constructor(
 
     /** Video posts whose links are being fetched, so they aren't requested twice. */
     private val mediaRequests = mutableSetOf<String>()
+    /** A video tapped before its link arrived; played once it does. */
+    private var pendingPlayPostId: String? = null
+    /** Refreshes links shortly before the earliest one expires, while a group is open. */
+    private var mediaRefreshJob: Job? = null
     val uiState: StateFlow<GroupsUiState> = _uiState.asStateFlow()
 
     private var author: GroupsRepository.Author? = null
@@ -210,16 +214,49 @@ class GroupsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 needed.chunked(MEDIA_BATCH).forEach { batch ->
-                    repository.groupMediaUrls(groupId, batch)
-                        .onSuccess { media ->
-                            _uiState.update { s ->
-                                if (s.openGroupId == groupId) s.copy(postMedia = s.postMedia + media) else s
-                            }
+                    val media = repository.groupMediaUrls(groupId, batch).getOrNull().orEmpty()
+                    if (_uiState.value.openGroupId != groupId) return@forEach
+                    _uiState.update { s -> s.copy(postMedia = s.postMedia + media) }
+                    pendingPlayPostId?.takeIf { it in batch }?.let { postId ->
+                        pendingPlayPostId = null
+                        val url = media[postId]?.videoUrl
+                        if (url != null) {
+                            _uiState.update { it.copy(playVideoUrl = url) }
+                        } else {
+                            say("Couldn't load this video. Try again.")
                         }
+                    }
                 }
             } finally {
                 mediaRequests -= needed.toSet()
             }
+            scheduleMediaRefresh(groupId)
+        }
+    }
+
+    /** Plays a group video post, fetching a fresh link first if needed. */
+    fun playPost(postId: String) {
+        val media = _uiState.value.postMedia[postId]
+        if (media != null && media.isFresh(System.currentTimeMillis())) {
+            _uiState.update { it.copy(playVideoUrl = media.videoUrl) }
+        } else {
+            pendingPlayPostId = postId
+            _uiState.update { it.copy(postMedia = it.postMedia - postId) }
+            loadPostMedia()
+        }
+    }
+
+    /** The screen has opened [GroupsUiState.playVideoUrl]. */
+    fun onVideoShown() {
+        _uiState.update { it.copy(playVideoUrl = null) }
+    }
+
+    private fun scheduleMediaRefresh(groupId: String) {
+        val earliest = _uiState.value.postMedia.values.minOfOrNull { it.expiresAt } ?: return
+        mediaRefreshJob?.cancel()
+        mediaRefreshJob = viewModelScope.launch {
+            delay((earliest - System.currentTimeMillis() - MEDIA_REFRESH_MARGIN_MS).coerceAtLeast(60_000L))
+            if (_uiState.value.openGroupId == groupId) loadPostMedia()
         }
     }
 
@@ -346,6 +383,8 @@ class GroupsViewModel @Inject constructor(
     fun openGroup(groupId: String) {
         val me = author ?: return
         groupJobs.forEach { it.cancel() }
+        mediaRefreshJob?.cancel()
+        pendingPlayPostId = null
         repliesJob?.cancel()
         _uiState.update {
             it.copy(
@@ -392,6 +431,8 @@ class GroupsViewModel @Inject constructor(
 
     fun closeGroup() {
         groupJobs.forEach { it.cancel() }
+        mediaRefreshJob?.cancel()
+        pendingPlayPostId = null
         groupJobs = emptyList()
         repliesJob?.cancel()
         _uiState.update {
@@ -457,7 +498,10 @@ class GroupsViewModel @Inject constructor(
                 else -> repository.createTextPost(groupId, me, composer.text)
             }
             result
-                .onSuccess { _uiState.update { it.copy(composer = PostComposer()) } }
+                .onSuccess {
+                    _uiState.update { it.copy(composer = PostComposer()) }
+                    if (composer.videoUri != null) loadPostMedia()
+                }
                 .onFailure { e ->
                     _uiState.update {
                         it.copy(
@@ -541,5 +585,7 @@ class GroupsViewModel @Inject constructor(
         const val SEARCH_DEBOUNCE_MS = 300L
         /** Most posts per groupMediaUrls call (the function's limit). */
         const val MEDIA_BATCH = 50
+        /** Links are refreshed this long before they expire. */
+        const val MEDIA_REFRESH_MARGIN_MS = 5 * 60_000L
     }
 }

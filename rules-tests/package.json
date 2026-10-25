@@ -2,7 +2,7 @@
   "name": "chorevo-rules-tests",
   "private": true,
   "scripts": {
-    "test": "firebase emulators:exec --only firestore,storage --project demo-chorevo \"node --test\""
+    "test": "firebase emulators:exec --only firestore,storage --project demo-chorevo \"node --test --test-concurrency=1\""
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^6.0.0",
