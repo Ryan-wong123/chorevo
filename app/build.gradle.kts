@@ -1,3 +1,4 @@
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -56,6 +57,11 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release")
+            // Upload R8 mapping files to Crashlytics only for signed (shippable) builds,
+            // not for every unsigned CI build.
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = releaseStoreFile != null
+            }
             // R8: shrinks and obfuscates the release build (keep rules in proguard-rules.pro).
             isMinifyEnabled = true
             isShrinkResources = true

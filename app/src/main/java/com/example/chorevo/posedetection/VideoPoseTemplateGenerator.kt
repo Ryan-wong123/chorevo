@@ -42,6 +42,9 @@ class VideoPoseTemplateGenerator @Inject constructor(
         private const val MAX_ANALYSED_FRAMES = 960
         private const val MIN_FPS = 3
 
+        /** Time in the video of the [index]th sampled frame at [fps]. */
+        internal fun frameTimeMs(index: Int, fps: Int): Long = index * 1000L / fps.coerceAtLeast(1)
+
         /** Frames per second to sample a [durationMs] video at, given the profile's [preferredFps]. */
         internal fun samplingFps(durationMs: Long, preferredFps: Int): Int {
             if (durationMs <= 0L) return preferredFps
@@ -224,12 +227,10 @@ class VideoPoseTemplateGenerator @Inject constructor(
                     durationMs = safeDurationMs,
                     preferredFps = if (highRecall) max(8, fps) else max(5, fps)
                 )
-                val stepMs = 1000L / safeFps
-
                 val trackingConfig = if (highRecall) {
                     PoseTrackingConfig.highRecall(safeFps)
                 } else {
-                    PoseTrackingConfig.standard()
+                    PoseTrackingConfig.standard(safeFps)
                 }
                 val tracker = MultiPersonPoseTracker(
                     fps = safeFps,
@@ -244,7 +245,7 @@ class VideoPoseTemplateGenerator @Inject constructor(
 
                 var tMs = 0L
                 var idx = 0
-                val totalSteps = max(1, (safeDurationMs / stepMs).toInt())
+                val totalSteps = max(1, (safeDurationMs * safeFps / 1000L).toInt())
 
                 while (tMs <= safeDurationMs) {
                     // getFrameAtTime expects microseconds
@@ -379,7 +380,9 @@ class VideoPoseTemplateGenerator @Inject constructor(
                     idx++
                     onProgress?.invoke(idx.toFloat() / totalSteps.toFloat())
 
-                    tMs += stepMs
+                    // From the index, not by adding a fixed step: 1000 / fps is rounded down at 3, 6 or 7 fps,
+                    // and practice scoring finds frames by index * 1000 / fps.
+                    tMs = frameTimeMs(idx, safeFps)
                 }
 
                 val template = tracker.buildTemplate()
