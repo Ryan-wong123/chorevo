@@ -60,4 +60,43 @@ function revocableMedia(dance, bucketName) {
   return media;
 }
 
-module.exports = { becamePrivate, storagePathFromDownloadUrl, downloadUrl, revocableMedia };
+/**
+ * Gives the dance's video and cover new download tokens. Returns the fields to
+ * write to the dance: the new URLs plus `linksRevokedAt`. A file that can't be
+ * updated keeps its URL (and is logged).
+ */
+async function rotateDanceLinks(bucket, dance, { newToken, nowMs = Date.now(), logger = console } = {}) {
+  const updates = {};
+  for (const { field, path } of revocableMedia(dance, bucket.name)) {
+    const token = newToken();
+    try {
+      await bucket.file(path).setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+      updates[field] = downloadUrl(bucket.name, path, token);
+    } catch (err) {
+      logger.warn?.("Couldn't revoke a download link", { danceId: dance.danceId, path, error: String(err && err.message) });
+    }
+  }
+  updates.linksRevokedAt = nowMs;
+  return updates;
+}
+
+/**
+ * One-off catch-up for dances made private before revocation existed: rotates
+ * the links of every private dance without `linksRevokedAt`. Safe to run
+ * repeatedly (later runs find nothing to do).
+ */
+async function revokeOldPrivateLinks(db, bucket, { newToken, nowMs = Date.now(), logger = console } = {}) {
+  const snap = await db.collection("danceLibrary").where("visibility", "==", "private").get();
+  let revoked = 0;
+  for (const doc of snap.docs) {
+    const dance = doc.data();
+    if (dance.linksRevokedAt) continue;
+    await doc.ref.update(await rotateDanceLinks(bucket, dance, { newToken, nowMs, logger }));
+    revoked += 1;
+  }
+  return { privateDances: snap.size, revoked };
+}
+
+module.exports = {
+  becamePrivate, storagePathFromDownloadUrl, downloadUrl, revocableMedia, rotateDanceLinks, revokeOldPrivateLinks,
+};

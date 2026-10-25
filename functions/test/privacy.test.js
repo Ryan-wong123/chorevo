@@ -48,3 +48,85 @@ test("only the uploader's own dance video and cover are revoked", () => {
   assert.deepStrictEqual(revocableMedia({ educatorUid: "alice", videoUrl: url("danceVideos/alice/x/../d.mp4") }, BUCKET), []);
   assert.deepStrictEqual(revocableMedia({ videoUrl: url("danceVideos/alice/d1.mp4") }, BUCKET), []);
 });
+
+// ── Rotating links ───────────────────────────────────────────────────────────
+
+const { rotateDanceLinks, revokeOldPrivateLinks } = require("../privacy");
+
+function fakeBucket(name = BUCKET, failing = new Set()) {
+  const metadata = {};
+  return {
+    name,
+    metadata,
+    file: (path) => ({
+      setMetadata: async (m) => {
+        if (failing.has(path)) throw new Error("boom");
+        metadata[path] = m.metadata.firebaseStorageDownloadTokens;
+      },
+    }),
+  };
+}
+
+const tokens = () => {
+  let n = 0;
+  return () => `new${++n}`;
+};
+const quiet = { warn: () => {} };
+
+test("rotating gives each file a new token and returns the new URLs", async () => {
+  const bucket = fakeBucket();
+  const updates = await rotateDanceLinks(bucket, {
+    danceId: "d1",
+    educatorUid: "alice",
+    videoUrl: url("danceVideos/alice/d1.mp4", "old"),
+    thumbnailUrl: url("danceThumbnails/alice/d1.jpg", "old"),
+  }, { newToken: tokens(), nowMs: 42, logger: quiet });
+
+  assert.deepStrictEqual(bucket.metadata, {
+    "danceVideos/alice/d1.mp4": "new1",
+    "danceThumbnails/alice/d1.jpg": "new2",
+  });
+  assert.deepStrictEqual(updates, {
+    videoUrl: url("danceVideos/alice/d1.mp4", "new1"),
+    thumbnailUrl: url("danceThumbnails/alice/d1.jpg", "new2"),
+    linksRevokedAt: 42,
+  });
+});
+
+test("a file that can't be updated keeps its URL", async () => {
+  const bucket = fakeBucket(BUCKET, new Set(["danceVideos/alice/d1.mp4"]));
+  const updates = await rotateDanceLinks(bucket, {
+    educatorUid: "alice",
+    videoUrl: url("danceVideos/alice/d1.mp4", "old"),
+    thumbnailUrl: url("danceThumbnails/alice/d1.jpg", "old"),
+  }, { newToken: tokens(), nowMs: 1, logger: quiet });
+  assert.strictEqual(updates.videoUrl, undefined);
+  assert.strictEqual(updates.thumbnailUrl, url("danceThumbnails/alice/d1.jpg", "new2"));
+});
+
+test("the catch-up pass revokes only private dances not done yet", async () => {
+  const docs = [
+    { id: "a", data: { danceId: "a", educatorUid: "alice", visibility: "private", videoUrl: url("danceVideos/alice/a.mp4", "old") } },
+    { id: "b", data: { danceId: "b", educatorUid: "alice", visibility: "private", linksRevokedAt: 5, videoUrl: url("danceVideos/alice/b.mp4", "kept") } },
+  ];
+  const written = {};
+  const db = {
+    collection: (name) => {
+      assert.strictEqual(name, "danceLibrary");
+      return {
+        where: (field, op, value) => {
+          assert.deepStrictEqual([field, op, value], ["visibility", "==", "private"]);
+          return {
+            get: async () => ({
+              size: docs.length,
+              docs: docs.map((d) => ({ data: () => d.data, ref: { update: async (u) => { written[d.id] = u; } } })),
+            }),
+          };
+        },
+      };
+    },
+  };
+  const result = await revokeOldPrivateLinks(db, fakeBucket(), { newToken: tokens(), nowMs: 9, logger: quiet });
+  assert.deepStrictEqual(result, { privateDances: 2, revoked: 1 });
+  assert.deepStrictEqual(written, { a: { videoUrl: url("danceVideos/alice/a.mp4", "new1"), linksRevokedAt: 9 } });
+});

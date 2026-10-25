@@ -110,9 +110,9 @@ answers) are in [DEPLOYMENT.md](DEPLOYMENT.md).
 - Download URLs of dance and group videos work for anyone who has the URL.
   Making a dance private revokes its video and cover links
   (`revokeLinksWhenPrivate`), so copied links and group posts that shared it
-  stop playing; dances made private before that function existed keep their
-  old links until they are made public and private again. Group post videos
-  have no privacy setting and keep working for anyone with the link.
+  stop playing. Dances made private before that function existed get new
+  links from the scheduled `refreshDiscovery` job (once each, marked with
+  `linksRevokedAt`).
 - Practice scores are computed on the phone. Everything derived from them
   (points, badges, streaks, challenges, leaderboard) is computed by the
   server, which clamps scores and limits rewarded sessions per day, but a

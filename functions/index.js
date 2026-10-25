@@ -43,7 +43,7 @@ exports.danceShare = onRequest({ region: "us-central1", maxInstances: 10 }, asyn
 // ── Discovery: server-maintained feed fields ────────────────────────────────
 const { onDocumentWritten, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { randomUUID } = require("node:crypto");
-const { becamePrivate, revocableMedia, downloadUrl } = require("./privacy");
+const { becamePrivate, rotateDanceLinks, revokeOldPrivateLinks } = require("./privacy");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { derivedFieldUpdates, trendingScore } = require("./discovery");
 const { countLikes, refreshAllDances, backfillLikeUidsOnce, updateCategoryCounts, removeProfileEmails } = require("./maintenance");
@@ -89,18 +89,8 @@ exports.revokeLinksWhenPrivate = onDocumentUpdated(
     const after = event.data.after.data();
     if (!becamePrivate(before, after)) return;
 
-    const bucket = getStorage().bucket();
-    const updates = {};
-    for (const { field, path } of revocableMedia(after, bucket.name)) {
-      const token = randomUUID();
-      try {
-        await bucket.file(path).setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
-        updates[field] = downloadUrl(bucket.name, path, token);
-      } catch (err) {
-        logger.warn("Couldn't revoke a download link", { danceId: event.params.danceId, path, error: String(err && err.message) });
-      }
-    }
-    if (Object.keys(updates).length) await event.data.after.ref.update(updates);
+    const updates = await rotateDanceLinks(getStorage().bucket(), after, { newToken: randomUUID, logger });
+    await event.data.after.ref.update(updates);
   }
 );
 
@@ -135,6 +125,8 @@ exports.refreshDiscovery = onSchedule(
     const db = getFirestore();
     await backfillLikeUidsOnce(db, { logger });
     await refreshAllDances(db, { logger });
+    // Dances made private before revokeLinksWhenPrivate existed (runs once each).
+    logger.info("Old private dance links", await revokeOldPrivateLinks(db, getStorage().bucket(), { newToken: randomUUID, logger }));
     logger.info("Profile email cleanup", await removeProfileEmails(db));
   }
 );

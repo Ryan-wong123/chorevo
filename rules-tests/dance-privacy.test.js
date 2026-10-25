@@ -109,6 +109,7 @@ test("clients cannot set or change server-managed fields", async () => {
   await assertFails(setDoc(doc(db, "danceLibrary/new2"), { danceId: "new2", educatorUid: "owner", likeCount: 99, createdAt: Date.now() }));
   await assertSucceeds(updateDoc(doc(db, "danceLibrary/pub"), { title: "Renamed", visibility: "private" }));
   await assertFails(updateDoc(doc(db, "danceLibrary/pub"), { likeCount: 1000 }));
+  await assertFails(updateDoc(doc(db, "danceLibrary/priv"), { linksRevokedAt: 1 }));
   await assertFails(updateDoc(doc(db, "danceLibrary/pub"), { feedReady: false }));
 });
 
