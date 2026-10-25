@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.firebase.ViewModel.UsernameViewModel
+import com.example.chorevo.firebase.viewmodel.UsernameViewModel
 import com.example.chorevo.ui.theme.ChorevoTheme
 
 /**

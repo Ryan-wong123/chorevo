@@ -1,5 +1,6 @@
 package com.example.chorevo.videouploads
 
+import com.example.chorevo.posedetection.VideoPoseTemplateGenerator
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -47,6 +48,13 @@ import com.example.chorevo.ui.theme.ChorevoTheme
 import com.example.chorevo.ui.theme.PillShape
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+/**
+ * Longest video that can be uploaded: at the compressor's 2.5 Mbps it stays
+ * under the 200 MB upload limit. Only the first
+ * [VideoPoseTemplateGenerator.MAX_ANALYSED_DURATION_MS] are analysed for practice.
+ */
+const val MAX_UPLOAD_VIDEO_MS = 10 * 60_000L
 
 /** Steps of the upload flow, in order. */
 enum class UploadStep(val title: String) {

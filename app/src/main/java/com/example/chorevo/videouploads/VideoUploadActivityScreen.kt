@@ -1,5 +1,7 @@
 package com.example.chorevo.videouploads
 
+import com.example.chorevo.posedetection.VideoPoseTemplateGenerator
+import com.example.chorevo.posedetection.loadDancerThumbnails
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
@@ -18,7 +20,6 @@ import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.ui.theme.ChorevoTheme
 import android.content.Context
 import android.graphics.Bitmap
-import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -93,12 +94,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.posedetection.PoseBounds
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseTrack
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 
 /** Displays the video upload activity screen. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -140,6 +138,8 @@ fun VideoUploadActivityScreen(
     val status = uiState.statusMessage
 
     var step by rememberSaveable { mutableStateOf(UploadStep.VIDEO) }
+    val selectedVideoMs = uploadDraft.selectedVideoUri?.let { rememberVideoDurationMs(it) }
+    val videoTooLong = selectedVideoMs != null && selectedVideoMs > MAX_UPLOAD_VIDEO_MS
     var analyzeInBackground by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
     // System back walks back through the steps before leaving the screen.
@@ -257,6 +257,20 @@ fun VideoUploadActivityScreen(
                                             .height(320.dp)
                                     )
                                 }
+                                when {
+                                    videoTooLong -> Text(
+                                        "This video is longer than ${MAX_UPLOAD_VIDEO_MS / 60_000L} minutes. Trim it, then pick it again.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.testTag("videoTooLong")
+                                    )
+                                    selectedVideoMs != null &&
+                                        selectedVideoMs > VideoPoseTemplateGenerator.MAX_ANALYSED_DURATION_MS -> Text(
+                                        "Only the first ${VideoPoseTemplateGenerator.MAX_ANALYSED_DURATION_MS / 60_000L} minutes will be used for practice.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
 
                             UploadStep.COVER -> uploadDraft.selectedVideoUri?.let { uri ->
@@ -312,7 +326,7 @@ fun VideoUploadActivityScreen(
                                         errorMessage = uiState.dancerReview.errorMessage,
                                         warningMessages = uiState.dancerReview.warningMessages,
                                         brandTeal = brandTeal,
-                                        onAnalyze = { videoUploadVm.analyzeDancers(context = context, fps = 8) },
+                                        onAnalyze = { videoUploadVm.analyzeDancers(fps = 8) },
                                         onToggleTrack = videoUploadVm::toggleDetectedDancer,
                                         onSelectDefaultTrack = videoUploadVm::selectDefaultDancerTrack,
                                         onConfirm = videoUploadVm::confirmDancerReview,
@@ -468,7 +482,7 @@ fun VideoUploadActivityScreen(
                 }
                 if (step != UploadStep.PUBLISH) {
                     val canContinue = when (step) {
-                        UploadStep.VIDEO -> uploadDraft.selectedVideoUri != null
+                        UploadStep.VIDEO -> uploadDraft.selectedVideoUri != null && !videoTooLong
                         UploadStep.COVER -> true
                         UploadStep.DETAILS -> uploadDraft.title.isNotBlank() &&
                                 uploadDraft.danceType.isNotBlank() &&
@@ -703,7 +717,7 @@ private fun DancerReviewPanel(
         videoUri,
         selectionPreview
     ) {
-        value = loadUploadTrackThumbnails(context, videoUri, selectionPreview)
+        value = loadDancerThumbnails(context, videoUri, selectionPreview)
     }
     val previewableTracks = remember(tracks, thumbnails) {
         tracks.filter { track -> thumbnails.isEmpty() || thumbnails.containsKey(track.trackId) }
@@ -943,43 +957,6 @@ private fun DancerTrackRow(
             )
         }
     }
-}
-
-private suspend fun loadUploadTrackThumbnails(
-    context: Context,
-    videoUri: Uri,
-    selectionPreview: PoseSelectionPreview?
-): Map<String, Bitmap> = withContext(Dispatchers.IO) {
-    if (selectionPreview == null || selectionPreview.candidates.isEmpty()) {
-        return@withContext emptyMap()
-    }
-
-    val retriever = MediaMetadataRetriever()
-    return@withContext try {
-        retriever.setDataSource(context, videoUri)
-        val frame = retriever.getFrameAtTime(
-            selectionPreview.timeMs * 1000L,
-            MediaMetadataRetriever.OPTION_CLOSEST
-        ) ?: return@withContext emptyMap()
-
-        selectionPreview.candidates.associate { candidate ->
-            candidate.trackId to cropUploadThumbnail(frame, candidate.bounds)
-        }
-    } catch (_: Exception) {
-        emptyMap()
-    } finally {
-        runCatching { retriever.release() }
-    }
-}
-
-private fun cropUploadThumbnail(source: Bitmap, bounds: PoseBounds): Bitmap {
-    val left = (bounds.left * source.width).toInt().coerceIn(0, source.width - 1)
-    val top = (bounds.top * source.height).toInt().coerceIn(0, source.height - 1)
-    val right = (bounds.right * source.width).toInt().coerceIn(left + 1, source.width)
-    val bottom = (bounds.bottom * source.height).toInt().coerceIn(top + 1, source.height)
-
-    val cropped = Bitmap.createBitmap(source, left, top, right - left, bottom - top)
-    return Bitmap.createScaledBitmap(cropped, 160, 220, true)
 }
 
 /** Displays the source picker for upload videos. */

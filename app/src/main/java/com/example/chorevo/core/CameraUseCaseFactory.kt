@@ -1,10 +1,9 @@
 package com.example.chorevo.core
 
-import android.content.Context
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.view.PreviewView
-import androidx.core.content.ContextCompat
+import java.util.concurrent.Executor
 
 /**
  * Factory for creating CameraX use cases.
@@ -19,14 +18,15 @@ object CameraUseCaseFactory {
         }
     }
 
-    // analyzes image frames using the provided analyzer
+    // analyzes image frames using the provided analyzer. [executor] must be a
+    // background executor: pose detection per frame is far too slow for the UI thread.
     fun createImageAnalysis(
-        context: Context,
+        executor: Executor,
         analyzer: ImageAnalysis.Analyzer
     ): ImageAnalysis {
         return ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
-            .also { it.setAnalyzer(ContextCompat.getMainExecutor(context), analyzer) }
+            .also { it.setAnalyzer(executor, analyzer) }
     }
 }

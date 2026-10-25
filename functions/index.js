@@ -41,7 +41,9 @@ exports.danceShare = onRequest({ region: "us-central1", maxInstances: 10 }, asyn
 });
 
 // ── Discovery: server-maintained feed fields ────────────────────────────────
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { onDocumentWritten, onDocumentUpdated } = require("firebase-functions/v2/firestore");
+const { randomUUID } = require("node:crypto");
+const { becamePrivate, revocableMedia, downloadUrl } = require("./privacy");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { derivedFieldUpdates, trendingScore } = require("./discovery");
 const { countLikes, refreshAllDances, backfillLikeUidsOnce, updateCategoryCounts, removeProfileEmails } = require("./maintenance");
@@ -68,6 +70,36 @@ exports.danceDerivedFields = onDocumentWritten(
     if (!after) return;
 
     const updates = derivedFieldUpdates(after, Date.now());
+    if (Object.keys(updates).length) await event.data.after.ref.update(updates);
+  }
+);
+
+/**
+ * When a dance is made private, gives its video and cover new download tokens
+ * so links that were already copied or shared stop working, and stores the
+ * new URLs on the dance for its owner. Writes only the URL fields, so the
+ * follow-up update (still private) doesn't trigger it again.
+ */
+exports.revokeLinksWhenPrivate = onDocumentUpdated(
+  // Retried on failure: once a token is rotated the old URL is dead, so the
+  // new one must reach the dance. Running again just rotates once more.
+  { document: "danceLibrary/{danceId}", region: "us-central1", retry: true },
+  async (event) => {
+    const before = event.data.before.data();
+    const after = event.data.after.data();
+    if (!becamePrivate(before, after)) return;
+
+    const bucket = getStorage().bucket();
+    const updates = {};
+    for (const { field, path } of revocableMedia(after, bucket.name)) {
+      const token = randomUUID();
+      try {
+        await bucket.file(path).setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+        updates[field] = downloadUrl(bucket.name, path, token);
+      } catch (err) {
+        logger.warn("Couldn't revoke a download link", { danceId: event.params.danceId, path, error: String(err && err.message) });
+      }
+    }
     if (Object.keys(updates).length) await event.data.after.ref.update(updates);
   }
 );

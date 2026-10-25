@@ -5,7 +5,7 @@
 Chorevo is a single-module native Android application:
 
 - Module: `:app`
-- Package: `com.example.chorevo` (the router files in `core/routes` declare `package com.routes`)
+- Package: `com.example.chorevo`; every package is lowercase and matches its folder (for example `danceactivity.viewmodel`, `community.repository`, `core.database.di`, `core.routes`)
 - UI: Jetpack Compose and Material 3, with the Chorevo design system in `ui/theme`
 - App architecture: MVVM-style presentation with repositories for data access
 - Dependency injection: Hilt
@@ -17,10 +17,11 @@ Chorevo is a single-module native Android application:
 - 3D: SceneView for the instructor avatar overlay
 - Web share links: Firebase Hosting (`chorevo-dea05.web.app`) rewriting `/dance/**` to the `danceShare` Cloud Function in `functions/` (Node.js 22, `firebase-functions` v2 HTTPS, Admin SDK)
 - Discovery maintenance: Cloud Functions `danceDerivedFields` (Firestore trigger on `danceLibrary/{id}`), `danceLikeCount` (trigger on `danceLibrary/{id}/likes/{uid}`) and `refreshDiscovery` (scheduled every 6 hours) keep the feed fields, like counts, trending scores and `meta/danceCategories` current. The field logic is in `functions/discovery.js` (pure, tested) and the jobs in `functions/maintenance.js`, shared with the one-off `functions/scripts/backfill.js`.
+- Link revocation: `revokeLinksWhenPrivate` (trigger on `danceLibrary/{id}` updates) gives the video and cover new download tokens when a dance turns private and writes the new URLs back (`functions/privacy.js`, tested).
 - Push notifications: `notifyGroupInvitation` (trigger on creating `groupInvitations/{id}`) sends the invitee an FCM message (`notification` + `data {type: "group_invitation", groupId}`, Android channel `group_invites`) to the tokens in `users/{uid}/fcmTokens` and deletes tokens FCM reports as dead. Message building is in `functions/groups.js` (`invitationMessage`, `deadTokens`, tested).
 - Groups maintenance: `groupMemberCount` (trigger on `groups/{id}/members/{uid}`) keeps `memberCount`, and `groupCleanup` (on group delete) removes the invite code, pending invitations, group files and subcollections.
 
-Navigation Compose and Hilt Navigation Compose are declared as dependencies, but navigation uses a custom `Screen` enum rather than a `NavHost`. The Firebase Analytics SDK is included but logs no events.
+Navigation uses a custom `Screen` enum rather than Navigation Compose's `NavHost`; ViewModels come from `hiltViewModel()` (`androidx.hilt:hilt-lifecycle-viewmodel-compose`). Firebase Analytics logs product events and Crashlytics reports crashes and handled errors, both through the injected `core/telemetry/Telemetry` (see Observability).
 
 The app starts in `Chorevo`, initializes Firebase/App Check, then `MainActivity` hosts the Compose tree and calls `AppRouter`.
 
@@ -80,7 +81,7 @@ Screens:
 - `AuthScreen`: email/password and "Continue with Google" on the stage background with the animated dancer and gradient wordmark; `systemBarsPadding`, `imePadding` and vertical scroll keep the form above the keyboard.
 - `DancingFigure` / `StageBackground` (`core/DancingFigure.kt`): a pose skeleton looping through keyframed poses (smoothstep interpolation, brand-gradient bones with a glow) and a dark background with two drifting brand glows; used by onboarding and sign-in.
 - `DanceLibraryListView`: home video feed with a right-hand action rail (creator, like, comments, Share), bottom-left info (creator, title, expandable caption, chips, gradient Practice button), a seekable progress bar, and the comments sheet. `DiscoveryBar` (`dancelibrarylist/DiscoveryBar.kt`) is drawn over the top of the feed: tabs (`feedTab_*` tags), a search field (`searchButton`, `searchField`) and category chips (`categoryChip_all`, `categoryChip_<key>`). The feed shows `DanceLibraryUiState.visibleItems`, and a filter with no matches shows an empty state with `clearFilters` while keeping the bar mounted.
-- `DanceARPracticeScreen`: camera practice with countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
+- `DanceARPracticeScreen`: draws the camera practice screen from `PracticeViewModel`'s state: countdown, Full Routine / Step-by-Step modes, instructor avatar, accuracy-coloured learner skeleton, live score ring and combo badge, frosted-glass controls, and the results screen. HUD pieces live in `PracticeHud.kt` and the results screen (grade, confetti, personal bests, share card) in `PracticeResults.kt`.
 - `DanceStylePicker` (`videouploads/DanceStylePicker.kt`): dance-type dropdown of `STANDARD_DANCE_STYLES` plus "Other…" free text with a "Did you mean …?" suggestion from `closestStandardStyle`; used by the upload Details step and the Edit dialog.
 - `VideoUploadActivityScreen`: five-step upload flow (Video → Cover → Details → Dancers → Publish) with Back/Next buttons and steps animated by `AnimatedContent`; step state is screen-local (`rememberSaveable`) and resets to the first step when a publish clears the draft. Step pieces (`UploadStep`, `UploadStepIndicator`, `LocalVideoFrame`, `CoverFramePicker`, `PublishSummary`) live in `videouploads/UploadWizard.kt`.
 - `AnalyticsDashboardView`: learner and creator analytics. With `showOverview = true` (the profile's Activity and Learners tabs) it renders `AnalyticsOverview` above the list: stat tiles with a sparkline, a draw-in trend chart, an 8-week activity heatmap, and a body diagram. The numbers come from `computeOverviewStats` and the body focus from `bodyFocusFromFeedback` (`analytics/AnalyticsStats.kt`, plain Kotlin, unit tested), which counts corrections per `BodyArea` in each session's stored feedback messages.
@@ -114,10 +115,9 @@ ViewModels own screen state and user actions. All of these are `@HiltViewModel`:
 - `LeaderboardViewModel`: leaderboard scope, metric, friend actions.
 - `ProfileViewModel`: streak, points, and liked dances for the profile.
 - `AchievementViewModel`: per-session points, badges, and level-ups.
+- `PracticeViewModel`: one practice session: countdown and timer, live pose detection and scoring (camera frames arrive on the camera analysis thread), Full Routine / Step-by-Step mode, reference dancer, and building the session to submit. Each attempt gets fresh evaluators. It keeps the session through a rotation and is released when the screen closes.
 - `GroupsViewModel`: my groups (live), discover search (300 ms debounce), create/join/leave/delete, the open group's live group, membership, members and posts, the composer (text, one of the user's public ready dances, or a local video with upload progress), and replies of the open post.
 - `WeeklyChallengeViewModel`: the week's challenge set, progress, and celebration dialog.
-
-`StreakViewModel` and `StreakViewModelFactory` (`danceactivity`) are legacy and unused.
 
 ViewModels expose read-only `StateFlow` and mutate immutable UI state data classes.
 
@@ -133,7 +133,7 @@ Repositories isolate Firebase, Room, and Storage APIs:
 - `FirebaseStreakRepository`, `AchievementRepository`, `PointsRepository`: read the streak, badges and points (written only by Cloud Functions).
 - `SessionRewardsRepository`: observes `users/{uid}/sessionRewards/{sessionId}`, the server's result for one session.
 - `UsernameRepository`: availability checks, a free suggestion from the display name, claiming/changing a username (one batch: `usernames/{new}`, `users/{uid}.username`, delete `usernames/{old}`), and prefix search for invites. Format rules live in `firebase/Usernames.kt`.
-- `GroupsRepository`: groups, members, posts and replies (snapshot listeners), the user's invitations by username (send, accept as one batch with the membership, decline), creating a group with its owner membership and invite in one batch, joining by invite code via `groupInvites/{code}`, and group video uploads (720p compression, cover frame via `core/VideoMedia`).
+- `GroupsRepository`: groups, members, posts and replies (snapshot listeners), the user's invitations by username (send, accept as one batch with the membership, decline), creating a group with its owner membership and invite in one batch, joining by invite code via `groupInvites/{code}`, and group video uploads (720p compression, cover frame via `core/VideoFrames`).
 - `WeeklyChallengeRepository`: reads this week's challenges; the first time in a week it calls the `weeklyChallenges` callable function to create them (via `FirebaseFunctions`).
 
 ### Infrastructure Layer
@@ -141,9 +141,9 @@ Repositories isolate Firebase, Room, and Storage APIs:
 Shared infrastructure includes:
 
 - `AppDb` and `DanceSessionDao` for Room.
-- Hilt modules under `core/Database/di`.
+- Hilt modules under `core/database/di`.
 - `AutoRetryUploaderService` (`firebase`): a plain injected class (not an Android `Service`) that re-uploads an account's unsynced sessions.
-- Camera helpers (`CameraPreview`, `CameraBinder`, `CameraUseCaseFactory`) and video player helpers (`FeedPlayerFactory`, `VideoPlayerCache`, `SharedPlayerView`) under `core`.
+- Camera helpers (`CameraPreview`, which owns one `CameraBinder` and releases the camera when it leaves the screen, `CameraUseCaseFactory`) and video player helpers under `core`: `FeedPlayerFactory` (injected; players share one 200 MB `SimpleCache` from `VideoCacheModule`; composables get it with `rememberFeedPlayerFactory()`) and `SharedPlayerView`. `VideoCompressor` (videouploads) and `VideoFrames` (cover images, `core`) are injected into the upload repositories.
 - `VideoTemplateGenerationWorker` and `VideoCompressor` under `videouploads`.
 - Notification scheduling under `notification` (`ReminderScheduler`, `ReminderReceiver`, `BootReceiver`, `NotificationChannels`, `NotificationPreferencesDataStore`).
 - Pose detection and scoring under `posedetection`.
@@ -167,14 +167,15 @@ Navigation chrome: `AppNavigationRoute` floats `AppBottomNavBar` (a 64dp translu
 
 ## 4. Dependency Injection
 
-Hilt modules live in `core/Database/di`:
+Hilt modules live in `core/database/di`:
 
-- `FirebaseModule`: FirebaseAuth, FirebaseFirestore, and FirebaseStorage singletons.
+- `FirebaseModule`: FirebaseAuth, FirebaseFirestore, FirebaseStorage, FirebaseFunctions and FirebaseMessaging singletons.
 - `DatabaseModule`: Room `AppDb` (`app.db`, `fallbackToDestructiveMigration`) and `DanceSessionDao`.
-- `DispatcherModule`: an `@IoDispatcher` `CoroutineDispatcher` (qualifier declared in `IoQualifier.kt`); used by `AutoRetryUploaderService`.
-- `RepositoryModule` (file `RespositoryModule.kt`): intended repository providers. It imports `com.google.android.datatransport.runtime.dagger.Provides` instead of `dagger.Provides`, so Hilt does not use these methods. Repositories are actually bound through their `@Inject` constructors and are `@Singleton`, except `PointsRepository`, which is unscoped.
+- `DispatcherModule`: `@IoDispatcher` and `@DefaultDispatcher` `CoroutineDispatcher`s (qualifiers in `IoQualifier.kt`), injected into repositories and ViewModels instead of hardcoding `Dispatchers`.
+- `WorkModule`: the app's `WorkManager`. `Chorevo` configures WorkManager with `HiltWorkerFactory`, so workers can be `@HiltWorker`s.
+Repositories are bound through their `@Inject` constructors and are `@Singleton`.
 
-ViewModels receive repositories through constructor injection. `VideoTemplateGenerationWorker` is not a `@HiltWorker`; it calls `FirebaseFirestore.getInstance()` and `FirebaseStorage.getInstance()` directly. `ReminderScheduler` is constructed inside `AppViewModel`.
+ViewModels receive repositories through constructor injection. `VideoTemplateGenerationWorker` is a `@HiltWorker` with Firestore, Storage and `VideoPoseTemplateGenerator` injected. `ReminderScheduler`, `PushTokens` and `VideoPoseTemplateGenerator` are injected `@Singleton`s; `ChorevoMessagingService` is an `@AndroidEntryPoint`, and the reminder BroadcastReceivers get their dependencies through `NotificationEntryPoint` (a Hilt `@EntryPoint`).
 
 ## 5. Data Storage
 
@@ -183,7 +184,7 @@ ViewModels receive repositories through constructor injection. `VideoTemplateGen
 Main collections:
 
 - `users/{uid}`: profile records (uid, email, role, displayName, photoUrl, lastSeen, username).
-- `users/{uid}/fcmTokens/{token}`: `{token, platform, updatedAt}` for push notifications, written by `notification/PushTokens` after sign-in and on token refresh (`ChorevoMessagingService.onNewToken`). Sign-out deletes the device token (`FirebaseMessaging.deleteToken`), and the function removes tokens that stop working.
+- `users/{uid}/fcmTokens/{token}`: `{token, platform, updatedAt}` for push notifications, written by `notification/PushTokens` (registered by `AppViewModel` whenever the signed-in user changes) and on token refresh (`ChorevoMessagingService.onNewToken`). Sign-out deletes the device token (`FirebaseMessaging.deleteToken`), and the function removes tokens that stop working.
 - `usernames/{handle}`: `{uid, createdAt}`; the document ID is the username, which makes it unique.
 - `users/{uid}/danceLearningSessions/{sessionId}`: learner session results with a nested `analysis` map.
 - `users/{uid}/friends/{friendUid}`: friend references (uid, displayName, photoUrl, addedAt).
@@ -275,13 +276,13 @@ Key fields:
 ### Dance Upload Flow
 
 1. Step 1 (Video): user picks a gallery video or records one. Step 2 (Cover): `CoverFramePicker` sets `UploadDraft.coverFrameMs`. Step 3 (Details): title, dance type, description.
-2. Step 4 (Dancers), "Analyze Dancers" or the "analyze in the background" checkbox: `VideoUploadsViewModel.analyzeDancers` runs `VideoPoseTemplateGenerator.generate` with the high-recall profile (8 fps, YOLO person detector, hands) on device; the user selects dancers and a default dancer and confirms.
+2. Step 4 (Dancers), "Analyze Dancers" or the "analyze in the background" checkbox: `VideoUploadsViewModel.analyzeDancers` runs the injected `VideoPoseTemplateGenerator.generate` with the high-recall profile (8 fps, YOLO person detector, hands) on device; the user selects dancers and a default dancer and confirms.
 3. Step 5 (Publish): `VideoUploadsViewModel.uploadDance` gathers profile and draft data (including visibility and `coverFrameMs`); it uses `generateTemplate = false` when the review was confirmed and `true` (background analysis) otherwise.
 4. `VideoUploadsRepository` compresses the video (720p, up to 24 fps) and uploads the smaller of the original and compressed files.
 5. Video uploads to `danceVideos/{uid}/{danceId}.mp4`.
 6. Metadata writes to `danceLibrary/{danceId}`, then status fields are written (`saving`, `queued` or `skipped`, and `templateReviewStatus`).
 7. Confirmed review: the confirmed template (filtered to the selected dancers and hand tracks) uploads to `danceTemplates/{uid}/{danceId}.json`, and the status becomes `ready` with `templateReviewStatus = "confirmed"` and `dancerCount`.
-8. Background analysis: WorkManager enqueues `VideoTemplateGenerationWorker` (network required; inputs `dance_id`, `storage_path`, `template_fps`, `collect_hand_landmarks`).
+8. Background analysis: WorkManager enqueues `VideoTemplateGenerationWorker` as expedited work that runs in the foreground with an "Analysing your dance" notification (network required; inputs `dance_id`, `storage_path`, `template_fps`, `collect_hand_landmarks`).
 9. The worker sets `processing`, downloads the video, generates a template with the standard profile, uploads the JSON, and writes `ready` with `templateStoragePath` and `dancerCount` (removing any legacy inline `template` field). It retries up to three attempts, then writes `failed` with `templateGenerationError`.
 
 ### Share Flow
@@ -332,7 +333,7 @@ On the web:
 1. Learner taps Start Practice on a dance in the feed.
 2. `DanceLibraryListViewModel.preparePracticeItem` loads or caches the pose template.
 3. `AppViewModel.pickDance` routes to practice.
-4. `DanceARPracticeScreen` shows a 3-second countdown, then uses CameraX and `LiveLandmarkDetector`, which runs Holistic Landmarker (pose + left/right hands, face ignored) and falls back to Pose Landmarker lite (body only).
+4. `DanceARPracticeScreen` shows a 3-second countdown, then CameraX delivers frames on a background analysis thread (`CameraBinder`) to `PracticeViewModel`'s `LiveLandmarkDetector`, which runs Holistic Landmarker (pose + left/right hands, face ignored) and falls back to Pose Landmarker lite (body only).
 5. `PoseSimilarityEvaluator` compares learner pose landmarks to the selected reference track; `HandSimilarityEvaluator` compares hands only when the template contains hand tracks.
 6. On submit, a `DanceSessionEntity` and analysis payload are created (body-only scores; hand feedback is included in the feedback messages).
 7. `DanceLibraryListViewModel.saveSessionAndUpload` inserts the session locally, uploads it to Firestore, and marks it synced. The server then awards points, badges, streak, challenges and leaderboard stats (Rewards Flow).
@@ -444,9 +445,9 @@ Rules:
 
 ### Template Generation
 
-`VideoPoseTemplateGenerator` (an `object`) runs on `Dispatchers.Default`. It:
+`VideoPoseTemplateGenerator` (an injected singleton) runs on the `@DefaultDispatcher`. It:
 
-- reads frames with `MediaMetadataRetriever` (up to 120 seconds of video; at least 5 fps for the standard profile and 8 fps for high-recall),
+- reads frames with `MediaMetadataRetriever` (up to 5 minutes of video; 5 fps for the standard profile and 8 fps for high-recall, lowered for videos over 2 minutes so at most 960 frames are analysed, never below 3 fps; a longer video gets a "only the first 5 minutes" warning),
 - runs full-frame MediaPipe in VIDEO mode; per-crop inference uses IMAGE mode,
 - **standard profile** (background worker): Pose Landmarker lite, plus full-frame Holistic (single person) when hands are requested. Holistic's pose becomes the frame's detection, and its hands are attached to that pose. If Holistic cannot initialize, a `handExtractionPartial` warning is added and generation continues body-only.
 - **high-recall profile** (on-device "Analyze Dancers"): low-light preprocessing, YOLO person detection (enabled automatically when hands are requested), same-frame duplicate removal, ByteTrack tracking, per-dancer padded crops through Holistic (falling back per dancer to body-only pose), remapping of pose and hand landmarks to full-frame coordinates, track fragment merging, and short-gap interpolation. Fixed-region crop passes run only for high-recall body-only generation, which the app does not currently request.
@@ -601,19 +602,17 @@ Deployment:
 
 ## 10. Known Architectural Considerations
 
-- Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`); the Navigation Compose dependencies are declared but unused. This may become hard to scale if nested flows grow.
-- Package segments `ViewModel`, `Repository` and `Database` are mixed-case, `videouploads/repository` is lowercase, and the router files declare `package com.routes`. New packages should be lowercase and match their folders.
-- `RepositoryModule` imports the wrong `@Provides` annotation and is ignored by Hilt; repositories rely on `@Inject` constructors instead.
+- Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`), without Navigation Compose. This may become hard to scale if nested flows grow.
 - Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).
-- Leaderboard values are client-written; high-trust ranking would need server-side verification.
-- Template generation is compute-heavy and runs off the main thread (`Dispatchers.Default` or WorkManager).
+- Leaderboard values are computed by Cloud Functions from sessions, but practice scores themselves are computed on the phone; high-trust ranking would need server-side pose scoring.
+- Threading: template generation, template JSON parsing and serialising use the `@DefaultDispatcher`; file and media work uses the `@IoDispatcher` or `Dispatchers.IO`; live pose detection runs on the camera analysis thread. Firebase calls are already asynchronous.
+- `VideoUploadsRepository.uploadDance` and `GroupsRepository`'s post upload take a `Context` parameter (their ViewModels pass the application context) to read the picked video's size.
 - Firestore indexes in `firestore.indexes.json` must stay aligned with analytics and creator upload queries.
 - Search is built on Firestore: candidates come from word-prefix tokens and trigrams, and are scored on the device, so it handles prefixes and small typos but not synonyms, stemming or relevance learned from usage. Results are capped (40 exact + 60 typo candidates per search). A hosted search service (Algolia, Typesense) would be the next step for a much larger library.
 - Older uploads have no `thumbnailUrl` (nothing generates thumbnails for existing videos); their grids decode a video frame and their link previews use the default image.
 - Like counts and trending scores are written by Cloud Functions, so they lag a like by a second or two, and trending ages every 6 hours.
 - Older app builds query the feed with `enabled == true` only; once the privacy rules are deployed that query is denied, so those builds show an empty feed until updated.
 - App Links: `public/.well-known/assetlinks.json` is UTF-8 and deployed with Hosting (the old `**/.*` ignore rule that skipped it is gone). Verification only succeeds for builds signed by a certificate whose SHA-256 fingerprint is listed there; CI builds are signed with a throwaway debug key per run, so links from CI APKs open the chooser or browser.
-- `PoseEstimator`/`NoOpPoseEstimator` and `PoseTemplateRepository` in `posedetection` are unused scaffolding.
 
 ## 11. Multi-Dancer AI Architecture
 
@@ -826,3 +825,11 @@ Known limitations:
 - The maximum number of tracked dancers is 8.
 - Crop bitmaps and the preprocessor's copy are recycled; the frame bitmap from `getFrameAtTime` is not recycled (partially implemented).
 - Detector, tracker, MediaPipe, and frame resources are closed in `finally` blocks.
+
+## Observability
+
+- **Crashlytics** reports crashes and non-fatal errors from release builds (collection is off in debug builds, set in `Chorevo`). The Gradle plugin uploads R8 mapping files, so stack traces are readable.
+- **Analytics events** (`AnalyticsEvents`): `sign_up` and `login` (method), `dance_analysis_completed`/`dance_analysis_failed` (dancer count, duration), `dance_upload_started`/`completed`/`failed` (confirmed or background analysis, visibility), `practice_started` (dance, mode), `practice_completed` (dance, score 0–100, duration, personal best), `group_created` (visibility), `group_joined` (code, invitation or public).
+- Handled errors recorded as non-fatals: dance analysis, upload, session submission, template loading.
+- Events and reports carry the user's uid (set by `AppViewModel`), never their name, email or free text.
+- ViewModels take a `Telemetry`; tests use `NoOpTelemetry` (the default).

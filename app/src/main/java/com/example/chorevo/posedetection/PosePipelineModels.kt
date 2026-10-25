@@ -254,10 +254,11 @@ data class PoseTrackingConfig(
     val minTrackCoverage: Float
 ) {
     companion object {
-        fun standard(): PoseTrackingConfig {
+        /** A dancer may be missed for about a second (5 frames at the usual 5 fps). */
+        fun standard(fps: Int = 5): PoseTrackingConfig {
             return PoseTrackingConfig(
                 minTrackFrames = 3,
-                maxMissedSteps = 5,
+                maxMissedSteps = fps.coerceAtLeast(2),
                 minAverageVisibility = 0.30f,
                 minAverageArea = 0.004f,
                 minTrackCoverage = 0.25f

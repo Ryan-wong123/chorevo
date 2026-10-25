@@ -77,6 +77,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -99,15 +100,15 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.media3.common.MediaItem
 import coil.compose.AsyncImage
-import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.community.viewmodel.GroupsViewModel
 import com.example.chorevo.core.AnimatedEmptyState
 import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.ShimmerList
-import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.rememberFeedPlayerFactory
 import com.example.chorevo.core.isTrustedMediaUrl
 import com.example.chorevo.core.share.ShareLinks
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.firebase.Repository.UserSearchResult
+import com.example.chorevo.firebase.repository.UserSearchResult
 import com.example.chorevo.ui.theme.ChorevoTheme
 import com.example.chorevo.ui.theme.PillShape
 import com.example.chorevo.videouploads.VideoCaptureFileProvider
@@ -281,11 +282,14 @@ fun GroupDetailScreen(
     }
 
     if (showMembers) {
+        LaunchedEffect(Unit) { vm.loadBannedMembers() }
         MembersDialog(
             members = state.members,
+            banned = state.bannedMembers,
             myUid = myUid,
             canRemove = state.isOwner,
             onRemove = vm::removeMember,
+            onUnban = vm::unbanMember,
             onDismiss = { showMembers = false }
         )
     }
@@ -785,9 +789,11 @@ private fun RepliesSheet(
 @Composable
 private fun MembersDialog(
     members: List<GroupMember>,
+    banned: List<BannedMember>,
     myUid: String,
     canRemove: Boolean,
     onRemove: (String) -> Unit,
+    onUnban: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -803,6 +809,24 @@ private fun MembersDialog(
                         } else if (canRemove && m.uid != myUid) {
                             TextButton(onClick = { onRemove(m.uid) }, modifier = Modifier.testTag("removeMember_${m.uid}")) {
                                 Text("Remove")
+                            }
+                        }
+                    }
+                }
+                // Removed members stay out (even with the invite code) until unbanned.
+                if (canRemove && banned.isNotEmpty()) {
+                    item(key = "bannedHeader") {
+                        Text(
+                            "Removed (${banned.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    items(banned, key = { "banned_${it.uid}" }) { b ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { AuthorRow(b.displayName, b.photoUrl, 0L) }
+                            TextButton(onClick = { onUnban(b.uid) }, modifier = Modifier.testTag("unbanMember_${b.uid}")) {
+                                Text("Unban")
                             }
                         }
                     }
@@ -1000,8 +1024,9 @@ private fun InviteQrDialog(group: DanceGroup, onShare: () -> Unit, onDismiss: ()
 @Composable
 private fun VideoDialog(url: String, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val feedPlayerFactory = rememberFeedPlayerFactory()
     val player = remember(url) {
-        createCachedFeedExoPlayer(context, repeat = true).apply {
+        feedPlayerFactory.create(repeat = true).apply {
             setMediaItem(MediaItem.fromUri(url))
             prepare()
             playWhenReady = true

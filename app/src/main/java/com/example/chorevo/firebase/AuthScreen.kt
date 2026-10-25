@@ -63,8 +63,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.firebase.ViewModel.AuthEvent
-import com.example.chorevo.firebase.ViewModel.AuthViewModel
+import com.example.chorevo.firebase.viewmodel.AuthEvent
+import com.example.chorevo.firebase.viewmodel.AuthViewModel
 
 /**
  * ✅ Single function with default vm.

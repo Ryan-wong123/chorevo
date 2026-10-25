@@ -1,10 +1,10 @@
 package com.example.chorevo.community
 
-import com.example.chorevo.community.Repository.GroupsRepository
-import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.community.repository.GroupsRepository
+import com.example.chorevo.community.viewmodel.GroupsViewModel
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.firebase.Repository.UserSearchResult
-import com.example.chorevo.firebase.Repository.UsernameRepository
+import com.example.chorevo.firebase.repository.UserSearchResult
+import com.example.chorevo.firebase.repository.UsernameRepository
 import com.example.chorevo.testing.MainDispatcherRule
 import com.example.chorevo.videouploads.repository.VideoUploadsRepository
 import io.mockk.coEvery
@@ -149,6 +149,37 @@ class GroupsViewModelTest {
         vm.joinWithCode("abcd-2345")
         advanceUntilIdle()
         assertEquals("g1", vm.uiState.value.openGroupId)
+    }
+
+    @Test
+    fun bannedMembers_areLoadedOnlyForTheOwner_andUnbanningRemovesThem() = runTest {
+        val banned = listOf(
+            BannedMember(uid = "b1", displayName = "Ana", photoUrl = null, bannedAt = 2L),
+            BannedMember(uid = "b2", displayName = "Ben", photoUrl = null, bannedAt = 1L)
+        )
+        coEvery { repo.bannedMembers("g1") } returns Result.success(banned)
+        coEvery { repo.unbanMember("g1", "b1") } returns Result.success(Unit)
+        vm.bind("me", "Me", null)
+        vm.openGroup("g1")
+        membership.value = GroupMember(uid = "me")
+        advanceUntilIdle()
+
+        vm.loadBannedMembers()
+        vm.unbanMember("b1")
+        advanceUntilIdle()
+        coVerify(exactly = 0) { repo.bannedMembers(any()) }
+        coVerify(exactly = 0) { repo.unbanMember(any(), any()) }
+
+        membership.value = GroupMember(uid = "me", role = GroupMember.ROLE_OWNER)
+        advanceUntilIdle()
+        vm.loadBannedMembers()
+        advanceUntilIdle()
+        assertEquals(listOf("b1", "b2"), vm.uiState.value.bannedMembers.map { it.uid })
+
+        vm.unbanMember("b1")
+        advanceUntilIdle()
+        coVerify { repo.unbanMember("g1", "b1") }
+        assertEquals(listOf("b2"), vm.uiState.value.bannedMembers.map { it.uid })
     }
 
     @Test

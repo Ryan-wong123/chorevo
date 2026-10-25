@@ -55,7 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import java.text.SimpleDateFormat
@@ -72,8 +72,8 @@ import com.example.chorevo.core.SharedPlayerView
 import com.example.chorevo.core.ShimmerGrid
 import com.example.chorevo.core.ShimmerList
 import com.example.chorevo.core.VideoThumbnailTile
-import com.example.chorevo.core.createCachedFeedExoPlayer
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.core.rememberFeedPlayerFactory
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 
 /** Which uploads a grid shows; null keeps the classic card list. */
 enum class UploadsGridFilter { PUBLIC, PRIVATE }
@@ -85,7 +85,7 @@ fun VideoUploadsTab(
     onUploadDanceDemo: () -> Unit,
     embedded: Boolean,
     onStatus: (String) -> Unit = {},
-    vm: VideoUploadsViewModel = viewModel(),
+    vm: VideoUploadsViewModel = hiltViewModel(),
     refreshKey: Any? = Unit,
     modifier: Modifier = Modifier,
     embeddedInParentScroll: Boolean = false,
@@ -492,8 +492,9 @@ private fun VideoPreviewPlayer(
 ) {
     val context = LocalContext.current
 
+    val feedPlayerFactory = rememberFeedPlayerFactory()
     val exoPlayer = remember {
-        createCachedFeedExoPlayer(context = context, repeat = true)
+        feedPlayerFactory.create(repeat = true)
     }
 
     LaunchedEffect(videoUrl) {

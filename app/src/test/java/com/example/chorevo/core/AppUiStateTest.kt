@@ -1,7 +1,7 @@
 package com.example.chorevo.core
 
-import com.example.chorevo.core.ViewModel.AppUiState
-import com.example.chorevo.core.ViewModel.Screen
+import com.example.chorevo.core.viewmodel.AppUiState
+import com.example.chorevo.core.viewmodel.Screen
 import com.example.chorevo.firebase.UserProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

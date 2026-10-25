@@ -20,7 +20,6 @@ lifecycle = "2.8.6"           # Lifecycle libraries (Compose ViewModel, runtime)
 media3 = "1.11.1"              # Media3 / ExoPlayer version
 work = "2.12.0"
 runtime = "1.10.3"            # WorkManager version
-navigationCompose = "2.7.7"   # Jetpack Navigation for Compose
 coilCompose = "2.7.0"         # Coil Image Loading Library (Compose integration)
 mockk = "1.13.12"
 coroutinesTest = "1.8.1"
@@ -47,6 +46,7 @@ androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = 
 
 # Firebase Analytics SDK (version controlled by BOM)
 firebase-analytics = { module = "com.google.firebase:firebase-analytics" }
+firebase-crashlytics = { module = "com.google.firebase:firebase-crashlytics" }
 
 # Firebase Bill of Materials (aligns all Firebase libs)
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
@@ -152,7 +152,6 @@ androidx-compose-material-icons-extended = { group = "androidx.compose.material"
 androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "runtime" }
 
 # AndroidX Navigation Compose dependency
-androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
 
 # Coil Compose dependency
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coilCompose" }
@@ -190,7 +189,11 @@ androidx-media3-database = { module = "androidx.media3:media3-database", version
 
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 hilt-android-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
-androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "androidxHilt" }
+# hiltViewModel() for Compose (androidx.hilt.lifecycle.viewmodel.compose)
+androidx-hilt-lifecycle-viewmodel-compose = { module = "androidx.hilt:hilt-lifecycle-viewmodel-compose", version.ref = "androidxHilt" }
+# Hilt-injected WorkManager workers (@HiltWorker)
+androidx-hilt-work = { module = "androidx.hilt:hilt-work", version.ref = "androidxHilt" }
+androidx-hilt-compiler = { module = "androidx.hilt:hilt-compiler", version.ref = "androidxHilt" }
 androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleViewmodelKtx" }
 
 [plugins]
@@ -208,3 +211,5 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 
 # Required for Firebase configuration (google-services.json)
 google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
+# Crashlytics: uploads R8 mapping files so release crash reports are readable
+firebase-crashlytics = { id = "com.google.firebase.crashlytics", version = "3.0.2" }

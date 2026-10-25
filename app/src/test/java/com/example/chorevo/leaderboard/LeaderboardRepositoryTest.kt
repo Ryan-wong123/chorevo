@@ -1,7 +1,7 @@
 package com.example.chorevo.leaderboard
 
 import android.util.Log
-import com.example.chorevo.leaderboard.Repository.LeaderboardRepository
+import com.example.chorevo.leaderboard.repository.LeaderboardRepository
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot

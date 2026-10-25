@@ -1,3 +1,4 @@
+import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
 import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -7,6 +8,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
     id("com.google.dagger.hilt.android")
 
 }
@@ -55,6 +57,11 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release")
+            // Upload R8 mapping files to Crashlytics only for signed (shippable) builds,
+            // not for every unsigned CI build.
+            configure<CrashlyticsExtension> {
+                mappingFileUploadEnabled = releaseStoreFile != null
+            }
             // R8: shrinks and obfuscates the release build (keep rules in proguard-rules.pro).
             isMinifyEnabled = true
             isShrinkResources = true
@@ -111,7 +118,9 @@ dependencies {
     implementation(libs.hilt.android)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     ksp(libs.hilt.android.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
 
     // --- Core Android / Lifecycle ---
     implementation(libs.androidx.core.ktx)
@@ -150,7 +159,6 @@ dependencies {
     implementation(libs.tensorflow.lite)
     implementation("io.github.sceneview:sceneview:2.2.1")
 
-    implementation(libs.androidx.navigation.compose)
     implementation(libs.coil.compose)
 
     // Group invite QR codes: scanning (Play services) and generating (ZXing)
@@ -160,6 +168,7 @@ dependencies {
     // --- Firebase ---
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
+    implementation(libs.firebase.crashlytics)
     implementation(libs.firebase.auth)
     implementation(libs.firebase.firestore)
     implementation(libs.firebase.messaging)

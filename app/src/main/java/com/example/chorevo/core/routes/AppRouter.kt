@@ -1,4 +1,4 @@
-package com.routes
+package com.example.chorevo.core.routes
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.Crossfade
@@ -37,13 +37,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.chorevo.core.ViewModel.AppViewModel
-import com.example.chorevo.core.ViewModel.Screen
+import com.example.chorevo.core.viewmodel.AppViewModel
+import com.example.chorevo.core.viewmodel.Screen
 import com.example.chorevo.core.routes.AuthRoute
 import com.example.chorevo.core.routes.CommunityRoute
-import com.example.chorevo.community.ViewModel.GroupsViewModel
+import com.example.chorevo.community.viewmodel.GroupsViewModel
 import com.example.chorevo.firebase.UsernameDialog
-import com.example.chorevo.notification.PushTokens
 import androidx.compose.ui.platform.LocalContext
 import android.Manifest
 import android.content.pm.PackageManager
@@ -57,9 +56,9 @@ import com.example.chorevo.core.routes.LeaderboardRoute
 import com.example.chorevo.core.routes.ProfileSectionRoute
 import com.example.chorevo.core.routes.UploadRoute
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
 import com.example.chorevo.firebase.UserProfile
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 
 /**
  * Routes the user to the correct top-level screen based on app state and auth status.
@@ -117,13 +116,12 @@ fun AppRouter(
             groupsViewModel.bind(profile.uid, profile.displayName?.trim().takeUnless { it.isNullOrBlank() } ?: "User", profile.photoUrl)
         }
 
-        // Push notifications (group invitations): save this device's token, and
-        // on Android 13+ ask once per launch for permission to show them.
+        // Push notifications (group invitations): AppViewModel saves this device's
+        // token; on Android 13+ ask once per launch for permission to show them.
         val context = LocalContext.current
         val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         var askedForNotifications by rememberSaveable { mutableStateOf(false) }
         LaunchedEffect(profile.uid) {
-            PushTokens.register(profile.uid)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !askedForNotifications &&
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
             ) {

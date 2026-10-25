@@ -194,6 +194,23 @@ test("removed members are banned and can't rejoin", async () => {
   await assertFails(setDoc(doc(as("bob"), "groups/g/bans/bob"), { uid: "bob", bannedAt: now() }));
 });
 
+test("only the owner can see and lift bans, after which the person can rejoin", async () => {
+  const alice = as("alice");
+  const b = writeBatch(alice);
+  b.delete(doc(alice, "groups/g/members/bob"));
+  b.set(doc(alice, "groups/g/bans/bob"), { uid: "bob", bannedAt: now() });
+  await assertSucceeds(b.commit());
+  const member = { uid: "bob", displayName: "Bob", photoUrl: null, role: "member", joinedAt: now() };
+
+  await assertSucceeds(getDocs(collection(alice, "groups/g/bans")));
+  await assertFails(getDocs(collection(as("carol"), "groups/g/bans")));
+  await assertFails(deleteDoc(doc(as("bob"), "groups/g/bans/bob")));
+  await assertFails(deleteDoc(doc(as("carol"), "groups/g/bans/bob")));
+
+  await assertSucceeds(deleteDoc(doc(alice, "groups/g/bans/bob")));
+  await assertSucceeds(setDoc(doc(as("bob"), "groups/g/members/bob"), member));
+});
+
 test("private groups must be created with their own invite code document", async () => {
   const bob = as("bob");
   const group = { id: "pg", name: "Secret", nameLower: "secret", description: "", visibility: "private",

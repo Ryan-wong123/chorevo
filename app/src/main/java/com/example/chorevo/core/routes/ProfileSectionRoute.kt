@@ -3,16 +3,16 @@ package com.example.chorevo.core.routes
 import androidx.compose.runtime.Composable
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.example.chorevo.analytics.viewmodel.AnalyticsDashboardViewModel
-import com.example.chorevo.core.ViewModel.AppViewModel
-import com.example.chorevo.core.ViewModel.Screen
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
+import com.example.chorevo.core.viewmodel.AppViewModel
+import com.example.chorevo.core.viewmodel.Screen
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
 import com.example.chorevo.firebase.UserProfile
 import com.example.chorevo.firebase.UserProfileScreen
-import com.example.chorevo.firebase.ViewModel.ProfileViewModel
+import com.example.chorevo.firebase.viewmodel.ProfileViewModel
 import com.example.chorevo.notification.SettingsScreen
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 import com.example.chorevo.weeklychallenge.WeeklyChallengesScreen
-import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
+import com.example.chorevo.weeklychallenge.viewmodel.WeeklyChallengeViewModel
 
 /** Renders the profile area and switches between profile, settings, and weekly-challenges content. */
 @Composable

@@ -1,6 +1,6 @@
 package com.example.chorevo.dancelibrarylist
 
-import com.example.chorevo.dancelibrarylist.Repository.DanceLibraryRepository
+import com.example.chorevo.dancelibrarylist.repository.DanceLibraryRepository
 import io.mockk.coEvery
 
 /**

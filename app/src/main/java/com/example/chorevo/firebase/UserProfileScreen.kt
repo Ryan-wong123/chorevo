@@ -65,20 +65,20 @@ import com.example.chorevo.analytics.DanceDashboardArgs
 import com.example.chorevo.analytics.DanceDashboardMode
 import com.example.chorevo.analytics.viewmodel.AnalyticsDashboardViewModel
 import com.example.chorevo.core.SharedPlayerView
-import com.example.chorevo.core.createCachedFeedExoPlayer
+import com.example.chorevo.core.rememberFeedPlayerFactory
 import com.example.chorevo.core.share.ShareBottomSheet
 import com.example.chorevo.core.share.ShareContent
 import com.example.chorevo.danceactivity.AchievementLevel
 import com.example.chorevo.danceactivity.levelForPoints
 import com.example.chorevo.danceactivity.nextLevelForPoints
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceSocialState
-import com.example.chorevo.dancelibrarylist.ViewModel.DanceLibraryListViewModel
-import com.example.chorevo.firebase.ViewModel.ProfileViewModel
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceSocialState
+import com.example.chorevo.dancelibrarylist.viewmodel.DanceLibraryListViewModel
+import com.example.chorevo.firebase.viewmodel.ProfileViewModel
 import com.example.chorevo.videouploads.VideoUploadsTab
-import com.example.chorevo.videouploads.ViewModel.VideoUploadsViewModel
+import com.example.chorevo.videouploads.viewmodel.VideoUploadsViewModel
 import com.example.chorevo.weeklychallenge.WeeklyChallengeSummaryCard
-import com.example.chorevo.weeklychallenge.ViewModel.WeeklyChallengeViewModel
+import com.example.chorevo.weeklychallenge.viewmodel.WeeklyChallengeViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -437,9 +437,10 @@ private fun LikedVideosFeed(
     val context = LocalContext.current
     val pagerState = rememberPagerState(initialPage = startIndex, pageCount = { dances.size })
 
-    val mainPlayer = remember { createCachedFeedExoPlayer(context = context, repeat = true) }
+    val feedPlayerFactory = rememberFeedPlayerFactory()
+    val mainPlayer = remember { feedPlayerFactory.create(repeat = true) }
     val preloadPlayer = remember {
-        createCachedFeedExoPlayer(context = context, repeat = false).apply {
+        feedPlayerFactory.create(repeat = false).apply {
             volume = 0f
             playWhenReady = false
         }

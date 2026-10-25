@@ -1,7 +1,7 @@
 package com.example.chorevo.firebase
 
-import com.example.chorevo.firebase.Repository.UsernameRepository
-import com.example.chorevo.firebase.ViewModel.UsernameViewModel
+import com.example.chorevo.firebase.repository.UsernameRepository
+import com.example.chorevo.firebase.viewmodel.UsernameViewModel
 import com.example.chorevo.testing.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
