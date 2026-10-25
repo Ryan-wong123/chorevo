@@ -81,6 +81,10 @@ android {
         buildConfig = true
     }
 
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     testOptions {
         animationsDisabled = true
 
@@ -104,6 +108,12 @@ android {
             useLegacyPackaging = true
         }
     }
+}
+
+// Room writes each database version's schema here (commit app/schemas); migration
+// tests read them from the androidTest assets.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 // Kotlin 2.2+ removed `kotlinOptions`; same JVM target as compileOptions.

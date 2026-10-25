@@ -1,4 +1,4 @@
-const { onRequest } = require("firebase-functions/v2/https");
+const { onRequest, onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
@@ -43,7 +43,7 @@ exports.danceShare = onRequest({ region: "us-central1", maxInstances: 10 }, asyn
 // ── Discovery: server-maintained feed fields ────────────────────────────────
 const { onDocumentWritten, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { randomUUID } = require("node:crypto");
-const { becamePrivate, revocableMedia, downloadUrl } = require("./privacy");
+const { becamePrivate, rotateDanceLinks, revokeOldPrivateLinks } = require("./privacy");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { derivedFieldUpdates, trendingScore } = require("./discovery");
 const { countLikes, refreshAllDances, backfillLikeUidsOnce, updateCategoryCounts, removeProfileEmails } = require("./maintenance");
@@ -89,18 +89,8 @@ exports.revokeLinksWhenPrivate = onDocumentUpdated(
     const after = event.data.after.data();
     if (!becamePrivate(before, after)) return;
 
-    const bucket = getStorage().bucket();
-    const updates = {};
-    for (const { field, path } of revocableMedia(after, bucket.name)) {
-      const token = randomUUID();
-      try {
-        await bucket.file(path).setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
-        updates[field] = downloadUrl(bucket.name, path, token);
-      } catch (err) {
-        logger.warn("Couldn't revoke a download link", { danceId: event.params.danceId, path, error: String(err && err.message) });
-      }
-    }
-    if (Object.keys(updates).length) await event.data.after.ref.update(updates);
+    const updates = await rotateDanceLinks(getStorage().bucket(), after, { newToken: randomUUID, logger });
+    await event.data.after.ref.update(updates);
   }
 );
 
@@ -135,6 +125,17 @@ exports.refreshDiscovery = onSchedule(
     const db = getFirestore();
     await backfillLikeUidsOnce(db, { logger });
     await refreshAllDances(db, { logger });
+    // One-off catch-ups (each item once). A failure is logged and retried on
+    // the next run, without stopping the rest of this job.
+    const catchUp = async (name, work) => {
+      try {
+        logger.info(name, await work());
+      } catch (err) {
+        logger.error(`${name} failed`, { error: String(err && err.message) });
+      }
+    };
+    await catchUp("Old private dance links", () => revokeOldPrivateLinks(db, getStorage().bucket(), { newToken: randomUUID, logger }));
+    await catchUp("Old group media", () => lockOldGroupMedia(db, getStorage().bucket(), { deleteField: FieldValue.delete, logger }));
     logger.info("Profile email cleanup", await removeProfileEmails(db));
   }
 );
@@ -144,7 +145,66 @@ const { onDocumentDeleted, onDocumentCreated } = require("firebase-functions/v2/
 const { getStorage } = require("firebase-admin/storage");
 const { getMessaging } = require("firebase-admin/messaging");
 const { FieldValue } = require("firebase-admin/firestore");
-const { storagePathsOfPosts, isInviteCode, invitationMessage, deadTokens, invitePushAllowance } = require("./groups");
+const {
+  storagePathsOfPosts, isInviteCode, invitationMessage, deadTokens, invitePushAllowance,
+  MEDIA_LINK_TTL_MS, parseGroupMediaRequest, canSeeGroup, groupPostMediaPaths, lockPostMedia, lockOldGroupMedia,
+} = require("./groups");
+
+/**
+ * Short-lived links for group post videos and covers. Group media has no
+ * permanent download link (see lockGroupPostMedia), so the app asks here for
+ * links that expire after an hour, for people who can see the group (anyone
+ * signed in for public groups, members for private ones).
+ */
+exports.groupMediaUrls = onCall({ region: "us-central1" }, async (request) => {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
+  const req = parseGroupMediaRequest(request.data);
+  if (!req) throw new HttpsError("invalid-argument", "Expected a group id and 1-50 post ids.");
+
+  const db = getFirestore();
+  const groupRef = db.doc(`groups/${req.groupId}`);
+  const [group, membership] = await Promise.all([groupRef.get(), groupRef.collection("members").doc(uid).get()]);
+  if (!group.exists || !canSeeGroup(group.data(), membership.exists)) {
+    throw new HttpsError("permission-denied", "You can't see this group.");
+  }
+
+  const bucket = getStorage().bucket();
+  const expiresAt = Date.now() + MEDIA_LINK_TTL_MS;
+  const sign = async (path) => {
+    const [url] = await bucket.file(path).getSignedUrl({ version: "v4", action: "read", expires: expiresAt });
+    return url;
+  };
+  const posts = await db.getAll(...req.postIds.map((id) => groupRef.collection("posts").doc(id)));
+  const urls = {};
+  // Signed in parallel: each signature is a round trip to IAM.
+  await Promise.all(posts.map(async (post) => {
+    if (!post.exists) return;
+    const paths = groupPostMediaPaths(post.id, post.data());
+    if (!paths.video) return;
+    const [videoUrl, thumbnailUrl] = await Promise.all([
+      sign(paths.video),
+      paths.thumbnail ? sign(paths.thumbnail) : Promise.resolve(null),
+    ]);
+    urls[post.id] = { videoUrl, thumbnailUrl, expiresAt };
+  }));
+  return { urls };
+});
+
+/**
+ * When a video post is created, removes its files' permanent download links,
+ * so the video can only be played through groupMediaUrls.
+ */
+exports.lockGroupPostMedia = onDocumentCreated(
+  { document: "groups/{groupId}/posts/{postId}", region: "us-central1", retry: true },
+  async (event) => {
+    const post = event.data && event.data.data();
+    if (!post || post.kind !== "video") return;
+    // Also drops a permanent link an older app version stored, so nothing
+    // tries to play a link that no longer works.
+    await lockPostMedia(event.data.ref, event.params.postId, post, getStorage().bucket(), { deleteField: FieldValue.delete });
+  }
+);
 
 /** Keeps groups/{id}.memberCount exact whenever someone joins or leaves. */
 exports.groupMemberCount = onDocumentWritten(
@@ -249,7 +309,6 @@ exports.groupCleanup = onDocumentDeleted(
 // are all derived here from synced practice sessions. Clients can only read
 // them (firestore.rules). Logic: functions/rewards.js and leaderboard.js.
 const { AggregateField } = require("firebase-admin/firestore");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { leaderboardEntry } = require("./leaderboard");
 const rewards = require("./rewards");
 

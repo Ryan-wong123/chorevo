@@ -81,3 +81,95 @@ test("deadTokens keeps tokens that failed for transient reasons", () => {
   // A payload error is not the token's fault.
   assert.deepEqual(deadTokens(["e"], [{ success: false, error: { code: "messaging/invalid-argument" } }]), []);
 });
+
+// ── Group video links ────────────────────────────────────────────────────────
+
+const { parseGroupMediaRequest, canSeeGroup, groupPostMediaPaths, isGroupMediaPath } = require("../groups");
+
+test("media requests need a group id and 1-50 post ids", () => {
+  assert.deepStrictEqual(parseGroupMediaRequest({ groupId: "g1", postIds: ["p1", "p2", "p1"] }), { groupId: "g1", postIds: ["p1", "p2"] });
+  assert.strictEqual(parseGroupMediaRequest(null), null);
+  assert.strictEqual(parseGroupMediaRequest({ groupId: "g1", postIds: [] }), null);
+  assert.strictEqual(parseGroupMediaRequest({ groupId: "g/1", postIds: ["p1"] }), null);
+  assert.strictEqual(parseGroupMediaRequest({ groupId: "g1", postIds: ["../x"] }), null);
+  assert.strictEqual(parseGroupMediaRequest({ groupId: "g1", postIds: Array.from({ length: 51 }, (_, i) => `p${i}`) }), null);
+});
+
+test("public groups are visible to everyone signed in, private ones to members", () => {
+  assert.strictEqual(canSeeGroup({ visibility: "public" }, false), true);
+  assert.strictEqual(canSeeGroup({ visibility: "private" }, false), false);
+  assert.strictEqual(canSeeGroup({ visibility: "private" }, true), true);
+  assert.strictEqual(canSeeGroup(null, true), false);
+});
+
+test("only a video post's own files are signed", () => {
+  assert.deepStrictEqual(groupPostMediaPaths("p1", {
+    kind: "video", uid: "alice", storagePath: "groupVideos/alice/p1.mp4", thumbnailPath: "groupThumbnails/alice/p1.jpg",
+  }), { video: "groupVideos/alice/p1.mp4", thumbnail: "groupThumbnails/alice/p1.jpg" });
+  assert.deepStrictEqual(groupPostMediaPaths("p1", { kind: "video", uid: "alice", storagePath: "danceVideos/alice/d1.mp4" }), {});
+  assert.deepStrictEqual(groupPostMediaPaths("p1", { kind: "video", uid: "alice", storagePath: "groupVideos/bob/p1.mp4" }), {});
+  assert.deepStrictEqual(groupPostMediaPaths("p1", { kind: "video", uid: "alice", storagePath: "groupVideos/alice/p2.mp4" }), {});
+  assert.deepStrictEqual(groupPostMediaPaths("p1", { kind: "text", uid: "alice", storagePath: "groupVideos/alice/p1.mp4" }), {});
+});
+
+test("group media paths are recognised", () => {
+  assert.strictEqual(isGroupMediaPath("groupVideos/alice/p1.mp4"), true);
+  assert.strictEqual(isGroupMediaPath("groupThumbnails/alice/p1.jpg"), true);
+  assert.strictEqual(isGroupMediaPath("danceVideos/alice/d1.mp4"), false);
+  assert.strictEqual(isGroupMediaPath("groupVideos/alice/x/p1.mp4"), false);
+});
+
+const { removeDownloadTokens, lockOldGroupMedia } = require("../groups");
+
+function fakeFile(meta, { missing = false } = {}) {
+  const calls = [];
+  return {
+    calls,
+    getMetadata: async () => {
+      if (missing) { const e = new Error("nope"); e.code = 404; throw e; }
+      return [meta];
+    },
+    setMetadata: async (m) => { calls.push(m); },
+  };
+}
+
+test("removing download tokens only touches files that have one", async () => {
+  const withToken = fakeFile({ metadata: { firebaseStorageDownloadTokens: "t" } });
+  assert.strictEqual(await removeDownloadTokens(withToken), true);
+  assert.deepStrictEqual(withToken.calls, [{ metadata: { firebaseStorageDownloadTokens: null } }]);
+
+  const without = fakeFile({ metadata: {} });
+  assert.strictEqual(await removeDownloadTokens(without), false);
+  assert.deepStrictEqual(without.calls, []);
+
+  assert.strictEqual(await removeDownloadTokens(fakeFile(null, { missing: true })), false);
+});
+
+test("the catch-up locks unlocked video posts once, and a failure leaves the post for the next run", async () => {
+  const files = {
+    "groupVideos/alice/p1.mp4": fakeFile({ metadata: { firebaseStorageDownloadTokens: "t" } }),
+    "groupThumbnails/alice/p1.jpg": fakeFile({ metadata: {} }),
+    "groupVideos/carol/p3.mp4": { getMetadata: async () => { throw new Error("storage down"); } },
+  };
+  const updates = {};
+  const posts = [
+    { id: "p1", data: { kind: "video", uid: "alice", storagePath: "groupVideos/alice/p1.mp4", thumbnailPath: "groupThumbnails/alice/p1.jpg", videoUrl: "https://x", thumbnailUrl: "https://y" } },
+    { id: "p2", data: { kind: "video", uid: "bob", storagePath: "groupVideos/bob/p2.mp4", mediaLocked: true } },
+    { id: "p3", data: { kind: "video", uid: "carol", storagePath: "groupVideos/carol/p3.mp4" } },
+  ];
+  const db = {
+    collectionGroup: (name) => {
+      assert.strictEqual(name, "posts");
+      return {
+        where: (field, op, value) => {
+          assert.deepStrictEqual([field, op, value], ["kind", "==", "video"]);
+          return { get: async () => ({ size: posts.length, docs: posts.map((p) => ({ id: p.id, data: () => p.data, ref: { path: `groups/g/posts/${p.id}`, update: async (u) => { updates[p.id] = u; } } })) }) };
+        },
+      };
+    },
+  };
+  const bucket = { file: (path) => files[path] };
+  const result = await lockOldGroupMedia(db, bucket, { deleteField: () => "DELETE", logger: { warn: () => {} } });
+  assert.deepStrictEqual(result, { videoPosts: 3, attempted: 2, filesLocked: 1 });
+  assert.deepStrictEqual(updates, { p1: { videoUrl: "DELETE", thumbnailUrl: "DELETE", mediaLocked: true } });
+});

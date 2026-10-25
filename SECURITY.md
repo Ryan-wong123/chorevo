@@ -49,6 +49,10 @@ hours for dances).
 - `revokeLinksWhenPrivate` gives a dance's video and cover new download
   tokens when it is made private (only files in the uploader's own dance
   folders), so links shared earlier stop working.
+- `groupMediaUrls` signs hour-long links to a group's video posts only for
+  people who can see the group, and `lockGroupPostMedia` removes new group
+  videos' permanent download links (the scheduled job does it once for older
+  posts).
 - `danceShare` accepts only well-formed dance IDs and renders only public
   dances. It embeds media only from this project's Storage and escapes all
   text.
@@ -107,12 +111,15 @@ answers) are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Known limitations
 
-- Download URLs of dance and group videos work for anyone who has the URL.
+- Download URLs of public dance videos work for anyone who has the URL (they
+  are public). Group post videos have no permanent link: the app gets links
+  from `groupMediaUrls` that expire after an hour, only for people who can
+  see the group, so a forwarded link stops working within the hour.
   Making a dance private revokes its video and cover links
   (`revokeLinksWhenPrivate`), so copied links and group posts that shared it
-  stop playing; dances made private before that function existed keep their
-  old links until they are made public and private again. Group post videos
-  have no privacy setting and keep working for anyone with the link.
+  stop playing. Dances made private before that function existed get new
+  links from the scheduled `refreshDiscovery` job (once each, marked with
+  `linksRevokedAt`).
 - Practice scores are computed on the phone. Everything derived from them
   (points, badges, streaks, challenges, leaderboard) is computed by the
   server, which clamps scores and limits rewarded sessions per day, but a

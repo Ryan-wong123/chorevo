@@ -257,9 +257,10 @@ fun GroupDetailScreen(
                 else -> items(state.posts, key = { it.id }) { post ->
                     PostCard(
                         post = post,
+                        media = state.postMedia[post.id],
                         canDelete = post.uid == myUid || state.isOwner,
                         onOpenDance = onOpenDance,
-                        onPlay = { playingUrl = it },
+                        onPlayVideo = { vm.playPost(post.id) },
                         onReplies = { vm.openPost(post.id) },
                         onDelete = { vm.deletePost(post) }
                     )
@@ -317,6 +318,13 @@ fun GroupDetailScreen(
             onConfirm = { confirmDelete = false; vm.deleteOpenGroup() },
             onDismiss = { confirmDelete = false }
         )
+    }
+    // A video the ViewModel has a fresh link for (it fetches one first if needed).
+    LaunchedEffect(state.playVideoUrl) {
+        state.playVideoUrl?.let { url ->
+            playingUrl = url
+            vm.onVideoShown()
+        }
     }
     playingUrl?.let { url -> VideoDialog(url = url, onDismiss = { playingUrl = null }) }
     if (showInvite && group != null && state.isMember) {
@@ -429,9 +437,10 @@ private fun JoinBanner(working: Boolean, onJoin: () -> Unit) {
 @Composable
 private fun PostCard(
     post: GroupPost,
+    media: PostMedia?,
     canDelete: Boolean,
     onOpenDance: (String) -> Unit,
-    onPlay: (String) -> Unit,
+    onPlayVideo: () -> Unit,
     onReplies: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -452,7 +461,7 @@ private fun PostCard(
                 GroupPostKind.DANCE -> {
                     val danceId = post.danceId
                     Thumbnail(
-                        url = post.thumbnailUrl,
+                        url = post.thumbnailUrl?.takeIf(::isTrustedMediaUrl),
                         label = post.danceTitle ?: "Dance",
                         icon = Icons.Filled.MusicNote,
                         onClick = { if (danceId != null) onOpenDance(danceId) }
@@ -467,12 +476,13 @@ private fun PostCard(
                     }
                 }
                 GroupPostKind.VIDEO -> {
-                    val url = post.videoUrl?.takeIf(::isTrustedMediaUrl)
+                    // Group videos have no permanent link: the cover and video use
+                    // short-lived links from groupMediaUrls (GroupsViewModel).
                     Thumbnail(
-                        url = post.thumbnailUrl,
+                        url = media?.thumbnailUrl,
                         label = null,
                         icon = Icons.Filled.PlayArrow,
-                        onClick = { if (url != null) onPlay(url) }
+                        onClick = onPlayVideo
                     )
                 }
                 GroupPostKind.TEXT -> Unit
@@ -548,7 +558,8 @@ private fun Thumbnail(
             .aspectRatio(16f / 10f)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (isTrustedMediaUrl(url)) {
+            // Callers pass only links from this app's Storage (or the server).
+            if (url != null) {
                 AsyncImage(
                     model = url,
                     contentDescription = null,

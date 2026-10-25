@@ -144,6 +144,10 @@ data class GroupsUiState(
     val members: List<GroupMember> = emptyList(),
     /** People removed from the open group; loaded for its owner only. */
     val bannedMembers: List<BannedMember> = emptyList(),
+    /** Short-lived links to the open group's video posts (by post id), from groupMediaUrls. */
+    val postMedia: Map<String, PostMedia> = emptyMap(),
+    /** A group video link ready to play (the screen opens it, then calls onVideoShown). */
+    val playVideoUrl: String? = null,
     val posts: List<GroupPost> = emptyList(),
     val isLoadingPosts: Boolean = false,
     val composer: PostComposer = PostComposer(),
@@ -203,3 +207,16 @@ data class BannedMember(
     val photoUrl: String?,
     val bannedAt: Long
 )
+
+/**
+ * Links to a video post's files that work until [expiresAt]. Group videos have
+ * no permanent link; these come from the groupMediaUrls Cloud Function.
+ */
+data class PostMedia(
+    val videoUrl: String,
+    val thumbnailUrl: String?,
+    val expiresAt: Long
+) {
+    /** Still usable for at least [marginMs]. */
+    fun isFresh(nowMs: Long, marginMs: Long = 5 * 60_000L): Boolean = expiresAt - nowMs > marginMs
+}

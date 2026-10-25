@@ -17,7 +17,8 @@ Chorevo is a single-module native Android application:
 - 3D: SceneView for the instructor avatar overlay
 - Web share links: Firebase Hosting (`chorevo-dea05.web.app`) rewriting `/dance/**` to the `danceShare` Cloud Function in `functions/` (Node.js 22, `firebase-functions` v2 HTTPS, Admin SDK)
 - Discovery maintenance: Cloud Functions `danceDerivedFields` (Firestore trigger on `danceLibrary/{id}`), `danceLikeCount` (trigger on `danceLibrary/{id}/likes/{uid}`) and `refreshDiscovery` (scheduled every 6 hours) keep the feed fields, like counts, trending scores and `meta/danceCategories` current. The field logic is in `functions/discovery.js` (pure, tested) and the jobs in `functions/maintenance.js`, shared with the one-off `functions/scripts/backfill.js`.
-- Link revocation: `revokeLinksWhenPrivate` (trigger on `danceLibrary/{id}` updates) gives the video and cover new download tokens when a dance turns private and writes the new URLs back (`functions/privacy.js`, tested).
+- Link revocation: `revokeLinksWhenPrivate` (trigger on `danceLibrary/{id}` updates) gives the video and cover new download tokens when a dance turns private and writes the new URLs back, with `linksRevokedAt` (server-managed). `refreshDiscovery` does the same once for private dances that predate it (`functions/privacy.js`, tested). Storage rules let only a private dance's creator read its pose template.
+- Group video links: video posts store only `storagePath`/`thumbnailPath`. `lockGroupPostMedia` (trigger on new posts) removes the files' download tokens; the app asks the callable `groupMediaUrls` for signed links that expire after an hour (`GroupsViewModel.loadPostMedia`, kept in `GroupsUiState.postMedia`). The function checks the caller can see the group, like the Firestore rules. `refreshDiscovery` locks older posts once.
 - Push notifications: `notifyGroupInvitation` (trigger on creating `groupInvitations/{id}`) sends the invitee an FCM message (`notification` + `data {type: "group_invitation", groupId}`, Android channel `group_invites`) to the tokens in `users/{uid}/fcmTokens` and deletes tokens FCM reports as dead. Message building is in `functions/groups.js` (`invitationMessage`, `deadTokens`, tested).
 - Groups maintenance: `groupMemberCount` (trigger on `groups/{id}/members/{uid}`) keeps `memberCount`, and `groupCleanup` (on group delete) removes the invite code, pending invitations, group files and subcollections.
 
@@ -170,7 +171,7 @@ Navigation chrome: `AppNavigationRoute` floats `AppBottomNavBar` (a 64dp translu
 Hilt modules live in `core/database/di`:
 
 - `FirebaseModule`: FirebaseAuth, FirebaseFirestore, FirebaseStorage, FirebaseFunctions and FirebaseMessaging singletons.
-- `DatabaseModule`: Room `AppDb` (`app.db`, `fallbackToDestructiveMigration`) and `DanceSessionDao`.
+- `DatabaseModule`: Room `AppDb` (`app.db`; only development versions 1–4 and downgrades are wiped) and `DanceSessionDao`.
 - `DispatcherModule`: `@IoDispatcher` and `@DefaultDispatcher` `CoroutineDispatcher`s (qualifiers in `IoQualifier.kt`), injected into repositories and ViewModels instead of hardcoding `Dispatchers`.
 - `WorkModule`: the app's `WorkManager`. `Chorevo` configures WorkManager with `HiltWorkerFactory`, so workers can be `@HiltWorker`s.
 Repositories are bound through their `@Inject` constructors and are `@Singleton`.
@@ -238,7 +239,7 @@ Storage rules validate content type and file size, and owner writes for videos, 
 
 ### Room
 
-Room database `app.db` (version 6, `exportSchema = false`) stores `DanceSessionEntity` in `dance_sessions`. `AppDb.MIGRATION_5_6` adds the `ownerUid` column; other schema changes fall back to destructive migration.
+Room database `app.db` (version 6) stores `DanceSessionEntity` in `dance_sessions`. `AppDb.MIGRATION_5_6` adds the `ownerUid` column. Schemas are exported to `app/schemas` (commit them). There is no destructive fallback except from development versions 1–4 and on downgrade, so every schema change needs a `Migration`; a missing one fails at startup instead of silently wiping unsynced sessions.
 
 Key fields:
 
@@ -603,7 +604,6 @@ Deployment:
 ## 10. Known Architectural Considerations
 
 - Navigation is a custom state machine (`AppUiState.screen` plus an animated `when` in `AppRouter`), without Navigation Compose. This may become hard to scale if nested flows grow.
-- Room has `exportSchema = false` and falls back to destructive migration for schema changes without an explicit migration, which loses unsynced sessions; add a `Migration` for each schema change (as `MIGRATION_5_6` does).
 - Leaderboard values are computed by Cloud Functions from sessions, but practice scores themselves are computed on the phone; high-trust ranking would need server-side pose scoring.
 - Threading: template generation, template JSON parsing and serialising use the `@DefaultDispatcher`; file and media work uses the `@IoDispatcher` or `Dispatchers.IO`; live pose detection runs on the camera analysis thread. Firebase calls are already asynchronous.
 - `VideoUploadsRepository.uploadDance` and `GroupsRepository`'s post upload take a `Context` parameter (their ViewModels pass the application context) to read the picked video's size.

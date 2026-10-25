@@ -56,10 +56,11 @@ class FirebaseAuthRepository @Inject constructor(
         val credential = GoogleAuthProvider.getCredential(idToken, null)
         val res = auth.signInWithCredential(credential).await()
         val user = res.user ?: error("Google sign-in failed")
+        val isNewAccount = runCatching { res.additionalUserInfo?.isNewUser == true }.getOrDefault(false)
         syncUserProfile(
             user = user,
             fallbackDisplayName = user.displayName?.trim()
-        )
+        ).copy(isNewAccount = isNewAccount)
     }
 
     /** Returns current user profile. */

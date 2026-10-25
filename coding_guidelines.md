@@ -94,7 +94,7 @@ val uiState: StateFlow<MyUiState> = _uiState.asStateFlow()
 
 - Practice sessions should be inserted into Room before cloud upload.
 - Preserve the `synced` flag semantics: `false` means retry is still needed.
-- Add Room migrations when changing schema in production. The current database has `exportSchema = false`; change that before relying on long-term migrations.
+- Every Room schema change: bump the version, add a `Migration` in `DatabaseModule`, and commit the new schema JSON that the build writes to `app/schemas`. There is no destructive fallback.
 - Keep DAO methods small and explicit.
 
 ## 10. Pose and Video Guidelines
