@@ -184,7 +184,39 @@ class GroupsViewModel @Inject constructor(
         if (!_uiState.value.isOwner || memberUid == author?.uid) return
         work {
             repository.removeMember(groupId, memberUid)
+                .onSuccess { loadBannedMembers() }
                 .onFailure { e -> say("Couldn't remove member: ${e.message}") }
+        }
+    }
+
+    /** Owner only: loads who has been removed from the open group. */
+    fun loadBannedMembers() {
+        val groupId = _uiState.value.openGroupId ?: return
+        if (!_uiState.value.isOwner) return
+        viewModelScope.launch {
+            repository.bannedMembers(groupId)
+                .onSuccess { banned ->
+                    if (_uiState.value.openGroupId == groupId) {
+                        _uiState.update { it.copy(bannedMembers = banned) }
+                    }
+                }
+                .onFailure { e -> say("Couldn't load removed members: ${e.message}") }
+        }
+    }
+
+    /** Owner only: lets a removed member join again. */
+    fun unbanMember(memberUid: String) {
+        val groupId = _uiState.value.openGroupId ?: return
+        if (!_uiState.value.isOwner) return
+        work {
+            repository.unbanMember(groupId, memberUid)
+                .onSuccess {
+                    _uiState.update { state ->
+                        state.copy(bannedMembers = state.bannedMembers.filterNot { it.uid == memberUid })
+                    }
+                    say("They can join again with an invite")
+                }
+                .onFailure { e -> say("Couldn't unban: ${e.message}") }
         }
     }
 
@@ -288,6 +320,7 @@ class GroupsViewModel @Inject constructor(
                     ?: it.discoverGroups.firstOrNull { g -> g.id == groupId },
                 membership = null,
                 members = emptyList(),
+                bannedMembers = emptyList(),
                 posts = emptyList(),
                 isLoadingPosts = true,
                 composer = PostComposer(),
@@ -331,6 +364,7 @@ class GroupsViewModel @Inject constructor(
                 openGroup = null,
                 membership = null,
                 members = emptyList(),
+                bannedMembers = emptyList(),
                 posts = emptyList(),
                 composer = PostComposer(),
                 openPostId = null,

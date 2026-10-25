@@ -142,6 +142,8 @@ data class GroupsUiState(
     val openGroup: DanceGroup? = null,
     val membership: GroupMember? = null,
     val members: List<GroupMember> = emptyList(),
+    /** People removed from the open group; loaded for its owner only. */
+    val bannedMembers: List<BannedMember> = emptyList(),
     val posts: List<GroupPost> = emptyList(),
     val isLoadingPosts: Boolean = false,
     val composer: PostComposer = PostComposer(),
@@ -193,3 +195,11 @@ fun inviteCodeFromText(text: String?): String? {
         ?: return null
     return normalizeInviteCode(raw).takeIf { it.length == INVITE_CODE_LENGTH && raw.count { c -> c.isLetterOrDigit() } == INVITE_CODE_LENGTH }
 }
+
+/** Someone removed from a group (kept out until the owner unbans them). */
+data class BannedMember(
+    val uid: String,
+    val displayName: String,
+    val photoUrl: String?,
+    val bannedAt: Long
+)
