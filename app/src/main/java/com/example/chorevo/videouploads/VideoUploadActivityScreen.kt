@@ -1,5 +1,6 @@
 package com.example.chorevo.videouploads
 
+import com.example.chorevo.posedetection.VideoPoseTemplateGenerator
 import com.example.chorevo.posedetection.loadDancerThumbnails
 import android.Manifest
 import android.content.pm.PackageManager
@@ -137,6 +138,8 @@ fun VideoUploadActivityScreen(
     val status = uiState.statusMessage
 
     var step by rememberSaveable { mutableStateOf(UploadStep.VIDEO) }
+    val selectedVideoMs = uploadDraft.selectedVideoUri?.let { rememberVideoDurationMs(it) }
+    val videoTooLong = selectedVideoMs != null && selectedVideoMs > MAX_UPLOAD_VIDEO_MS
     var analyzeInBackground by rememberSaveable { mutableStateOf(false) }
     val haptics = rememberHaptics()
     // System back walks back through the steps before leaving the screen.
@@ -252,6 +255,20 @@ fun VideoUploadActivityScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(320.dp)
+                                    )
+                                }
+                                when {
+                                    videoTooLong -> Text(
+                                        "This video is longer than ${MAX_UPLOAD_VIDEO_MS / 60_000L} minutes. Trim it, then pick it again.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.testTag("videoTooLong")
+                                    )
+                                    selectedVideoMs != null &&
+                                        selectedVideoMs > VideoPoseTemplateGenerator.MAX_ANALYSED_DURATION_MS -> Text(
+                                        "Only the first ${VideoPoseTemplateGenerator.MAX_ANALYSED_DURATION_MS / 60_000L} minutes will be used for practice.",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -465,7 +482,7 @@ fun VideoUploadActivityScreen(
                 }
                 if (step != UploadStep.PUBLISH) {
                     val canContinue = when (step) {
-                        UploadStep.VIDEO -> uploadDraft.selectedVideoUri != null
+                        UploadStep.VIDEO -> uploadDraft.selectedVideoUri != null && !videoTooLong
                         UploadStep.COVER -> true
                         UploadStep.DETAILS -> uploadDraft.title.isNotBlank() &&
                                 uploadDraft.danceType.isNotBlank() &&

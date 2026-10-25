@@ -81,7 +81,9 @@ exports.danceDerivedFields = onDocumentWritten(
  * follow-up update (still private) doesn't trigger it again.
  */
 exports.revokeLinksWhenPrivate = onDocumentUpdated(
-  { document: "danceLibrary/{danceId}", region: "us-central1" },
+  // Retried on failure: once a token is rotated the old URL is dead, so the
+  // new one must reach the dance. Running again just rotates once more.
+  { document: "danceLibrary/{danceId}", region: "us-central1", retry: true },
   async (event) => {
     const before = event.data.before.data();
     const after = event.data.after.data();
