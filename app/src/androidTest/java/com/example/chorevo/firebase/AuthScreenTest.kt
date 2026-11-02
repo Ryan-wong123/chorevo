@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.chorevo.firebase.repository.FirebaseAuthRepository
 import com.example.chorevo.firebase.viewmodel.AuthViewModel
 import io.mockk.coEvery
@@ -18,7 +19,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import org.junit.runner.RunWith
 
+@RunWith(AndroidJUnit4::class)
 class AuthScreenTest {
 
     @get:Rule
