@@ -96,7 +96,7 @@ class WeeklyChallengeRepositoryTest {
         val callableResult = mockk<HttpsCallableResult>()
         every { functions.getHttpsCallable("weeklyChallenges") } returns callable
         every { callable.call(capture(dataSlot)) } returns Tasks.forResult(callableResult)
-        every { callableResult.data } returns result
+        every { callableResult.getData() } returns result
         return dataSlot
     }
 
