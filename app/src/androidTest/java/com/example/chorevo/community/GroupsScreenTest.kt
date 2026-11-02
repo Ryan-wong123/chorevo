@@ -90,7 +90,7 @@ class GroupsScreenTest {
         composeRule.onNodeWithText("My groups").assertIsDisplayed()
         composeRule.onNodeWithText("Discover").assertIsDisplayed()
         composeRule.onNodeWithTag("createGroupButton").assertIsDisplayed()
-        composeRule.onNodeWithText("New group").assertIsDisplayed()
+        composeRule.onNodeWithTag("createGroupButton").assertTextContains("New group")
         composeRule.onNodeWithContentDescription("Scan a group QR code").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Join with invite code").assertIsDisplayed()
     }
