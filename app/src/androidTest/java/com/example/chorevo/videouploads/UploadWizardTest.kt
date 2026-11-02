@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.chorevo.dancelibrarylist.DanceLibraryModel
 import org.junit.Assert.assertEquals
@@ -236,12 +237,13 @@ class UploadWizardTest {
         }
 
         composeRule.onNodeWithTag("danceTypeField").performClick()
-        composeRule.onNodeWithTag("danceStyle_other").performClick()
+        // "Other…" is the last item of a long, scrollable menu; clicking it while it is
+        // off-screen would just dismiss the menu.
+        composeRule.onNodeWithTag("danceStyle_other").performScrollTo().performClick()
 
-        composeRule.onNodeWithTag("danceTypeField").assertIsDisplayed()
         composeRule.waitForIdle()
-        // The button composes under the field but doesn't pass assertIsDisplayed on the CI emulator.
-        composeRule.onNodeWithText("Pick from the list instead").assertExists()
+        composeRule.onNodeWithTag("danceTypeField").assertIsDisplayed()
+        composeRule.onNodeWithText("Pick from the list instead").assertIsDisplayed()
     }
 
     @Test
