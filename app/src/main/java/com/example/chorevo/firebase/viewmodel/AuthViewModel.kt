@@ -50,8 +50,10 @@ class AuthViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
-    // Optional: LiveData version for rubrics / older patterns
-    val uiStateLiveData = uiState.asLiveData()
+    // Optional: LiveData version for rubrics / older patterns.
+    // Lazy: asLiveData() on a StateFlow touches the Android main looper, which
+    // would make this ViewModel impossible to construct in a plain JVM test.
+    val uiStateLiveData by lazy { uiState.asLiveData() }
 
     private val _events = MutableSharedFlow<AuthEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<AuthEvent> = _events.asSharedFlow()
