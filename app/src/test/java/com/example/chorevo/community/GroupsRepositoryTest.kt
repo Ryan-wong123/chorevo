@@ -836,7 +836,7 @@ class GroupsRepositoryTest {
         every { functions.getHttpsCallable("groupMediaUrls") } returns callable
         val sent = slot<Any>()
         every { callable.call(capture(sent)) } returns Tasks.forResult(callResult)
-        every { callResult.data } returns mapOf(
+        every { callResult.getData() } returns mapOf(
             "urls" to mapOf(
                 "p1" to mapOf("videoUrl" to "http://v1", "thumbnailUrl" to "http://t1", "expiresAt" to 5_000L),
                 "p2" to mapOf("videoUrl" to "http://v2", "expiresAt" to 7),
@@ -862,7 +862,7 @@ class GroupsRepositoryTest {
         val callResult = mockk<HttpsCallableResult>()
         every { functions.getHttpsCallable("groupMediaUrls") } returns callable
         every { callable.call(any()) } returns Tasks.forResult(callResult)
-        every { callResult.data } returns "nope"
+        every { callResult.getData() } returns "nope"
 
         val result = repo.groupMediaUrls("g1", listOf("p1"))
 

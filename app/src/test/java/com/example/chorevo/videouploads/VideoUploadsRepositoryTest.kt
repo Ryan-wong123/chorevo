@@ -197,7 +197,7 @@ class VideoUploadsRepositoryTest {
         val ordered = mockk<Query>()
         every { danceCol.whereEqualTo("educatorUid", "u1") } returns filtered
         every { filtered.orderBy("createdAt", Query.Direction.DESCENDING) } returns ordered
-        every { ordered.get() } returns Tasks.forException<Void>(IOException("offline"))
+        every { ordered.get() } returns Tasks.forException<QuerySnapshot>(IOException("offline"))
 
         val res = repo.loadVideos("u1")
 
@@ -297,7 +297,7 @@ class VideoUploadsRepositoryTest {
         every { fx.videoRef.delete() } returns Tasks.forException<Void>(IOException("no video"))
         every { fx.thumbRef.delete() } returns Tasks.forException<Void>(IOException("no thumb"))
         every { fx.templateRef.delete() } returns Tasks.forException<Void>(IOException("no template"))
-        every { fx.likesCol.get() } returns Tasks.forException<Void>(IOException("likes failed"))
+        every { fx.likesCol.get() } returns Tasks.forException<QuerySnapshot>(IOException("likes failed"))
         every { fx.commentsCol.get() } returns Tasks.forResult(emptySnapshot())
 
         val res = repo.deleteDance("d1", "u1")
