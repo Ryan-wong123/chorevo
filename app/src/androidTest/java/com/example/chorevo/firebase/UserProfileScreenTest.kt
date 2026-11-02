@@ -240,8 +240,10 @@ class UserProfileScreenTest {
         // The tab content is far down the LazyColumn; it isn't composed (so it
         // can't report its status) until the list has been scrolled there.
         scrollToText("Learners")
-        waitForTextExists("Not logged in.")
-        scrollToText("Not logged in.")
+        // The status lands in the header, which is off-screen (and so not composed) by now.
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            runCatching { scrollToText("Not logged in.") }.isSuccess
+        }
         composeRule.onNodeWithText("Not logged in.").assertIsDisplayed()
     }
 

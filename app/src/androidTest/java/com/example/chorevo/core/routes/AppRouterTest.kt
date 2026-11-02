@@ -256,7 +256,8 @@ class AppRouterTest {
     fun groupsBadge_showsInvitationCount_andAnnouncesIt() {
         setNavigation(groupsBadge = 3)
 
-        composeRule.onNodeWithTag("bottomNavBadge_COMMUNITY").assertExists()
+        // The tab merges its children, so the badge's own tag only exists in the unmerged tree.
+        composeRule.onNodeWithTag("bottomNavBadge_COMMUNITY", useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithText("3").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Groups, 3 new").assertIsDisplayed()
     }
