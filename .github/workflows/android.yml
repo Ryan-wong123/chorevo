@@ -1,10 +1,8 @@
 name: Android CI
 
+# Runs on pull requests only (not on pushes to any branch, including main).
 on:
-  push:
-    branches: ["**"]
   pull_request:
-    branches: ["**"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -56,7 +54,7 @@ jobs:
           path: |
             app/build/test-results/testDebugUnitTest/
             app/build/reports/tests/testDebugUnitTest/
-          retention-days: 3
+          retention-days: 1
 
   integration-tests:
     name: Integration tests (androidTest on emulator)
@@ -126,7 +124,7 @@ jobs:
           path: |
             app/build/outputs/androidTest-results/
             app/build/reports/androidTests/
-          retention-days: 3
+          retention-days: 1
 
   build:
     name: Build (assemble)
@@ -194,7 +192,7 @@ jobs:
           name: chorevo-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
 
       - name: Upload release APK
         continue-on-error: true
@@ -203,7 +201,7 @@ jobs:
           name: chorevo-release-apk
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
 
       - name: Upload release App Bundle
         if: steps.signing.outputs.signed == 'true'
@@ -213,4 +211,4 @@ jobs:
           name: chorevo-release-aab
           path: app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
