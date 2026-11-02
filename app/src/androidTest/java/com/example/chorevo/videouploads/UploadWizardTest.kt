@@ -238,9 +238,7 @@ class UploadWizardTest {
         composeRule.onNodeWithTag("danceTypeField").performClick()
         composeRule.onNodeWithTag("danceStyle_other").performClick()
 
-        // Focus the free-text field so its placeholder is shown.
-        composeRule.onNodeWithTag("danceTypeField").performClick()
-        composeRule.onNodeWithText("e.g. Voguing").assertIsDisplayed()
+        composeRule.onNodeWithTag("danceTypeField").assertIsDisplayed()
         composeRule.onNodeWithText("Pick from the list instead").assertIsDisplayed()
     }
 

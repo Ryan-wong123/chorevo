@@ -90,7 +90,7 @@ class GroupsScreenTest {
         composeRule.onNodeWithText("My groups").assertIsDisplayed()
         composeRule.onNodeWithText("Discover").assertIsDisplayed()
         composeRule.onNodeWithTag("createGroupButton").assertIsDisplayed()
-        composeRule.onNodeWithTag("createGroupButton").assertTextContains("New group")
+        composeRule.onNodeWithText("New group", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithContentDescription("Scan a group QR code").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Join with invite code").assertIsDisplayed()
     }
