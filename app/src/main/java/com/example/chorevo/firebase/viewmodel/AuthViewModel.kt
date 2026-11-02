@@ -204,9 +204,10 @@ class AuthViewModel @Inject constructor(
  * read the same, so the screen doesn't reveal which emails have accounts.
  */
 internal fun authErrorMessage(error: Throwable?): String? = when (error) {
+    // Must come first: it subclasses FirebaseAuthInvalidCredentialsException.
+    is FirebaseAuthWeakPasswordException -> "Use a stronger password (at least 8 characters)."
     is FirebaseAuthInvalidUserException,
     is FirebaseAuthInvalidCredentialsException -> "Email or password is incorrect."
     is FirebaseAuthUserCollisionException -> "Couldn't create an account with that email. Try signing in instead."
-    is FirebaseAuthWeakPasswordException -> "Use a stronger password (at least 8 characters)."
     else -> error?.message
 }
