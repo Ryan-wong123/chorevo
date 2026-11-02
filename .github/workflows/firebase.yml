@@ -1,14 +1,16 @@
 name: Firebase
 
-# Tests Cloud Functions and Firestore rules on pull requests only (not on
-# pushes). A manual run of this workflow on main (workflow_dispatch) also
-# deploys Firestore rules/indexes, Storage rules, Cloud Functions and Hosting,
-# then runs the idempotent data backfill.
+# Tests Cloud Functions and Firestore rules on pull requests. A push to main
+# (i.e. a merged PR), or a manual run on main (workflow_dispatch), runs the
+# tests and then deploys Firestore rules/indexes, Storage rules, Cloud
+# Functions and Hosting, then runs the idempotent data backfill.
 # Deploying needs the FIREBASE_SERVICE_ACCOUNT secret (see README,
 # "Automatic Firebase deploys"); without it the deploy job is skipped.
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -62,7 +64,7 @@ jobs:
   deploy:
     name: Deploy to Firebase
     needs: test
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     # Add required reviewers to this environment in the repo settings to gate deploys.
     environment: production
     runs-on: ubuntu-latest
