@@ -50,8 +50,10 @@ class AuthViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AuthUiState())
     val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
 
-    // Optional: LiveData version for rubrics / older patterns
-    val uiStateLiveData = uiState.asLiveData()
+    // Optional: LiveData version for rubrics / older patterns.
+    // Lazy: asLiveData() on a StateFlow touches the Android main looper, which
+    // would make this ViewModel impossible to construct in a plain JVM test.
+    val uiStateLiveData by lazy { uiState.asLiveData() }
 
     private val _events = MutableSharedFlow<AuthEvent>(extraBufferCapacity = 1)
     val events: SharedFlow<AuthEvent> = _events.asSharedFlow()
@@ -202,9 +204,10 @@ class AuthViewModel @Inject constructor(
  * read the same, so the screen doesn't reveal which emails have accounts.
  */
 internal fun authErrorMessage(error: Throwable?): String? = when (error) {
+    // Must come first: it subclasses FirebaseAuthInvalidCredentialsException.
+    is FirebaseAuthWeakPasswordException -> "Use a stronger password (at least 8 characters)."
     is FirebaseAuthInvalidUserException,
     is FirebaseAuthInvalidCredentialsException -> "Email or password is incorrect."
     is FirebaseAuthUserCollisionException -> "Couldn't create an account with that email. Try signing in instead."
-    is FirebaseAuthWeakPasswordException -> "Use a stronger password (at least 8 characters)."
     else -> error?.message
 }

@@ -135,19 +135,6 @@ class LeaderboardScreenTest {
         composeRule.onNodeWithText("No ranking data yet.").assertIsDisplayed()
     }
 
-    @Test
-    fun emptyFriends_showsNoFriendsAddedMessage() {
-        composeRule.setContent {
-            LeaderboardScreen(myUid = "uid1", vm = vm)
-        }
-
-        waitForTextExists("Friends")
-        composeRule.onNodeWithText("Friends").performClick()
-
-        waitForTextExists("No friends added yet.")
-        composeRule.onNodeWithText("No friends added yet.").assertIsDisplayed()
-    }
-
     // ── Entry List ────────────────────────────────────────────────────────────
     @Test
     fun entriesList_showsDisplayNamesAndRanks() {

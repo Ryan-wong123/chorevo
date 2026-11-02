@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.chorevo.danceactivity.repository.DanceSessionDao
 import kotlinx.coroutines.flow.first
@@ -12,6 +13,7 @@ import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
+import org.junit.runner.RunWith
 
 @Database(
     entities = [DanceSessionEntity::class],
@@ -22,6 +24,7 @@ abstract class TestDanceDb : RoomDatabase() {
     abstract fun dao(): DanceSessionDao
 }
 
+@RunWith(AndroidJUnit4::class)
 class DanceSessionDaoTest {
 
     private lateinit var db: TestDanceDb
