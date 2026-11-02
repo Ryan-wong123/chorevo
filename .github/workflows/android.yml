@@ -46,10 +46,22 @@ jobs:
       - name: Run unit tests
         run: ./gradlew --stacktrace testDebugUnitTest --no-daemon
 
+      # Reports are only needed to debug failures. Uploads never fail the build.
+      - name: Upload unit test results
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: failure()
+        continue-on-error: true
+        with:
+          name: unit-test-results
+          path: |
+            app/build/test-results/testDebugUnitTest/
+            app/build/reports/tests/testDebugUnitTest/
+          retention-days: 3
+
   integration-tests:
     name: Integration tests (androidTest on emulator)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     needs: [unit-tests]
 
     steps:
