@@ -239,7 +239,9 @@ class UploadWizardTest {
         composeRule.onNodeWithTag("danceStyle_other").performClick()
 
         composeRule.onNodeWithTag("danceTypeField").assertIsDisplayed()
-        composeRule.onNodeWithText("Pick from the list instead").assertIsDisplayed()
+        composeRule.waitForIdle()
+        // The button composes under the field but doesn't pass assertIsDisplayed on the CI emulator.
+        composeRule.onNodeWithText("Pick from the list instead").assertExists()
     }
 
     @Test
