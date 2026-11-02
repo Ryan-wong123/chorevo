@@ -867,3 +867,252 @@ Broad hardening checks across users, rewards, sessions, dances, comments, groups
 
 ### Storage rules summary
 `storage.rules` denies everything by default and always denies `list`. Covered folders are `danceVideos`, `danceThumbnails`, `groupVideos`, `groupThumbnails`, `profilePhotos`, `danceTemplates/{uid}/…` and the legacy `danceTemplates/{file}`. Reads of videos, thumbnails and group media are owner-only, `profilePhotos` is readable by any signed-in user, and templates are readable if the dance is public or the caller is its educator. Writes require ownership, a safe filename and a content type and size cap (video 200 MB, images 10 MB, template JSON under 20 MB).
+
+---
+
+## 6. Additional tests (added to close coverage gaps)
+
+These tests were added after the first version of this document, to cover code that previously had no direct tests. **Verification status:**
+
+| Suite | Status |
+|---|---|
+| Cloud Functions tests (`functions/test`) | Run: all 174 tests pass (`cd functions && npm test`). |
+| New rules tests (`rules-tests/firestore-gaps.test.js`, `storage-profile-photos.test.js`) | Run on the Firebase emulator: all 18 pass. |
+| New Kotlin unit tests (`app/src/test`) | **Not compiled or run.** The Android Gradle plugin cannot be downloaded in the authoring environment. |
+| New Kotlin instrumented tests (`app/src/androidTest`) | **Not compiled or run**, for the same reason. They also need a device or emulator. |
+
+Known issue found while running the rules suite: the existing test `pose templates of private dances are readable only by their creator` in `rules-tests/dance-privacy.test.js` fails in the authoring environment with an "Unexpected rules runtime error" from the emulator. It fails the same way when that file runs alone, so it is not caused by the new tests.
+
+### 6.1 Practice flow (`app/src/test/.../danceactivity/`)
+
+#### `PracticeStepsTest` (24 tests, pure logic)
+Under test: `derivePracticeStepSegments`, `PracticeStepSegment` and `sliceTemplateForStep`.
+
+| Test group | What it checks |
+|---|---|
+| `derive_nullTemplate`, `derive_noFrames`, `derive_singleFrame` | A null, empty or one-frame template gives no steps. |
+| `derive_twoFrames_isOneStep…` | Two frames give one step spanning both frames (0 to 1000 ms). |
+| `derive_exactMultipleOfStepSize_makesEqualSteps` | 8 frames at 1 fps give two equal steps with correct index and total. |
+| `derive_trailingChunkAtMinimumSize_isKeptAsOwnStep` | 10 frames split 4/4/2, and the 2-frame tail stays its own step. |
+| `derive_shortTrailingChunk_isMergedIntoPreviousStep` | 9 frames split 4/4/1, and the 1-frame tail merges into the previous step. |
+| `derive_fewerFramesThanOneStep_isSingleStep` | 3 frames give one step. |
+| `derive_higherFps_usesLargerSteps` | At 2 fps, 12 frames give 2 steps and 11 frames give 1. |
+| `derive_zeroFps_behavesLikeFpsOne` | FPS 0 behaves like FPS 1. |
+| `derive_unsortedFrames_areSortedByTime` | Shuffled frames are sorted before chunking. |
+| `derive_identicalTimestamps_…` | Frames at the same time still give a step of at least 1 ms. |
+| `segment_title_isOneBased`, `segment_duration_…` (2) | Titles read "Step 2 of 5", and duration is end minus start, never below 1. |
+| `slice_nullTemplate_returnsNull` | A null template returns null. |
+| `slice_keepsOnlyFramesInsideSegment_andRebasesTimes` | Only in-range frames are kept, with times rebased to 0. |
+| `slice_includesFramesOnBothSegmentBoundaries` | Frames exactly on the start and end are included. |
+| `slice_segmentWithNoFrames_returnsNull` | A segment with no frames returns null. |
+| `slice_preservesLandmarksAndOtherTemplateFields` | `fps`, `defaultTrackId` and landmarks survive slicing. |
+| `slice_rebasesTracks…`, `slice_rebasesHandTracks…` | Tracks and hand tracks are rebased, and those with no frames in range are dropped. |
+| `deriveThenSlice_coversEveryFrameOfEachStep` | For a 9-frame template, the sliced steps hold 4 and 5 frames. |
+
+#### `PracticeResultsTest` (22 tests)
+Under test: `gradeFor`, `PracticeResult` and `PersonalBestStore` (against a mocked `Context` and an in-memory `SharedPreferences`).
+
+| Test group | What it checks |
+|---|---|
+| `gradeFor_*` (5) | 0.90 and above is S, 0.80–0.8999 is A, 0.65–0.7999 is B, below 0.65 is C, and out-of-range scores still get a grade. |
+| `practiceResult_copyKeepsOtherFields` | Copying with a changed personal-best flag keeps the other fields. |
+| `store_firstScore_*` (2) | A first score, even 0.0, is always a personal best. |
+| `store_higherScore_replacesBest` | A higher score returns true and is stored under `best_{uid}_{danceId}`. |
+| `store_lowerScore…`, `store_equalScore…` (3) | A lower or equal score (including after float rounding) is not a best and keeps the previous value. |
+| `store_bestsAreTrackedPerDance`, `…PerUser` | Bests are independent per dance and per user. |
+| `store_notBestScore_doesNotWriteToPreferences` | A non-best score writes nothing. |
+| `store_usesDedicatedPreferencesFile` | The store opens the `practice_personal_bests` file. |
+| `store_newInstanceSeesBestPersistedByEarlierOne` | A new store instance sees the best saved by an earlier one. |
+
+#### `PracticeViewModelTest` (45 tests)
+Under test: `PracticeViewModel`, with a `StandardTestDispatcher` for the timer, a `SavedStateHandle`, a relaxed mocked `Telemetry` and a mocked `PersonalBestStore`.
+
+| Test group | What it checks |
+|---|---|
+| Bind and restore (9) | A normal-mode bind starts idle with default scores; test mode starts active with canned scores. Re-binding the same dance keeps state, while a different test mode rebinds. A multi-step template derives segments but starts in full routine. Empty and short templates are handled. Saved step 99 clamps to the last step, and saved state for another dance is ignored. |
+| Reference track and step navigation (8) | The longest track is picked by default and selecting another sets a status message; selecting the same or an unknown track is ignored. Step-by-step selection needs segments and persists to saved state. Next and previous stay within bounds. Full routine leaves step mode. In step mode the secondary action advances then restarts the last step, and finishing a step completes it without submitting or touching personal bests. |
+| Countdown and timer (7) | The countdown shows 3, hides the reference selector, and names the step in step mode. It ticks 2, 1, then starts practice with "Practice in progress", and does not start before 3 s. `PRACTICE_STARTED` is logged with `dance_id` and `mode`. Calling it again restarts from 3. Test-mode timer keeps practice active. |
+| Reset (3) | Reset cancels a countdown, stops practice and clears live data, and in test mode restores the canned scores. |
+| Submit (9) | With no dance, returns null. Before practice starts, it is rejected with a message. A missing or null educator is rejected. A good score builds the session (every field, quality flag, duration), records the personal best and logs `PRACTICE_COMPLETED`. A non-best score is reported. A low score after a real countdown is flagged done. A submit during the countdown clears it. |
+| Misc state (6) | Status set and clear, camera permission results (and test mode always having permission), frames ignored without a detector, and `release()` resets state and clears saved keys. |
+
+### 6.2 Groups, username, profile and auth (`app/src/test/.../community/`, `.../firebase/`)
+
+#### `GroupsRepositoryTest` (about 45 tests)
+Firestore chains are strict MockK mocks; `Tasks.forResult` / `Tasks.forException` complete the tasks.
+
+| Test group | What it checks |
+|---|---|
+| `createGroup_*` (6) | A private group writes the group, owner member doc and `groupInvites` doc in one batch (trimmed name, `nameLower`, role `owner`, 8-character code). A public group has no invite code and skips `groupInvites`. A blank display name becomes "User", descriptions are cut to 500 characters, names that are too short or too long fail without writing, and a failed commit is returned as a failure. |
+| Joining and leaving (7) | An unknown code, or an invite without a group id, fails with "No group has that invite code." A new member gets a doc with role `member` and the `inviteCode`; an existing member just gets the group id back. A rejected write (for example a ban) is returned as a failure. `joinPublicGroup` writes a member doc without an invite code, `leaveGroup` deletes the user's own member doc, and `deleteGroup` deletes the group doc or surfaces the failure. |
+| Invitations (7) | `sendInvitation` writes `groupInvitations/{group}_{invitee}`. `acceptInvitation` sets the member doc and deletes the invitation in one batch. If the user is already a member the invitation is just cleared, if the group is gone the failure is "This group no longer exists.", and other failures are returned unchanged. `declineInvitation` deletes the doc or surfaces the failure. |
+| Ban and unban (4) | `removeMember` deletes the membership and writes `bans/{uid}` in one batch. `unbanMember` deletes the ban doc. `bannedMembers` joins profiles, sorts newest first, shows "Removed member" for unreadable profiles and returns list failures. |
+| Posts and replies (10) | Text posts are trimmed and typed `text`, with bodies capped at 1500 characters and blank names defaulted. Dance posts carry the dance fields and null a blank thumbnail. Replies are trimmed, capped at 500, and a blank body fails without writing. Deleting a post as its author also deletes its replies and Storage files; as the group owner, Storage is left alone. A failed delete is returned. |
+| `groupMediaUrls_*` (4) | Empty ids return an empty map without calling the function. A response is mapped to `PostMedia`, skipping entries without a video. An unexpected payload gives an empty map and a function failure is returned. |
+| `loadPublicGroups_*` (3) | A blank search orders by member count (limit 50) and drops blank-named docs. A search is lowercased and queried as a `nameLower` prefix range. A failed query is returned. |
+| Listener flows (4) | `observeMembership`, `observeGroup` and `observeInvitations` map data correctly, emit null on a missing doc or error, sort invitations newest first, and remove the listener on cancel. |
+
+#### `UsernameRepositoryTest` (17 tests)
+
+| Test group | What it checks |
+|---|---|
+| `isAvailable_*` (3) | A free handle is available, a taken one is not, and a read failure is returned as a failure. |
+| `suggest_*` (4) | A free base is returned as is; a taken base gets a number appended; if everything is taken the base is returned; a blank display name gives "dancer". |
+| `claim_*` (7) | Invalid handles fail with the rule's problem text and write nothing. Claiming your current handle succeeds without a batch. A new handle writes `usernames/{handle}` and merges `username` into `users/{uid}` in one batch, and a changed handle also releases the old one in the same batch. If the commit fails and the handle is now taken the error is "@ryan is taken", otherwise the original error is returned. |
+| `search_*` (4) | A query that normalises to empty never hits Firestore. A prefix query is normalised (`@Ali` → `ali`), limited to 10 and joined with user profiles, with fallbacks for blank names and photos. A failed profile read still returns the handle, and a failed query is returned. |
+
+#### `ProfileViewModelTest` (9 tests)
+
+| Test | What it checks |
+|---|---|
+| `initialState_isEmptyAndIdle` | Default state. |
+| `refresh_populatesStreakPointsAndLikedDances` | Streak, points and liked dances are loaded with no loading flags left set. |
+| `refresh_showsLoadingUntilStreakAndPointsArrive` | `isLoading` stays true until points arrive, while likes load independently. |
+| `refresh_streakFailure…`, `refresh_pointsFailure…` | A failure in one falls back to an empty value and keeps the other. |
+| `refresh_likedDancesFailure_yieldsEmptyList…` | Failed likes give an empty list and stop loading. |
+| `loadLikedDances_*` (3) | The loading flag is set then cleared, streak and points are untouched, and a reload replaces the earlier list. |
+
+#### `AuthViewModelTest` (about 31 tests, email paths only)
+
+| Test group | What it checks |
+|---|---|
+| State and setters (3) | Default login state, field setters and password-visibility toggling. |
+| Mode (2) | Toggling and setting the mode clears the status. |
+| Signup (6) | A blank display name or a password shorter than 8 characters is rejected with a message and no repo call; exactly 8 characters is accepted. Success trims inputs, emits `Authed` and logs `SIGN_UP` with method `email`. An email collision shows a generic message without revealing the account exists, and a weak password from the server shows the stronger-password message. |
+| Login (5) | Success trims the email (not the password), emits `Authed` and logs `LOGIN`. Login does not enforce password length or display name. Wrong password and unknown user show the identical "Email or password is incorrect." message, and other errors show their own message. |
+| In-flight handling (2) | A second submit while loading is ignored and loading state is set and reset; a retry clears the earlier error. |
+| Password reset (3) | A blank email or one without `@` prompts for an email; a valid email is trimmed and sent, and a neutral "If an account exists…" message is shown. |
+| Google and cancel (4) | `requestGoogleSignIn` sets loading and emits `LaunchGoogleSignIn` once and is ignored while loading; `onExternalAuthCancelled` resets state and sets or clears the message. |
+| `authErrorMessage_*` (5) | Unknown user and bad credentials read the same, a collision does not reveal the account, a weak password mentions the minimum length, other errors use their message, and null gives null. |
+
+### 6.3 Video uploads and pose pipeline (`app/src/test/.../videouploads/`, `.../posedetection/`)
+
+#### `VideoUploadsRepositoryTest` (17 tests)
+
+| Test group | What it checks |
+|---|---|
+| `updateDance_*` (3) | Title (120), type (40) and description (2000) are trimmed and truncated; the write uses `SetOptions.merge()` and omits `visibility` unless given; a Firestore failure is returned. |
+| `setVisibility_*` (2) | Writes exactly `{visibility}` with merge to the right document, and returns failures. |
+| `loadVideos_*` (2) | Filters by `educatorUid`, orders newest first and returns the models; a failed query is returned. |
+| `deleteDance_*` (5) | A blank or null uid fails with "Missing educatorUid for delete" without touching Firebase. A delete removes the video, thumbnail and template files, then likes docs, then the dance doc. Storage and subcollection errors are ignored but a failed final doc delete is returned. |
+| `uploadDance_*` (5) | Missing context fails before compressing, and a blank or null educator uid fails with "Missing educatorUid". A compression failure reports the "Compressing video" stage and progress and returns a failure without touching Firestore. `onTemplateFailure` is called only when `continueWithoutTemplateOnFailure` is false. A failure after compression deletes the compressed temp file. |
+
+#### `VideoVisibilitySelectorTest` (6 tests, logic only)
+`visibilityIcon` gives a lock for private and a globe for public, falls back to the globe for blank, unknown or wrong-case values, and the two icons differ. The constants are `"public"` and `"private"`, and `DanceLibraryModel.isPrivate` / `isVisibleTo` behave consistently for owner, stranger and null.
+
+#### `DanceStylePickerTest` (9 tests, pure helpers)
+The standard styles have unique, non-blank keys; each is recognised as standard with no suggestion; the standard check ignores case and punctuation; custom styles ("Voguing", "Tango Nuevo") are not standard; blank input has no suggestion; near misses ("hiphop", "Hiphp", "kpop", "balet") suggest the standard spelling; different casing returns the canonical style; unrelated custom styles get no suggestion; test tags derive from stable lowercase keys.
+
+#### `PoseSimilarityEvaluatorExtraTest` (about 28 tests)
+
+| Test group | What it checks |
+|---|---|
+| Baseline and ignored input (5) | An identical pose scores 1.0 with "Nice match" feedback; a snapshot before any frame has no scores; learner poses, reference frames or templates that are too short or empty are ignored. |
+| Mirroring (3) | A flipped learner matches a mirrored reference (1.0); without mirroring the flipped learner is penalised, and with mirroring an unflipped learner is penalised. |
+| Feedback wording (7) | Right-arm and leg up/down cues, left-arm left/right cues, the area with the largest mismatch wins, and small errors below the joint threshold give "Reset your posture and match the reference shape." Feedback is recorded once per distinct message. Two of these tests pin the current "Lower"/"Lift" wording, so they need updating if that wording changes. |
+| Thresholds and visibility (3) | `goodThreshold` flips between "Nice match" and a correction; joints with low visibility are excluded from the error; with no visible joints the error is 1.0 and the feedback is the reset message. |
+| Series and segments (8) | The timeline is downsampled to the sample interval; without `includeSeries` the series stay empty; segments split when the label changes (GOOD then BAD) and an in-between score is labelled OK; steady performance gives full consistency and smoothness, alternating good and bad frames gives zero; the live score reacts slower than the overall average; unsorted template frames are sorted. |
+
+#### `PoseTrackingTest` (about 26 tests)
+Under test: `MultiPersonPoseTracker`, `PoseBounds`, `PoseTrackingConfig` and the pose helper functions.
+
+| Test group | What it checks |
+|---|---|
+| Template building (8) | No frames or only empty detections returns null. Detections with no visible landmarks or an empty list are ignored. A track shorter than `minTrackFrames`, or with low average visibility, tiny area or low coverage, is dropped. A single dancer fills all template fields including a one-candidate preview. The dancer seen in most frames becomes "Dancer 1" even if detected second. A missing frame size gives a zero-size preview and zero fps does not divide by zero. |
+| Warnings (2) | Low confidence adds `lowConfidenceTracks`, sparse tracks add `manyMissingFrames`. |
+| Config presets (3) | `standard` keeps a strong track and rejects a weak one, `highRecall` keeps it, and the preset values (including clamps) are as expected. |
+| `PoseBounds` and helpers (13) | Derived width, height, centre, area and `contains`; inverted edges give zero size; IoU for identical, disjoint and partial overlap (1, 0, 1/3) and zero-area boxes; padded boxes clamp to the unit square; zero padding gives a tight box over visible landmarks only; null for nothing visible or too short input; `averageVisibility` averages every fourth value. |
+
+#### `CropPoseEstimatorTest` (about 29 tests)
+Uses `mockkStatic(Bitmap::class)` and mocked MediaPipe helpers.
+
+| Test group | What it checks |
+|---|---|
+| Body-only estimator (9) | No dancers returns empty without detecting; lost and ended dancers are skipped; tiny boxes (one or many) produce a `cropPoseMissing` warning without detecting; a custom minimum size rejects a normal box; a bitmap creation failure, no landmarks and a detector exception are each reported as missing, with the crop recycled where one was created; `close()` closes the helper. |
+| Holistic estimator (9) | Empty input never calls the fallback; inactive dancers are skipped; tiny boxes, empty body poses, detector exceptions and bitmap failures fall back to the body-only estimator with a warning; success remaps pose and hands to full-frame coordinates with confidence `min(pose, hand)`; a pose without hands is kept with a "no hand landmarks" warning; `close()` closes both helpers even if one throws. |
+| Geometry and config (9) | Negative padding is treated as zero; metadata survives expansion; an invalid frame size gives an invalid rect; a full-frame box covers the whole frame; a degenerate box still has one pixel; remapping clamps visibility and keeps z; empty input gives empty output; config defaults match constants; the no-op estimator returns an empty result. |
+
+#### `VideoPoseTemplateGeneratorTest` (11 tests)
+Adds to `SamplingFpsTest`: negative duration uses the preferred rate; exactly at the frame budget keeps 8 fps while 120,001 ms drops to 7; a preferred rate below the minimum is not raised; very long videos clamp to 3 fps; duration times fps never exceeds 960 for 130–300 s; the result never exceeds the preferred rate; `frameTimeMs` is zero for index 0, treats non-positive fps as 1 and is strictly increasing; the max-duration and warning-code constants; and the STANDARD and HIGH_RECALL profiles exist.
+
+### 6.4 Rewards, notifications, sharing and QR (`app/src/test/...`)
+
+| Test file | Tests | What it checks |
+|---|---|---|
+| `danceactivity/repository/PointsRepositoryTest` | 6 | Reads `totalPoints` and `lastSessionPoints` from `users/{uid}/points/current`; a missing doc or missing fields default to zero; the default snapshot is zero. |
+| `danceactivity/repository/AchievementRepositoryTest` | 11 | Earned badge ids come from `users/{uid}/achievements/current`; a missing doc, missing field or non-list gives an empty set; unknown, wrong-case and blank names are dropped; duplicates collapse; badge definitions are returned only for earned badges, in `ALL_BADGES` order, as full definition objects. |
+| `danceactivity/repository/FirebaseStreakRepositoryTest` | 8 | A missing doc gives an empty streak for this Monday; a current-week streak passes through unchanged; an ended or future week shows an empty week (`daysMask=0`) but keeps totals and the last activity date; missing fields use defaults; the auto-reset flag does not stop an ended week resetting; path check; data class defaults. |
+| `weeklychallenge/repository/WeeklyChallengeRepositoryTest` | 13 | An existing week is a plain read with no server call; all challenge fields are parsed (non-string style entries filtered); a challenge with only a type gets defaults; unknown or missing types are skipped; an unknown focus metric becomes null; doubles are truncated to ints; missing bonus fields default to 50 points, not completed, not claimed; a missing doc or one without `weekStart` calls the server with the phone's time-zone offset and reads the week it returns; a server response without or with a non-string `weekStart` falls back to the local week; a week still missing afterwards returns an empty set. |
+| `weeklychallenge/WeeklyChallengeModelsTest` | 12 | `progressFraction` for partial, zero, reached, over target (capped at 1), negative progress (floored at 0) and zero or negative targets (1); model defaults; metric labels; enum round-trips; the three challenge slots. |
+| `danceactivity/AchievementModelsTest` | 14 | `levelForPoints` boundaries at 0, 199/200, 499/500, 999/1000 and 1999/2000 with a fallback for negatives; `nextLevelForPoints` (and null at the top level); levels are numbered 1–5 with increasing thresholds; every `BadgeId` appears once in `ALL_BADGES` with unique, non-blank names and descriptions; badge descriptions contain the server thresholds (500, 1000, 100). |
+| `leaderboard/LeaderboardMyEntryTest` | 14 | `observeMyGlobalEntry`: rank is 1 plus the number of users with a strictly higher score (1 and 138 in the examples) and `isMe` is set; stat fields are copied; a blank name becomes "User"; a stored field value wins; the similarity and active-days metrics query the correct fields; active days fall back to `streakDays`; a missing doc, null doc or listener error emits null; a failed count query emits nothing; a changed doc re-emits (ranks 6 then 2); the listener is removed on cancel. |
+| `notification/ReminderSchedulerTest` | about 25 | The next daily alarm is the next occurrence of the wall-clock time (rolling to tomorrow when passed), always in the future within 24 h, with zero seconds; it follows the phone time zone (Singapore, New York, Auckland, Kolkata); it uses an exact wake-up alarm with request code 2001, update-current and immutable flags and extras for re-arming; `rescheduleFromPreferences` cancels when push is off and schedules at the stored time when on; `cancelDaily`, `cancelAll` and the repeating test alarms (5 and 60 minutes, request codes 2005/2060/3015) schedule and cancel the right alarms. |
+| `notification/PushTokensTest` | 9 | Save writes `token`, platform `android` and `updatedAt` under `users/{uid}/fcmTokens`; failures and Firestore exceptions are logged or swallowed; register saves a delivered token and logs when unavailable or when the fetch fails; unregister deletes the token and swallows errors. |
+| `notification/BootReceiverTest` | 7 | Boot-completed and package-replaced reschedule the daily alarm at the stored time when push is on; nothing is scheduled when off but the pending result is still finished; unrelated actions, null intents and intents without an action are ignored. |
+| `notification/ChorevoMessagingServiceTest` | 3 | `onNewToken` saves the token for the signed-in user and does nothing when signed out; the group invitation type constant matches the server payload. |
+| `notification/NotificationPreferencesDataStoreTest` | 9 | Against a real DataStore in a temporary folder: push enabled and notification time (hour, minute and pair flows) are read back and overwrite correctly without affecting each other; theme mode and onboarding-seen are stored; a new instance sees values written by another. |
+| `core/share/ShareLinksTest` | about 24 | `danceLink` and `groupInviteLink` build HTTPS links on the hosting domain and encode reserved characters; `parseInviteCode` and `parseDanceId` accept hosting, `firebaseapp.com`, the legacy domain, plain HTTP and the `chorevo://` scheme, and reject unknown hosts or schemes, wrong first path segment, missing, blank or extra path segments, and wrong-length codes; links the app builds round-trip. |
+| `community/InviteQrTest` | 8 | The QR bitmap is square at the requested size (default 720), contains only black and white pixels with both dark modules and a light background, has a white quiet zone on all edges, and is deterministic for the same text and different for different text. |
+
+### 6.5 Cloud Functions handler tests (`functions/test/`)
+
+These run against `functions/test/support/harness.js`, a test harness that stubs `firebase-functions` and `firebase-admin` so the real handlers in `index.js` can be called directly. It provides an in-memory Firestore (documents, collection groups, queries, transactions, batches, bulk writer, recursive delete and field-value sentinels), a fake Storage bucket and a fake Messaging service, with failure injection. The fake transaction applies buffered writes at commit but not atomically.
+
+| Test file | Tests | What it checks |
+|---|---|---|
+| `account.test.js` | 3 | `userStoragePrefixes` lists all 6 per-user folders with trailing slashes, the trailing slash stops `u1` matching `u10`, `u1x` or `xu1`, and different users get distinct prefixes. |
+| `index.share.test.js` | 6 | `danceShare`: a public dance returns 200 with title, byline, share URL and security and cache headers; a missing dance serves the generic fallback; private or disabled dances never show the title; malformed paths cause no Firestore read; titles are HTML-escaped; a Firestore error is logged and the fallback is still served. |
+| `index.discovery.test.js` | 21 | `danceDerivedFields` (new dance gets feed fields and is counted; no-op when already derived; a type change moves the count; delete only decrements; private dances are not counted; failures are logged or rejected), `revokeLinksWhenPrivate` (tokens rotate with new URLs and `linksRevokedAt`; no-op for other changes; foreign files untouched; partial failure leaves the marker unset; save failure rejects so it retries), `danceLikeCount` (exact recount; replay-safe; unlike; rewritten or empty events and deleted dances do nothing) and `refreshDiscovery` (full run; one-off migrations not repeated; a failing catch-up is logged while later steps still run; core failure rejects). |
+| `index.groups.test.js` | 34 | `groupMediaUrls` (unauthenticated, invalid input, permission checks, one-hour signed links, skipped posts, duplicate ids, signing failure), `lockGroupPostMedia` (lock, skip, idempotence, missing file, file failure leaves the post for retry), `groupMemberCount` (exact, replay-safe, deleted group), `notifyGroupInvitation` (push to all devices with server-side names; ignored incomplete invitations; per-invitation dedupe; hourly rate limit; group gone or inviter not a member; no tokens; inviter name fallbacks; 20-device cap; only dead tokens deleted; FCM error rejects) and `groupCleanup` (full cleanup of subcollections, own media, invite doc and invitations while keeping other groups and feed videos; foreign invite codes and media untouched; tolerates sparse input and file failures; repeat-safe; recursive-delete failure rejects). |
+| `index.rewards.test.js` | 24 | `rewardsFromSession` (first session writes points, badge, streak, challenge and leaderboard docs; replay-safe; accumulates onto existing state with legacy history seeded once; invalid or deleted input writes nothing; daily cap; time-zone clamping; challenge progress using the dance's style; missing dance tolerated; commit failure rejects), `weeklyChallenges` (unauthenticated; first request personalises a set; existing set returned without writing; time-zone handling; concurrent creation not overwritten; write failure rejects) and `leaderboardFromProfile` (skips deletes and unchanged name or photo; ignores users not on the leaderboard; refreshes name, photo and `updatedAt`; rebuilds from reward state when present; sanitises names and photos; write failure rejects). |
+| `index.deleteUserData.test.js` | 7 | Account deletion removes the profile and subcollections, leaderboard entry, `pushRate`, username, own dances, likes, comments, posts, replies, invitations in both directions and owned groups while keeping other users' data and look-alike `u10` data; clears all 6 Storage folders; deletes owned groups but only the membership in others'; logs exact counts; works for a user with no data and is repeatable; a Storage failure is logged while other folders are still cleared; a Firestore failure rejects before Storage is reached. |
+| `maintenance.test.js` | 21 | `countLikes`, `refreshAllDances` (fills fields, like counts and scores and rewrites categories; writes only changed dances; recount fixes drift; trending scores age; empty input; batches of 400; logging and failure propagation), `backfillLikeUids` and `backfillLikeUidsOnce` (adds uid and `createdAt` only where missing; idempotent; batched; marker handling; failure leaves the marker unset), `updateCategoryCounts` (enter, leave, chip change, no-ops and spelling merging) and `removeProfileEmails` (strips emails from `users/*` only; idempotent; batched). |
+
+### 6.6 Rules tests (`rules-tests/`, run on the emulator)
+
+#### `storage-profile-photos.test.js` (9 tests)
+
+| Test | What it checks |
+|---|---|
+| profile photos: read | Any signed-in user can read one by path; anonymous cannot. |
+| profile photos: list | Nobody can list a `profilePhotos` folder. |
+| profile photos: write | Only the owner can write, overwrite or delete in their folder. |
+| profile photos: type and size | Must be an image under 10 MB (PNG allowed; HTML and video denied; 10 MB − 1 allowed, exactly 10 MB denied). |
+| cover frames | `danceThumbnails` and `groupThumbnails` need `.jpg` names, an image type, under 10 MB, owner-only writes, no list and no reads by others. |
+| group videos | Owner-only `.mp4` video uploads, no list, no reads by others. |
+| pose templates | Owner uploads typed JSON only, in their own folder, under 20 MB; delete is owner-only. |
+| legacy templates | Unscoped legacy template paths can no longer be written and the folder cannot be listed. |
+| unruled paths | Any path without a rule is closed to reads, writes and list. |
+
+#### `firestore-gaps.test.js` (9 tests)
+
+| Test | What it checks |
+|---|---|
+| weekly challenges: read | Only the owner can read them (single doc and list); others and anonymous are denied. |
+| weekly challenges: write | Nobody can create, update or delete them, not even the owner. |
+| legacy `users/{uid}/streak` | Owner-read and never writable. |
+| friends | The owner has full control of their own list; others and anonymous get nothing. |
+| likes: create | Only `liked: true` with allowed fields, keyed by the caller's own uid; no extra keys, bad `createdAt` or someone else's uid. |
+| likes: delete | Removable by the liker or the dance owner, not by a bystander. |
+| comments | No edits; deletable by the author or dance owner; impersonation, empty text and text over 1000 characters are refused. |
+| retired forum | Readable when signed in; authors can delete their own posts and replies; no edits or new replies. |
+| unknown paths | Unknown collections and unknown user subcollections are denied. |
+
+### 6.7 New instrumented tests (`app/src/androidTest/...`, not compiled or run)
+
+These need a device or emulator and mirror the style of the existing Compose tests (`createAndroidComposeRule<ComponentActivity>()`, MockK mocks, real ViewModels). `VideoUploadActivityScreenTest` is a new Compose test that replaces the misplaced ViewModel test of the same name that was removed earlier.
+
+| Test file | Tests | What it checks |
+|---|---|---|
+| `weeklychallenge/WeeklyChallengesScreenTest` | 14 | Top bar title and Back callback; the screen loads for the given uid; the week label is built from `weekStart` (or falls back to "This week"); header shows "1 of 3 complete" and the bonus hint; challenge cards show title, description, progress and reward; the last card is reachable by scrolling; the check mark appears only on completed cards; when all are complete the bonus-unlocked text shows; loading shows the shimmer list; an empty week shows the empty state; a load failure shows "Couldn't load challenges" with the message or a default. |
+| `firebase/UserProfileScreenTest` | 14 | Header name, email, Settings and Logout (blank name becomes "User", missing email becomes "-"); button callbacks; launch refreshes streak, points, likes and challenges; stats show points, streak and achievement level; stat labels; "Not logged in." status; the weekly summary card (unlock hint when empty, rows and counts when populated, "View all" callback); all tabs present; the Liked tab empty state. |
+| `notification/SettingsScreenTest` | 23 | Title and Back; header name, email and initials or picture; the username prompt versus "@alice · Change"; appearance options save `light` or `system`; notification card and switch; with push off the time row asks to enable notifications; with push on the time shows (7:05 AM, 3:30 PM); turning the switch off saves and reschedules; the time picker opens, cancels and saves 9:00; Sign Out callback; the delete-account dialog (open, cancel, confirm calls `deleteAccount`, failure keeps the dialog open and shows the error). Tests needing push on are skipped when system notifications are blocked. |
+| `community/GroupsScreenTest` (with `GroupsTestFixture`) | 26 | My groups (shimmer, empty state and its buttons, list content, lock icon for private groups, open a group); invitations (headings, tab badge, hidden when none, Accept and Decline call the repo); discover (list, empty state, search, open); create dialog (disabled until valid, public and private creation calls, cancel, failure snackbar); join dialog (needs a full code, normalises input and calls `joinWithCode`, error snackbar, a pending invite code prefills the dialog). |
+| `community/GroupDetailScreenTest` | 38 | Header (name, visibility, member count, description, invite code card and QR dialog); back; membership (join banner for non-members, composer for members); posts (shimmer, empty text, text and dance posts, open dance, delete button visibility, delete confirm and cancel); composer (Post disabled until text, text post call, failure snackbar, share-dance button disabled without dances, attach and remove a dance chip); replies sheet (open, list, send, no field for non-members); menu items by role with leave and delete confirmation; members dialog (owner label, Remove and Unban call the repo); invite by username (search, invite, no match, "Member" label). |
+| `videouploads/UploadWizardTest` | 16 | Upload step ordering and bounds and the 10-minute limit constant; step indicator text for each step; publish summary (real values and placeholders); cover-frame picker without a slider when duration is unknown; visibility selector texts, click reports `private` and disabled state; style picker (label, placeholder, picking a style, "Other…" switches to free text, "Did you mean Hip Hop?" suggestion). |
+| `videouploads/VideoUploadActivityScreenTest` | 22 | Step 1 (title, indicator, prompt; Next disabled and no Back without a video; `showPickButton=false` hides the picker; an initial video shows "Video selected"); source dialog and cancel; moving between steps; details fields update the draft and Next needs every field; dancer review panel and the analysis checkbox gating Next; publish summary, choosing Private, and Publish calls `uploadDance` with the exact arguments then returns to step 1 with the "Uploaded…" status; "Publishing..." state with Back disabled; failure status card and Dismiss; load failure status card. |
+| `core/routes/AppRouterTest` | 30 | Bottom navigation: five destinations, each tab switches screen and calls only its callback, the bar is hidden on AUTH and DANCE_PRACTICE and visible on SETTINGS and WEEKLY_CHALLENGES, the feed can tuck it away, the groups badge shows the count with a "9+" cap and none at 0, content padding is correct and HOME is full-bleed. `Screen.backTarget` hierarchy. `AppViewModel` start screen, `onAuthed`, every `open*` function, the `navigateBack` chain ending with false at the root, logout, and group invite link and push handling (including a link parked until sign-in). `AppRouter` signed-out only: spinners while the auth check or onboarding preference is pending, and onboarding shown on first launch without the bottom bar. |
+
+### 6.8 Still not covered
+
+Paths that need the real Android runtime or hardware were left out: `ReminderReceiver.onReceive` and `ChorevoMessagingService.onMessageReceived` (build real notifications), `VideoCompressor` and `VideoTemplateGenerationWorker` (Media3, WorkManager, Hilt), the successful `uploadDance` path, `InviteQr.scan` (Google code scanner), the real camera frame scoring in `PracticeViewModel`, and the Hilt-backed paths of `AppRouter` (signed-in routing), onboarding Skip, the username dialog and the deep-link snackbar. A 200 MB Storage video-size-cap rules test was also skipped as too heavy for the emulator.
