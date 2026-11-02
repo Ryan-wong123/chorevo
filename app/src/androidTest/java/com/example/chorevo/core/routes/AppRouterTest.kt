@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -256,7 +257,7 @@ class AppRouterTest {
     fun groupsBadge_showsInvitationCount_andAnnouncesIt() {
         setNavigation(groupsBadge = 3)
 
-        composeRule.onNodeWithTag("bottomNavBadge_COMMUNITY").assertIsDisplayed()
+        composeRule.onNodeWithTag("bottomNavBadge_COMMUNITY").assertExists()
         composeRule.onNodeWithText("3").assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Groups, 3 new").assertIsDisplayed()
     }

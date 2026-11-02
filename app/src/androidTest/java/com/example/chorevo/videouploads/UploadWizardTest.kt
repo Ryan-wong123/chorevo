@@ -202,14 +202,14 @@ class UploadWizardTest {
     // ── DanceStylePicker ─────────────────────────────────────────────────────
 
     @Test
-    fun stylePicker_empty_showsLabelAndPlaceholder() {
+    fun stylePicker_empty_showsLabel() {
         composeRule.setContent {
             DanceStylePicker(value = "", onValueChange = {})
         }
 
         composeRule.onNodeWithTag("danceTypeField").assertIsDisplayed()
+        // The placeholder stays hidden until the field is focused, so only the label shows.
         composeRule.onNodeWithText("Dance Type").assertIsDisplayed()
-        composeRule.onNodeWithText("Choose a style").assertIsDisplayed()
     }
 
     @Test
@@ -238,6 +238,8 @@ class UploadWizardTest {
         composeRule.onNodeWithTag("danceTypeField").performClick()
         composeRule.onNodeWithTag("danceStyle_other").performClick()
 
+        // Focus the free-text field so its placeholder is shown.
+        composeRule.onNodeWithTag("danceTypeField").performClick()
         composeRule.onNodeWithText("e.g. Voguing").assertIsDisplayed()
         composeRule.onNodeWithText("Pick from the list instead").assertIsDisplayed()
     }

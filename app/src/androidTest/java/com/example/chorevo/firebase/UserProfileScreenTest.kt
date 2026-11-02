@@ -237,7 +237,11 @@ class UserProfileScreenTest {
         // The embedded uploads tab reports "Not logged in." through onStatus.
         setScreen()
 
+        // The tab content is far down the LazyColumn; it isn't composed (so it
+        // can't report its status) until the list has been scrolled there.
+        scrollToText("Learners")
         waitForTextExists("Not logged in.")
+        scrollToText("Not logged in.")
         composeRule.onNodeWithText("Not logged in.").assertIsDisplayed()
     }
 
@@ -314,7 +318,7 @@ class UserProfileScreenTest {
         scrollToText("Learners")
         composeRule.onNodeWithTag("profileTab_LIKED_VIDEOS").performClick()
 
-        waitForTextExists("No liked videos yet")
+        scrollToText("No liked videos yet")
         composeRule.onNodeWithText("No liked videos yet").assertIsDisplayed()
         composeRule.onNodeWithText("Heart a dance in the feed and it'll appear here").assertIsDisplayed()
     }

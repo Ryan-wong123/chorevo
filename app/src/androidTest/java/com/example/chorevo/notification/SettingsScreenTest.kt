@@ -70,16 +70,20 @@ class SettingsScreenTest {
             timeFlow.value = firstArg<Int>() to secondArg<Int>()
         }
 
-        vm = AppViewModel(
-            appContext = context,
-            authRepository = authRepo,
-            retryUploader = mockk<AutoRetryUploaderService>(relaxed = true),
-            settings = settings,
-            danceLibraryRepository = mockk<DanceLibraryRepository>(relaxed = true),
-            reminderScheduler = scheduler,
-            pushTokens = mockk<PushTokens>(relaxed = true)
-        )
     }
+
+    // Built on first use, after a test has had the chance to re-stub the repo:
+    // the ViewModel calls getCurrentUserProfile() from init, and re-stubbing
+    // while that coroutine runs makes MockK fail with "no answer provided".
+    private fun newViewModel() = AppViewModel(
+        appContext = context,
+        authRepository = authRepo,
+        retryUploader = mockk<AutoRetryUploaderService>(relaxed = true),
+        settings = settings,
+        danceLibraryRepository = mockk<DanceLibraryRepository>(relaxed = true),
+        reminderScheduler = scheduler,
+        pushTokens = mockk<PushTokens>(relaxed = true)
+    )
 
     @After
     fun tearDown() {
@@ -103,6 +107,7 @@ class SettingsScreenTest {
         onBack: () -> Unit = {},
         onLogout: () -> Unit = {}
     ) {
+        if (!::vm.isInitialized) vm = newViewModel()
         composeRule.setContent {
             SettingsScreen(appViewModel = vm, profile = p, onBack = onBack, onLogout = onLogout)
         }
@@ -152,15 +157,6 @@ class SettingsScreenTest {
     @Test
     fun header_blankNameAndEmail_fallBackToUserAndDash() {
         coEvery { authRepo.getCurrentUserProfile() } returns null
-        vm = AppViewModel(
-            appContext = context,
-            authRepository = authRepo,
-            retryUploader = mockk<AutoRetryUploaderService>(relaxed = true),
-            settings = settings,
-            danceLibraryRepository = mockk<DanceLibraryRepository>(relaxed = true),
-            reminderScheduler = scheduler,
-            pushTokens = mockk<PushTokens>(relaxed = true)
-        )
         setScreen(p = UserProfile(uid = "u2", email = "", displayName = ""))
 
         composeRule.onNodeWithText("User").assertIsDisplayed()
