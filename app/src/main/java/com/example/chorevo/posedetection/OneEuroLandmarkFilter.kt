@@ -5,9 +5,9 @@ import kotlin.math.abs
 
 data class OneEuroFilterConfig(
     /** Lower = smoother at rest (more jitter removed). */
-    val minCutoffHz: Float = 1.2f,
+    val minCutoffHz: Float = 1.0f,
     /** Higher = less lag during fast movement. */
-    val beta: Float = 0.08f,
+    val beta: Float = 2.0f,
     val derivativeCutoffHz: Float = 1.0f
 )
 
