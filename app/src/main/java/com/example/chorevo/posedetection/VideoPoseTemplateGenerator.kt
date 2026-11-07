@@ -28,6 +28,7 @@ class VideoPoseTemplateGenerator @Inject constructor(
         private const val MAX_TRACKED_DANCERS = 8
         private const val LITE_MODEL_ASSET = "pose_landmarker_lite.task"
         private const val FULL_MODEL_ASSET = "pose_landmarker_full.task"
+        private const val HEAVY_MODEL_ASSET = "pose_landmarker_heavy.task"
         const val WARNING_HAND_EXTRACTION_PARTIAL = "handExtractionPartial"
         const val WARNING_VIDEO_TRIMMED = "videoTrimmed"
 
@@ -450,8 +451,14 @@ class VideoPoseTemplateGenerator @Inject constructor(
     }
 
     private fun preferredModelAsset(context: Context, highRecall: Boolean): String {
-        if (!highRecall) return LITE_MODEL_ASSET
-        return if (assetExists(context, FULL_MODEL_ASSET)) FULL_MODEL_ASSET else LITE_MODEL_ASSET
+        // Template generation is offline, so use the most accurate model available:
+        // heavy for the high-recall retry, full otherwise, lite only as a last resort.
+        val candidates = if (highRecall) {
+            listOf(HEAVY_MODEL_ASSET, FULL_MODEL_ASSET, LITE_MODEL_ASSET)
+        } else {
+            listOf(FULL_MODEL_ASSET, LITE_MODEL_ASSET)
+        }
+        return candidates.firstOrNull { assetExists(context, it) } ?: LITE_MODEL_ASSET
     }
 
     private fun assetExists(context: Context, assetPath: String): Boolean {

@@ -398,7 +398,8 @@ Model assets live in `app/src/main/assets`:
 - `pose_landmarker_lite.task`: body-only model for the live-practice fallback and for standard (background WorkManager) template generation; also used by high-recall generation if the full model is missing.
 - `pose_landmarker_full.task`: body-only model used by high-recall analysis for full-frame pose and as the per-crop fallback when Holistic crop inference fails. Not used by the standard profile.
 - `holistic_landmarker.task`: pose + hands model for live practice and hand-enabled template generation. Face landmarks from this model are not stored, scored, or rendered.
-- `person_detector_yolo.tflite`: YOLO person detector for high-recall analysis (TensorFlow Lite, 640×640 input, minimum confidence 0.25, NMS IoU 0.45).
+- `person_detector_yolo.tflite`: YOLO11s person detector for high-recall analysis (TensorFlow Lite, fp32, NCHW 640×640 input; the detector also accepts NHWC models). Frames are letterboxed to the square input and boxes are mapped back to frame coordinates (`LetterboxTransform`). Minimum confidence 0.25, NMS IoU 0.45; optional GPU delegate via `PersonDetectorConfig.useGpu`.
+- `pose_landmarker_heavy.task` / `pose_landmarker_full.task` / `pose_landmarker_lite.task`: video template generation picks the most accurate available (heavy for high-recall, else full, lite last). Live practice uses Holistic (GPU delegate with CPU fallback, confidence 0.35) with the full pose model as fallback, and smooths landmarks with `OneEuroLandmarkFilter`.
 - `models/instructor.glb`: 3D instructor avatar used by `InstructorAvatarOverlay`.
 
 ### Template Format

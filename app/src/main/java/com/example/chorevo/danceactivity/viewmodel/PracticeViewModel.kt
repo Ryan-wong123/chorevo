@@ -6,6 +6,7 @@ import com.example.chorevo.core.telemetry.AnalyticsEvents
 import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -27,6 +28,7 @@ import com.example.chorevo.posedetection.HandSimilarityEvaluator
 import com.example.chorevo.posedetection.HolisticFrameLandmarks
 import com.example.chorevo.posedetection.HolisticFrameSelector
 import com.example.chorevo.posedetection.HolisticLandmarkerHelper
+import com.example.chorevo.posedetection.OneEuroLandmarkFilter
 import com.example.chorevo.posedetection.PoseLandmarkerHelper
 import com.example.chorevo.posedetection.PoseSelectionPreview
 import com.example.chorevo.posedetection.PoseSimilarityEvaluator
@@ -772,27 +774,58 @@ class PracticeViewModel @Inject constructor(
 private class LiveLandmarkDetector(context: Context) : AutoCloseable {
     private val appContext = context.applicationContext
     private val holisticHelper = if (appContext.assets.assetExists(HolisticLandmarkerHelper.MODEL_ASSET)) {
-        runCatching { HolisticLandmarkerHelper(appContext) }.getOrNull()
+        runCatching {
+            HolisticLandmarkerHelper(
+                context = appContext,
+                minPoseDetectionConfidence = LIVE_MIN_CONFIDENCE,
+                minPosePresenceConfidence = LIVE_MIN_CONFIDENCE,
+                minHandLandmarksConfidence = LIVE_MIN_CONFIDENCE,
+                useGpu = true
+            )
+        }.getOrNull()
     } else {
         null
     }
     private var fallbackPoseHelper: PoseLandmarkerHelper? = null
     private var closed = false
 
+    // One-Euro smoothing removes landmark jitter without lagging fast dance moves.
+    private val poseFilter = OneEuroLandmarkFilter()
+    private val leftHandFilter = OneEuroLandmarkFilter()
+    private val rightHandFilter = OneEuroLandmarkFilter()
+
+    private fun smooth(frame: HolisticFrameLandmarks, timestampMs: Long): HolisticFrameLandmarks {
+        return HolisticFrameLandmarks(
+            pose = poseFilter.filter(frame.pose, timestampMs),
+            leftHand = leftHandFilter.filter(frame.leftHand, timestampMs),
+            rightHand = rightHandFilter.filter(frame.rightHand, timestampMs)
+        )
+    }
+
     // detect() runs on the camera analysis thread and close() on the main thread;
     // the lock stops the MediaPipe models being closed mid-frame.
     @Synchronized
     fun detect(bitmap: Bitmap): List<HolisticFrameLandmarks> {
         if (closed) return emptyList()
+        val timestampMs = SystemClock.elapsedRealtime()
         val holistic = holisticHelper
         if (holistic != null) {
             val result = runCatching { holistic.detect(bitmap) }.getOrNull()
             if (result != null) {
-                return listOf(result)
+                return listOf(smooth(result, timestampMs))
             }
         }
 
-        val poseHelper = fallbackPoseHelper ?: runCatching { PoseLandmarkerHelper(appContext) }
+        val poseHelper = fallbackPoseHelper ?: runCatching {
+            PoseLandmarkerHelper(
+                context = appContext,
+                modelAssetPath = LIVE_FALLBACK_POSE_MODEL,
+                minPoseDetectionConfidence = LIVE_MIN_CONFIDENCE,
+                minPosePresenceConfidence = LIVE_MIN_CONFIDENCE,
+                minTrackingConfidence = LIVE_MIN_CONFIDENCE,
+                useGpu = true
+            )
+        }
             .getOrNull()
             ?.also { fallbackPoseHelper = it }
             ?: return emptyList()
@@ -809,7 +842,7 @@ private class LiveLandmarkDetector(context: Context) : AutoCloseable {
                     flat.add(landmark.z())
                     flat.add(landmark.visibility().orElse(1.0f))
                 }
-                HolisticFrameLandmarks(pose = flat)
+                smooth(HolisticFrameLandmarks(pose = flat), timestampMs)
             }
     }
 
@@ -821,6 +854,10 @@ private class LiveLandmarkDetector(context: Context) : AutoCloseable {
         runCatching { fallbackPoseHelper?.close() }
     }
 }
+
+/** Live detection trades a little precision for recall: dancing is fast and self-occluding. */
+private const val LIVE_MIN_CONFIDENCE = 0.35f
+private const val LIVE_FALLBACK_POSE_MODEL = "pose_landmarker_full.task"
 
 private fun AssetManager.assetExists(assetPath: String): Boolean {
     return runCatching {
