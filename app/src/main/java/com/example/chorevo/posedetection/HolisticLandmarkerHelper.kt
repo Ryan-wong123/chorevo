@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.holisticlandmarker.HolisticLandmarker
 import com.google.mediapipe.tasks.vision.holisticlandmarker.HolisticLandmarkerResult
@@ -15,26 +16,34 @@ class HolisticLandmarkerHelper(
     private val runningMode: RunningMode = RunningMode.IMAGE,
     minPoseDetectionConfidence: Float = 0.5f,
     minPosePresenceConfidence: Float = 0.5f,
-    minHandLandmarksConfidence: Float = 0.5f
+    minHandLandmarksConfidence: Float = 0.5f,
+    useGpu: Boolean = false
 ) : AutoCloseable {
     private val landmarker: HolisticLandmarker
 
     init {
-        val baseOptions = BaseOptions.builder()
-            .setModelAssetPath(modelAssetPath)
-            .build()
+        fun create(delegate: Delegate): HolisticLandmarker {
+            val baseOptions = BaseOptions.builder()
+                .setModelAssetPath(modelAssetPath)
+                .setDelegate(delegate)
+                .build()
 
-        val options = HolisticLandmarker.HolisticLandmarkerOptions.builder()
-            .setBaseOptions(baseOptions)
-            .setRunningMode(runningMode)
-            .setMinPoseDetectionConfidence(minPoseDetectionConfidence)
-            .setMinPosePresenceConfidence(minPosePresenceConfidence)
-            .setMinHandLandmarksConfidence(minHandLandmarksConfidence)
-            .setOutputFaceBlendshapes(false)
-            .setOutputPoseSegmentationMasks(false)
-            .build()
+            val options = HolisticLandmarker.HolisticLandmarkerOptions.builder()
+                .setBaseOptions(baseOptions)
+                .setRunningMode(runningMode)
+                .setMinPoseDetectionConfidence(minPoseDetectionConfidence)
+                .setMinPosePresenceConfidence(minPosePresenceConfidence)
+                .setMinHandLandmarksConfidence(minHandLandmarksConfidence)
+                .setOutputFaceBlendshapes(false)
+                .setOutputPoseSegmentationMasks(false)
+                .build()
 
-        landmarker = HolisticLandmarker.createFromOptions(context, options)
+            return HolisticLandmarker.createFromOptions(context, options)
+        }
+
+        // The GPU delegate is not available on every device; fall back to CPU.
+        landmarker = (if (useGpu) runCatching { create(Delegate.GPU) }.getOrNull() else null)
+            ?: create(Delegate.CPU)
     }
 
     fun detect(bitmap: Bitmap): HolisticFrameLandmarks {

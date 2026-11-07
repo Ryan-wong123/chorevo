@@ -167,6 +167,8 @@ dependencies {
     // --- MediaPipe ---
     implementation(libs.mediapipe.tasks.vision)
     implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.gpu)
+    implementation(libs.tensorflow.lite.gpu.api)
     implementation("io.github.sceneview:sceneview:2.2.1")
 
     implementation(libs.coil.compose)
