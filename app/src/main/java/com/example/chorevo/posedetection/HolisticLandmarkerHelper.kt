@@ -42,7 +42,7 @@ class HolisticLandmarkerHelper(
         }
 
         // The GPU delegate is not available on every device; fall back to CPU.
-        landmarker = (if (useGpu) runCatching { create(Delegate.GPU) }.getOrNull() else null)
+        landmarker = (if (GpuSupport.canUseGpu(useGpu)) runCatching { create(Delegate.GPU) }.getOrNull() else null)
             ?: create(Delegate.CPU)
     }
 
