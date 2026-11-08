@@ -43,7 +43,7 @@ class TfliteYoloPersonDetector(
     /** GPU when the device supports it (used by the live path), CPU otherwise. */
     private fun createInterpreter(context: Context): Interpreter {
         val model = loadModel(context, config.modelAssetPath)
-        if (config.useGpu) {
+        if (GpuSupport.canUseGpu(config.useGpu)) {
             val gpu = runCatching {
                 if (CompatibilityList().isDelegateSupportedOnThisDevice) GpuDelegate() else null
             }.getOrNull()
