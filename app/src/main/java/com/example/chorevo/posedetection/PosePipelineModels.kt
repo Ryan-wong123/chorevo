@@ -103,7 +103,9 @@ data class PersonDetectorConfig(
     val inputSize: Int = DEFAULT_INPUT_SIZE,
     val personClassId: Int = DetectionBox.PERSON_CLASS_ID,
     val outputFormat: YoloOutputFormat = YoloOutputFormat.AUTO,
-    val outputIncludesObjectness: Boolean = false
+    val outputIncludesObjectness: Boolean = false,
+    /** Run on the GPU delegate when the device supports it; falls back to CPU. */
+    val useGpu: Boolean = false
 ) {
     companion object {
         const val DEFAULT_MODEL_ASSET = "person_detector_yolo.tflite"
