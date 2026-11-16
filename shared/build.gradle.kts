@@ -48,3 +48,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 }
+
+// The shared module has no Compose resources yet. On CI the iOS resource-sync task fails
+// ("Cannot query the value of this provider") even though there is nothing to copy.
+// Remove this when resources (images, fonts, strings) move into shared/src/commonMain/composeResources.
+tasks.matching { it.name == "syncComposeResourcesForIos" }.configureEach {
+    enabled = false
+}
