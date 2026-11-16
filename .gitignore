@@ -39,3 +39,8 @@ keystore.properties
 gha-creds-*.json
 firebase-debug*.log
 firestore-debug.log
+
+# iOS (Xcode project is generated from iosApp/project.yml)
+iosApp/iosApp.xcodeproj/
+iosApp/build/
+xcuserdata/

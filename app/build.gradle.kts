@@ -124,6 +124,9 @@ kotlin {
 }
 
 dependencies {
+    // Shared Kotlin Multiplatform code (also built for iOS)
+    implementation(project(":shared"))
+
     //Hilt
     implementation(libs.hilt.android)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
