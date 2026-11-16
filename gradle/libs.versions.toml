@@ -1,4 +1,5 @@
 [versions]
+composeMultiplatform = "1.10.3" # JetBrains Compose Multiplatform (shared UI for Android + iOS)
 agp = "8.13.2"                 # Android Gradle Plugin version
 firebaseBom = "33.7.0"        # Firebase BOM (aligns all Firebase library versions)
 kotlin = "2.3.21"             # Kotlin language version (Media3 1.11 / Google ID 1.2 need 2.2+ / 2.3+)
@@ -201,6 +202,15 @@ androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifec
 [plugins]
 # Android application plugin
 android-application = { id = "com.android.application", version.ref = "agp" }
+
+# Android library plugin (the shared Kotlin Multiplatform module's Android target)
+android-library = { id = "com.android.library", version.ref = "agp" }
+
+# Kotlin Multiplatform plugin (shared module: Android + iOS)
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+
+# JetBrains Compose Multiplatform plugin
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 
 # Kotlin Android plugin
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
